@@ -31,9 +31,10 @@ Produced by the commit step. Must have `pushed: true` for this step to proceed.
 
 ```text
 <base-path>/create-mr/mr-info.json
+<base-path>/create-mr/step-result.json
 ```
 
-Contains platform, MR/PR URL, action taken (`created`, `found_existing`, or `skipped`), and title.
+`mr-info.json` contains platform, MR/PR URL, action taken (`created`, `found_existing`, or `skipped`), and title. `step-result.json` is the standard sidecar with MR/PR metadata.
 
 ## Execution
 
@@ -50,4 +51,4 @@ The script handles:
 3. **Context resolution** — determines platform and repo URL from `commit-info.json`, default branch from `repo-info.json` if available
 4. **Existing MR/PR check** — looks for an open MR/PR from the feature branch before creating a new one
 5. **MR/PR creation** — creates a GitLab MR (via `glab` CLI) or GitHub PR (via `gh` CLI)
-6. **Output** — writes `mr-info.json` with the MR/PR URL and metadata
+6. **Output** — writes `mr-info.json` with the MR/PR URL and metadata, and `step-result.json` sidecar

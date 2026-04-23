@@ -31,9 +31,10 @@ The writing manifest listing all files written or modified.
 
 ```text
 <base-path>/commit/commit-info.json
+<base-path>/commit/step-result.json
 ```
 
-Contains branch name, commit SHA, files committed, platform, repo URL, and push status.
+`commit-info.json` contains branch name, commit SHA, files committed, platform, repo URL, and push status. `step-result.json` is the standard sidecar with commit metadata.
 
 ## Execution
 
@@ -51,4 +52,4 @@ The script handles:
 4. **Manifest reading** — extracts file paths from `<base-path>/writing/_index.md`
 5. **Commit** — stages manifest-listed files and commits with a descriptive message
 6. **Push** — pushes the feature branch to origin (uses `--force-with-lease` for pipeline-generated branches)
-7. **Output** — writes `commit-info.json` with commit metadata
+7. **Output** — writes `commit-info.json` with commit metadata and `step-result.json` sidecar

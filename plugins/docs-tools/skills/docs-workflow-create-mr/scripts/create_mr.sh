@@ -50,6 +50,28 @@ print(json.dumps({
   echo "Wrote ${OUTPUT_DIR}/mr-info.json"
 }
 
+# --- Helper: write step-result.json sidecar ---
+# Args: <url> <action> <skipped: true|false> [skip_reason]
+write_step_result() {
+  local url="$1" action="$2" skipped="$3" skip_reason="${4:-}"
+  python3 -c "
+import json, sys
+from datetime import datetime, timezone
+print(json.dumps({
+    'schema_version': 1,
+    'step': 'create-mr',
+    'ticket': sys.argv[1],
+    'completed_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+    'url': sys.argv[2] if sys.argv[2] != 'null' else None,
+    'action': sys.argv[3],
+    'platform': sys.argv[4],
+    'skipped': sys.argv[5] == 'true',
+    'skip_reason': sys.argv[6] or None
+}, indent=2))
+" "$TICKET" "$url" "$action" "$PLATFORM" "$skipped" "$skip_reason" \
+  > "${OUTPUT_DIR}/step-result.json"
+}
+
 # --- Helper: normalize git remote URL to HTTPS ---
 normalize_url() {
   local url="$1"
@@ -100,6 +122,7 @@ ensure_cli() {
 # --- Draft mode: skip ---
 if [[ "$DRAFT" == true ]]; then
   write_mr_info "null" "skipped" ""
+  write_step_result "null" "skipped" true "draft"
   echo "Draft mode — skipped MR/PR creation."
   exit 0
 fi
@@ -110,6 +133,7 @@ COMMIT_INFO="${BASE_PATH}/commit/commit-info.json"
 if [[ ! -f "$COMMIT_INFO" ]]; then
   echo "No commit-info.json found at ${COMMIT_INFO}. Nothing to do."
   write_mr_info "null" "skipped" ""
+  write_step_result "null" "skipped" true "not_pushed"
   exit 0
 fi
 
@@ -126,6 +150,7 @@ if [[ "$PUSHED" != "true" ]]; then
   echo "commit-info.json has pushed=false. Skipping MR/PR creation."
   PLATFORM="${PUB_PLATFORM:-unknown}"
   write_mr_info "null" "skipped" ""
+  write_step_result "null" "skipped" true "not_pushed"
   exit 0
 fi
 
@@ -237,6 +262,7 @@ else:
   if [[ -n "$EXISTING_URL" ]]; then
     echo "Found existing MR: ${EXISTING_URL}"
     write_mr_info "$EXISTING_URL" "found_existing" "$TITLE"
+    write_step_result "$EXISTING_URL" "found_existing" false
     exit 0
   fi
 
@@ -249,6 +275,7 @@ else:
     --no-editor --yes 2>&1)" || {
     echo "ERROR: Failed to create MR: ${MR_OUTPUT}" >&2
     write_mr_info "null" "skipped" "$TITLE"
+    write_step_result "null" "skipped" true "create_failed"
     exit 1
   }
 
@@ -256,9 +283,11 @@ else:
   if [[ -n "$MR_URL" ]]; then
     echo "Created MR: ${MR_URL}"
     write_mr_info "$MR_URL" "created" "$TITLE"
+    write_step_result "$MR_URL" "created" false
   else
     echo "ERROR: Failed to create MR. Output: ${MR_OUTPUT}" >&2
     write_mr_info "null" "skipped" "$TITLE"
+    write_step_result "null" "skipped" true "create_failed"
     exit 1
   fi
 
@@ -269,6 +298,7 @@ elif [[ "$PLATFORM" == "github" ]]; then
   if [[ -n "$EXISTING_PR" ]]; then
     echo "Found existing PR: ${EXISTING_PR}"
     write_mr_info "$EXISTING_PR" "found_existing" "$TITLE"
+    write_step_result "$EXISTING_PR" "found_existing" false
     exit 0
   fi
 
@@ -280,14 +310,17 @@ elif [[ "$PLATFORM" == "github" ]]; then
     --body "$DESCRIPTION" 2>&1)" || {
     echo "ERROR: Failed to create PR: ${PR_URL}" >&2
     write_mr_info "null" "skipped" "$TITLE"
+    write_step_result "null" "skipped" true "create_failed"
     exit 1
   }
 
   echo "Created PR: ${PR_URL}"
   write_mr_info "$PR_URL" "created" "$TITLE"
+  write_step_result "$PR_URL" "created" false
 
 else
   echo "ERROR: Unknown platform '${PLATFORM}'. Cannot create MR/PR." >&2
   write_mr_info "null" "skipped" "$TITLE"
+  write_step_result "null" "skipped" true "unknown_platform"
   exit 1
 fi

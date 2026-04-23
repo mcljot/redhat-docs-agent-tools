@@ -230,9 +230,28 @@ Create a human-readable markdown summary at `$SUMMARY_FILE` with:
 
 This summary is for human review. The JSON file is what downstream steps consume.
 
-### 7. Verify output
+### 7. Write step-result.json
 
-After completion, verify that both `$EVIDENCE_FILE` and `$SUMMARY_FILE` exist.
+After generating the evidence, read `$EVIDENCE_FILE` to count topics and total snippets. Write the sidecar to `${OUTPUT_DIR}/step-result.json`:
+
+```json
+{
+  "schema_version": 1,
+  "step": "code-evidence",
+  "ticket": "<TICKET>",
+  "completed_at": "<current ISO 8601 timestamp>",
+  "topic_count": 8,
+  "snippet_count": 42,
+  "repo_path": "<REPO_PATH>"
+}
+```
+
+- `topic_count`: length of the `topics` array in `evidence.json`
+- `snippet_count`: sum of all `source_results` and `context_results` entries across all topics
+
+### 8. Verify output
+
+After completion, verify that `$EVIDENCE_FILE`, `$SUMMARY_FILE`, and `${OUTPUT_DIR}/step-result.json` exist.
 
 ## How downstream steps use the evidence
 

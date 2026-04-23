@@ -220,6 +220,7 @@ Use this absolute `BASE_PATH` for the progress file's `base_path` field and for 
   code-evidence/                     (if source repo is available)
     evidence.json
     summary.md
+    step-result.json                 (sidecar: topic_count, snippet_count, repo_path)
   prepare-branch/
     branch-info.md
     step-result.json                 (sidecar: branch, based_on, skipped)
@@ -236,8 +237,10 @@ Use this absolute `BASE_PATH` for the progress file's `base_path` field and for 
     step-result.json                 (sidecar: common fields only)
   commit/
     commit-info.json
+    step-result.json                 (sidecar: commit_sha, branch, pushed, skipped)
   create-mr/
     mr-info.json
+    step-result.json                 (sidecar: url, action, platform, skipped)
   workflow/
     docs-workflow_proj-123.json
 ```

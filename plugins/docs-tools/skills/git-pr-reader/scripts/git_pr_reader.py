@@ -286,8 +286,8 @@ class GitReviewAPI(ABC):
         Fetch PR/MR information.
 
         Returns:
-            Dictionary with keys: head_sha, title, body/description,
-            base_ref, and platform-specific fields.
+            Dictionary with keys: head_sha, head_ref, title,
+            body/description, base_ref, and platform-specific fields.
         """
         ...
 
@@ -636,6 +636,7 @@ class GitHubReviewAPI(GitReviewAPI):
 
         self._pr_info = {
             "head_sha": self._pr.head.sha,
+            "head_ref": self._pr.head.ref,
             "title": self._pr.title,
             "body": self._pr.body or "",
             "base_ref": self._pr.base.ref,
@@ -951,6 +952,7 @@ class GitLabReviewAPI(GitReviewAPI):
             if ver_data and isinstance(ver_data, list):
                 self._pr_info = {
                     "head_sha": ver_data[0].get("head_commit_sha", ""),
+                    "head_ref": self._mr.source_branch,
                     "base_sha": ver_data[0].get("base_commit_sha", ""),
                     "start_sha": ver_data[0].get("start_commit_sha", ""),
                     "title": self._mr.title,
@@ -964,6 +966,7 @@ class GitLabReviewAPI(GitReviewAPI):
         # Fallback: use MR attributes directly
         self._pr_info = {
             "head_sha": getattr(self._mr, "sha", ""),
+            "head_ref": self._mr.source_branch,
             "base_sha": "",
             "start_sha": "",
             "title": self._mr.title,
@@ -1277,11 +1280,22 @@ def cmd_info(args) -> int:
 
     try:
         info = api.get_pr_info()
-        if args.json:
+        if args.field:
+            value = info.get(args.field)
+            if value is None:
+                print(
+                    f"Error: unknown field '{args.field}'. "
+                    f"Available: {', '.join(info.keys())}",
+                    file=sys.stderr,
+                )
+                return 1
+            print(value)
+        elif args.json:
             print(json.dumps(info, indent=2))
         else:
             print(f"Title: {info.get('title', 'N/A')}")
             print(f"Base: {info.get('base_ref', 'N/A')}")
+            print(f"Head: {info.get('head_ref', 'N/A')}")
             print(f"Head SHA: {info.get('head_sha', 'N/A')}")
             body = info.get("body", "")
             if body:
@@ -1753,6 +1767,11 @@ Examples:
     )
     info_parser.add_argument("pr_url", help="GitHub PR or GitLab MR URL")
     info_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    info_parser.add_argument(
+        "--field",
+        metavar="NAME",
+        help="Output a single field value (e.g., head_ref, base_ref, title)",
+    )
 
     # -- files subcommand ----------------------------------------------------
     files_parser = subparsers.add_parser(

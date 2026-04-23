@@ -48,6 +48,46 @@ The script handles all steps:
 6. **Link to parent** — creates a "Document" issue link (singular, not "Documents")
 7. **Attach plan** — attaches the full plan file (private projects only)
 
-The script prints the JIRA URL on success (e.g., `https://redhat.atlassian.net/browse/DOCS-456`).
+The script prints the JIRA URL on success (e.g., `https://redhat.atlassian.net/browse/DOCS-456`), or a skip message if a linked ticket already exists.
 
-This step does not write an output file. The progress file records `output: null` for this step.
+### Write step-result.json
+
+After the script completes, write the sidecar to `${BASE_PATH}/create-jira/step-result.json`:
+
+```bash
+mkdir -p "${BASE_PATH}/create-jira"
+```
+
+If the script created a new ticket (output contains a JIRA URL like `https://...atlassian.net/browse/DOCS-456`):
+
+```json
+{
+  "schema_version": 1,
+  "step": "create-jira",
+  "ticket": "<TICKET>",
+  "completed_at": "<current ISO 8601 timestamp>",
+  "jira_url": "https://redhat.atlassian.net/browse/DOCS-456",
+  "jira_key": "DOCS-456",
+  "action": "created",
+  "skipped": false,
+  "skip_reason": null
+}
+```
+
+If the script found an existing linked ticket (output contains "already exists"):
+
+```json
+{
+  "schema_version": 1,
+  "step": "create-jira",
+  "ticket": "<TICKET>",
+  "completed_at": "<current ISO 8601 timestamp>",
+  "jira_url": null,
+  "jira_key": "<linked-key from output>",
+  "action": "found_existing",
+  "skipped": false,
+  "skip_reason": null
+}
+```
+
+Extract `jira_key` and `jira_url` from the script's stdout. If the script fails (non-zero exit), write the sidecar with `action: "skipped"`, `skipped: true`, and `skip_reason: "create_failed"`.

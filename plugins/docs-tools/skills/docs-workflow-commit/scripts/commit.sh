@@ -55,9 +55,32 @@ print(json.dumps({
   > "${OUTPUT_DIR}/commit-info.json"
 }
 
+# --- Helper: write step-result.json sidecar ---
+# Args: <pushed: true|false> <skipped: true|false> [skip_reason]
+write_step_result() {
+  local pushed="$1" skipped="$2" skip_reason="${3:-}"
+  python3 -c "
+import json, sys
+from datetime import datetime, timezone
+print(json.dumps({
+    'schema_version': 1,
+    'step': 'commit',
+    'ticket': sys.argv[1],
+    'completed_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+    'commit_sha': sys.argv[2] or None,
+    'branch': sys.argv[3] or None,
+    'pushed': sys.argv[4] == 'true',
+    'skipped': sys.argv[5] == 'true',
+    'skip_reason': sys.argv[6] or None
+}, indent=2))
+" "$TICKET" "${COMMIT_SHA:-}" "${BRANCH:-}" "$pushed" "$skipped" "$skip_reason" \
+  > "${OUTPUT_DIR}/step-result.json"
+}
+
 # --- Draft mode: skip ---
 if [[ "$DRAFT" == true ]]; then
   write_commit_info false
+  write_step_result false true "draft"
   echo "Draft mode — skipped committing."
   exit 0
 fi
@@ -98,6 +121,7 @@ if [[ "$BRANCH" == "main" || "$BRANCH" == "master" ]]; then
 fi
 
 # --- Read manifest ---
+SIDECAR="${BASE_PATH}/writing/step-result.json"
 MANIFEST="${BASE_PATH}/writing/_index.md"
 REPO_DIR_ABS="$(cd "$REPO_DIR" && pwd)"
 
@@ -124,12 +148,14 @@ with open(sys.argv[2]) as f:
 else
   echo "No manifest or step-result.json found."
   write_commit_info false
+  write_step_result false true "no_changes"
   exit 0
 fi
 
 if [[ ${#MANIFEST_FILES[@]} -eq 0 ]]; then
   echo "No files found in manifest under ${REPO_DIR_ABS}."
   write_commit_info false
+  write_step_result false true "no_changes"
   exit 0
 fi
 
@@ -149,6 +175,7 @@ done
 if [[ ${#STAGED_FILES[@]} -eq 0 ]] || git diff --cached --quiet; then
   echo "No changes to commit."
   write_commit_info false
+  write_step_result false true "no_changes"
   exit 0
 fi
 
@@ -171,9 +198,11 @@ git fetch origin "$BRANCH" 2>/dev/null || true
 if git push --force-with-lease -u origin "$BRANCH" 2>&1; then
   echo "Pushed branch '${BRANCH}' to origin"
   write_commit_info true "${STAGED_FILES[@]}"
+  write_step_result true false
 else
   echo "ERROR: Push failed. Branch committed locally but not pushed." >&2
   write_commit_info false "${STAGED_FILES[@]}"
+  write_step_result false false
   exit 1
 fi
 
