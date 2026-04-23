@@ -1,7 +1,7 @@
 ---
 name: docs-workflow-writing
 description: Write documentation from a documentation plan. Dispatches the docs-writer agent. Supports AsciiDoc (default) and MkDocs formats. Default placement is UPDATE-IN-PLACE; use --draft for staging area. Also supports fix mode for applying technical review corrections.
-argument-hint: <ticket> --base-path <path> --format <adoc|mkdocs> [--draft] [--repo-path <path>] [--fix-from <review_path>]
+argument-hint: <ticket> --base-path <path> --format <adoc|mkdocs> [--draft] [--repo-path <path>] [--fix-from <review_path>] [--import-from <manifest_path>]
 allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, Agent
 ---
 
@@ -23,7 +23,7 @@ Pass through the full args string. The script emits JSON on stdout:
 
 ```json
 {
-  "mode":          "update-in-place | draft | fix",
+  "mode":          "update-in-place | draft | fix | import",
   "ticket":        "PROJ-123",
   "format":        "adoc | mkdocs",
   "input_file":    "<base-path>/planning/plan.md",
@@ -33,6 +33,7 @@ Pass through the full args string. The script emits JSON on stdout:
   "output_file":   "<base-path>/writing/_index.md",
   "repo_path":     "<path> | null",
   "fix_from":      "<path> | null",
+  "import_from":   "<path> | null",
   "verify_output": true | false
 }
 ```
@@ -202,6 +203,51 @@ Select the prompt based on `mode` and `format` from the JSON output. In every pr
 > Edit files in place. Do NOT create copies or new files.
 
 In fix mode, the skill does not create new modules or restructure content.
+
+---
+
+#### Mode: `import`
+
+**Description:** `Import markdown updates for <TICKET>`
+
+**Prompt:**
+
+> Apply content updates from an edited markdown file back into AsciiDoc modules for `<TICKET>`.
+>
+> Read the import manifest from: `<INPUT_FILE>`
+>
+> The manifest is a JSON file with a `sections` array. Each section has a `status`, `heading`, `content`, and optionally a `module_path`.
+>
+> [If `repo_path` is not null: "The target repository is at `<REPO_PATH>`. All module paths in the manifest are relative to this directory."]
+>
+> **For sections with status `matched`:**
+>
+> 1. Read the existing AsciiDoc module at `module_path`
+> 2. Replace the body content with the `content` from the manifest, converting markdown to proper AsciiDoc syntax (headings, lists, links, code blocks, admonitions, tables)
+> 3. Preserve the following elements from the original module — do NOT remove or modify them:
+>    - `:_mod-docs-content-type:` attribute
+>    - `[id="..._{context}"]` anchor
+>    - `[role="_abstract"]` tag
+>    - Any `ifdef::` / `ifndef::` / `ifeval::` conditionals
+>    - Any `:context:` attribute assignments
+>    - Any `include::` directives that reference other modules (keep them if the included content is not covered by the new markdown)
+> 4. Write the updated module back to the same path
+>
+> **For sections with status `new`:**
+>
+> 1. Determine the content type (CONCEPT, PROCEDURE, or REFERENCE) from the content structure:
+>    - Numbered steps or "Prerequisites" → PROCEDURE
+>    - Tables, lists of specs, API fields → REFERENCE
+>    - Everything else → CONCEPT
+> 2. Create a new AsciiDoc module following the repo's existing file naming conventions (e.g., `modules/<content-type-prefix>-<kebab-title>.adoc`)
+> 3. Include the standard module scaffolding: content type attribute, ID anchor, title, and abstract tag
+> 4. Add an `include::` statement for the new module in the appropriate assembly file
+>
+> **Skip sections with status `skipped` or `preamble`.** Do not process them.
+>
+> Create a manifest at `<OUTPUT_FILE>` listing **all files written and modified** with **absolute paths**. The manifest must include every intentional change — both new files created and existing files modified (e.g., assembly updates).
+>
+> [If `repo_path` is not null: "Record `Target repo: <REPO_PATH>` in the manifest header."]
 
 ---
 

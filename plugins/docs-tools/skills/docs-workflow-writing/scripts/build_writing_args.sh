@@ -22,6 +22,7 @@ FORMAT="adoc"
 DRAFT=false
 REPO_PATH=""
 FIX_FROM=""
+IMPORT_FROM=""
 
 require_arg() {
   local opt="$1"
@@ -56,6 +57,11 @@ while [[ $# -gt 0 ]]; do
     --fix-from)
       require_arg "$1" "${2:-}"
       FIX_FROM="$2"
+      shift 2
+      ;;
+    --import-from)
+      require_arg "$1" "${2:-}"
+      IMPORT_FROM="$2"
       shift 2
       ;;
     -*)
@@ -106,7 +112,9 @@ fi
 
 # --- Determine mode ---
 MODE=""
-if [[ -n "$FIX_FROM" ]]; then
+if [[ -n "$IMPORT_FROM" ]]; then
+  MODE="import"
+elif [[ -n "$FIX_FROM" ]]; then
   MODE="fix"
 elif [[ -n "$REPO_PATH" ]]; then
   MODE="update-in-place"
@@ -120,13 +128,19 @@ else
 fi
 
 # --- Validate inputs ---
-if [[ "$MODE" != "fix" && ! -f "$INPUT_FILE" ]]; then
+if [[ "$MODE" == "import" ]]; then
+  if [[ ! -f "$IMPORT_FROM" ]]; then
+    echo "ERROR: Import manifest not found: ${IMPORT_FROM}" >&2
+    exit 1
+  fi
+  INPUT_FILE="$IMPORT_FROM"
+elif [[ "$MODE" == "fix" ]]; then
+  if [[ ! -f "$FIX_FROM" ]]; then
+    echo "ERROR: Review file not found: ${FIX_FROM}" >&2
+    exit 1
+  fi
+elif [[ ! -f "$INPUT_FILE" ]]; then
   echo "ERROR: Plan file not found: ${INPUT_FILE}" >&2
-  exit 1
-fi
-
-if [[ "$MODE" == "fix" && ! -f "$FIX_FROM" ]]; then
-  echo "ERROR: Review file not found: ${FIX_FROM}" >&2
   exit 1
 fi
 
@@ -157,6 +171,7 @@ jq -n \
   --arg output_file   "$OUTPUT_FILE" \
   --arg repo_path     "$REPO_PATH" \
   --arg fix_from      "$FIX_FROM" \
+  --arg import_from   "$IMPORT_FROM" \
   --argjson verify    "$VERIFY" \
   '{
     mode:           $mode,
@@ -169,5 +184,6 @@ jq -n \
     output_file:    $output_file,
     repo_path:      (if $repo_path == "" then null else $repo_path end),
     fix_from:       (if $fix_from == "" then null else $fix_from end),
+    import_from:    (if $import_from == "" then null else $import_from end),
     verify_output:  $verify
   }'

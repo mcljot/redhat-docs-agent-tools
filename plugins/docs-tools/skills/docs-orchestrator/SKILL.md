@@ -35,6 +35,7 @@ When displaying available options to the user (e.g., on skill load or when askin
 - `--docs-repo-path <path>` — Target documentation repository for UPDATE-IN-PLACE mode. The docs-writer explores this directory for framework detection (Antora, MkDocs, Docusaurus, etc.) and writes files there instead of the current working directory. Propagates to `prepare-branch`, `writing`, `commit`, and `create-mr` steps (mapped to their internal `--repo-path` flag). **Precedence**: if both `--docs-repo-path` and `--draft` are passed, `--docs-repo-path` wins — log a warning and ignore `--draft`
 - `--source-code-repo <url-or-path>` — Source code repository for code evidence and requirements enrichment. Accepts remote URLs (https://, git@, ssh:// — shallow-cloned to `.claude/docs/<ticket>/code-repo/`) or local paths (used directly). Passed to requirements, code-evidence, and writing steps (mapped to their internal `--repo` flag). Without `--pr`, the entire repo is the subject matter; with `--pr`, the PR branch is checked out so code-evidence reflects the PR's state. Takes highest priority in source resolution, overriding `source.yaml` and PR-derived URLs
 - `--create-jira <PROJECT>` — Create a linked JIRA ticket in the specified project after the planning step completes. Activates the `create-jira` workflow step (guarded by `when: create_jira_project`). Requires `JIRA_API_TOKEN` to be set
+- `--markdown <path>` — Path to an edited markdown file for the `import` workflow. Passed through to the `import-markdown` step. Required when using `--workflow import`
 
 ### Examples
 
@@ -69,6 +70,12 @@ When displaying available options to the user (e.g., on skill load or when askin
 /docs-orchestrator PROJ-123 \
   --workflow workflow-code-evidence \
   --source-code-repo https://github.com/org/operator
+
+# Import edited markdown back into AsciiDoc modules
+/docs-orchestrator custom-models-3.4 \
+  --workflow import \
+  --markdown /path/to/edited-doc.md \
+  --docs-repo-path /home/user/docs-repo
 ```
 
 ## Resolve source repository
@@ -365,7 +372,8 @@ Build the args string for the step skill. The orchestrator maps its user-facing 
    - `scope-req-audit`: `--repo <repo_path> [--grounded-threshold <float>] [--absent-threshold <float>]`
    - `prepare-branch`: `[--draft] [--repo-path <path>]`
    - `code-evidence`: `--repo <repo_path> [--scope-include <globs>] [--scope-exclude <globs>] [--reindex]` — scope globs come from `source.yaml` or `options.source.scope` in the progress file
-   - `writing`: `--format <adoc|mkdocs> [--draft] [--repo <repo_path>] [--repo-path <path>]`
+   - `import-markdown`: `--markdown <path> [--repo-path <path>]`
+   - `writing`: `--format <adoc|mkdocs> [--draft] [--repo <repo_path>] [--repo-path <path>]` — for the import workflow, also pass `--import-from <base_path>/import-markdown/match-manifest.json`
    - `style-review`: `--format <adoc|mkdocs>`
    - `commit`: `[--draft] [--repo-path <path>]`
    - `create-mr`: `[--draft] [--repo-path <path>]`

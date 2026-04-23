@@ -1,0 +1,28 @@
+workflow:
+  name: docs-import
+  description: Import edited markdown back into AsciiDoc modules, creating a merge request for review.
+
+  steps:
+    - name: import-markdown
+      skill: docs-tools:docs-workflow-import-markdown
+      description: Split markdown and match sections to AsciiDoc modules
+
+    - name: prepare-branch
+      skill: docs-tools:docs-workflow-prepare-branch
+      description: Create feature branch
+      inputs: [import-markdown]
+
+    - name: writing
+      skill: docs-tools:docs-workflow-writing
+      description: Apply content updates to matched modules
+      inputs: [import-markdown, prepare-branch]
+
+    - name: commit
+      skill: docs-tools:docs-workflow-commit
+      description: Commit and push changes
+      inputs: [writing]
+
+    - name: create-mr
+      skill: docs-tools:docs-workflow-create-mr
+      description: Create merge request
+      inputs: [commit]
