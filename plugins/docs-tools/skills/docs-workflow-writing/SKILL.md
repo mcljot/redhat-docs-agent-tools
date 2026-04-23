@@ -212,7 +212,7 @@ In fix mode, the skill does not create new modules or restructure content.
 
 **Prompt:**
 
-> Apply content updates from an edited markdown file back into AsciiDoc modules for `<TICKET>`.
+> Convert edited markdown content back into AsciiDoc modules for `<TICKET>`.
 >
 > Read the import manifest from: `<INPUT_FILE>`
 >
@@ -220,10 +220,25 @@ In fix mode, the skill does not create new modules or restructure content.
 >
 > [If `repo_path` is not null: "The target repository is at `<REPO_PATH>`. All module paths in the manifest are relative to this directory."]
 >
+> **CRITICAL: Preserve the author's original wording.** The `content` field contains text written by subject matter experts. Your job is to convert markdown syntax to AsciiDoc syntax — NOT to rewrite, rephrase, summarize, expand, or improve the prose. Every sentence in the output must come from the input. Do not add sentences, remove sentences, merge sentences, or split sentences. Do not add introductory or concluding text that is not in the source. If the original text is awkward or incomplete, keep it as-is — the writer will fix it during review.
+>
+> **Syntax conversion rules:**
+> - `**bold**` → `*bold*`
+> - `[link text](url)` → `link:url[link text]`
+> - `` `code` `` → `` `code` `` (no change)
+> - Code blocks → `[source,language]\n----\n...\n----`
+> - `- item` / `* item` → `* item` (AsciiDoc unordered list)
+> - `1. item` → `. item` (AsciiDoc ordered list)
+> - Nested lists → use `**` / `***` prefix levels
+> - `> blockquote` → use AsciiDoc admonition if appropriate, otherwise keep as-is
+> - Tables → AsciiDoc table syntax (`|===`)
+> - Headings within a section body → use relative AsciiDoc heading levels (`.Title` for titled blocks, or `=` levels relative to module root)
+> - One sentence per line (ventilated prose)
+>
 > **For sections with status `matched`:**
 >
 > 1. Read the existing AsciiDoc module at `module_path`
-> 2. Replace the body content with the `content` from the manifest, converting markdown to proper AsciiDoc syntax (headings, lists, links, code blocks, admonitions, tables)
+> 2. Replace the body content with the `content` from the manifest, converting markdown syntax to AsciiDoc syntax using the rules above
 > 3. Preserve the following elements from the original module — do NOT remove or modify them:
 >    - `:_mod-docs-content-type:` attribute
 >    - `[id="..._{context}"]` anchor
@@ -241,7 +256,8 @@ In fix mode, the skill does not create new modules or restructure content.
 >    - Everything else → CONCEPT
 > 2. Create a new AsciiDoc module following the repo's existing file naming conventions (e.g., `modules/<content-type-prefix>-<kebab-title>.adoc`)
 > 3. Include the standard module scaffolding: content type attribute, ID anchor, title, and abstract tag
-> 4. Add an `include::` statement for the new module in the appropriate assembly file
+> 4. Convert the `content` from markdown to AsciiDoc syntax using the rules above — do NOT rewrite the prose
+> 5. Add an `include::` statement for the new module in the appropriate assembly file
 >
 > **Skip sections with status `skipped` or `preamble`.** Do not process them.
 >
