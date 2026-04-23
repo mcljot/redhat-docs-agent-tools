@@ -69,6 +69,60 @@ ENVEOF
   } || echo "  JIRA session endpoint fallback: unavailable"
 fi
 
+# Fallback: fetch GitLab credentials from ACP session endpoint
+if [[ -z "${GITLAB_TOKEN:-}" ]] \
+   && [[ -n "${BACKEND_API_URL:-}" ]] \
+   && [[ -n "${PROJECT_NAME:-}" ]] \
+   && [[ -n "${SESSION_ID:-}" ]] \
+   && [[ -f "$BOT_TOKEN_FILE" ]]; then
+  echo "GitLab token not injected, trying session credentials endpoint..."
+  _gitlab_token=$(python3 -c "
+import json, urllib.request, sys
+with open(sys.argv[1]) as f:
+    token = f.read().strip()
+req = urllib.request.Request(sys.argv[2], headers={
+    'Authorization': 'Bearer ' + token, 'Accept': 'application/json'
+})
+try:
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        d = json.loads(resp.read())
+    print(d['token'])
+except Exception:
+    sys.exit(1)
+" "$BOT_TOKEN_FILE" \
+    "${BACKEND_API_URL}/projects/${PROJECT_NAME}/agentic-sessions/${SESSION_ID}/credentials/gitlab" 2>/dev/null) && {
+    sed -i "s|^GITLAB_TOKEN=.*|GITLAB_TOKEN=${_gitlab_token}|" ~/.env
+    echo "  GitLab credentials fetched from session endpoint"
+  } || echo "  GitLab session endpoint fallback: unavailable"
+fi
+
+# Fallback: fetch GitHub credentials from ACP session endpoint
+if [[ -z "${GITHUB_TOKEN:-}" ]] \
+   && [[ -n "${BACKEND_API_URL:-}" ]] \
+   && [[ -n "${PROJECT_NAME:-}" ]] \
+   && [[ -n "${SESSION_ID:-}" ]] \
+   && [[ -f "$BOT_TOKEN_FILE" ]]; then
+  echo "GitHub token not injected, trying session credentials endpoint..."
+  _github_token=$(python3 -c "
+import json, urllib.request, sys
+with open(sys.argv[1]) as f:
+    token = f.read().strip()
+req = urllib.request.Request(sys.argv[2], headers={
+    'Authorization': 'Bearer ' + token, 'Accept': 'application/json'
+})
+try:
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        d = json.loads(resp.read())
+    print(d['token'])
+except Exception:
+    sys.exit(1)
+" "$BOT_TOKEN_FILE" \
+    "${BACKEND_API_URL}/projects/${PROJECT_NAME}/agentic-sessions/${SESSION_ID}/credentials/github" 2>/dev/null) && {
+    sed -i "s|^GITHUB_TOKEN=.*|GITHUB_TOKEN=${_github_token}|" ~/.env
+    echo "  GitHub credentials fetched from session endpoint"
+  } || echo "  GitHub session endpoint fallback: unavailable"
+fi
+
 # Read final credential state from ~/.env for status reporting
 _final_jira=$(grep -oP '(?<=^JIRA_API_TOKEN=).+' ~/.env 2>/dev/null || true)
 _final_github=$(grep -oP '(?<=^GITHUB_TOKEN=).+' ~/.env 2>/dev/null || true)
