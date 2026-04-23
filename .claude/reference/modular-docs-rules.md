@@ -1,0 +1,1 @@
+../../plugins/rhivos-tools/reference/modular-docs-rules.md

@@ -1,0 +1,1 @@
+../../plugins/rhivos-tools/reference/product-attributes.md
