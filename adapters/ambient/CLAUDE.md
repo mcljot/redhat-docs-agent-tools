@@ -12,7 +12,7 @@ Scheduled, autonomous documentation pipeline for the Ambient Code Platform.
 ## Hard limits
 
 - **No content fabrication.** If JIRA or source access fails, mark the ticket as failed and move on.
-- **Git operations are scoped.** Git operations are restricted to the target docs repo specified in `repo-mapping.yaml`. The pipeline clones, branches, commits, and pushes only to that repo. Never perform git operations on the agent-tools repo itself (this repo). Never push to `main` or `master` — all pushes go to feature branches only. `commit.sh` enforces this with a hard check.
+- **Git operations are scoped.** Git operations are restricted to the target docs repo specified in `repo-mapping.yaml`. The pipeline clones, branches, commits, and pushes only to that repo. Never perform git operations on the agent-tools repo itself (this repo). Never push to `main` or `master` — all pushes go to feature branches only. Run `bash adapters/ambient/scripts/commit-guard.sh --repo-path <path>` before `commit.sh` to enforce this.
 - **No skipping technical review.** Always run tech review and check confidence scores.
 
 ## ACP integrations
@@ -101,6 +101,18 @@ If troubleshooting missing output, verify:
 1. The symlink exists: `ls -la artifacts/` (should show `artifacts -> /workspace/artifacts`)
 2. The target is writable: `touch artifacts/.test && rm artifacts/.test`
 
+## Headless mode detection
+
+The docs-orchestrator uses `artifacts/.setup-complete` as a headless mode marker. When this file exists (created by `setup.sh`), the orchestrator skips interactive confirmation gates and proceeds automatically. This aligns with the autonomy rules above.
+
 ## Skill resolution
 
-Skills, agents, and reference files are available in `.claude/skills/`, `.claude/agents/`, and `.claude/reference/` at the repo root via symlinks to the plugin directories. All skill references use bare names (no `plugin:skill` prefix).
+Skills, agents, and reference files are available in `.claude/skills/`, `.claude/agents/`, and `.claude/reference/` at the repo root via symlinks to the plugin directories. `CLAUDE_PLUGIN_ROOT` falls back to `.claude/` at the repo root (where `setup.sh` copies skills and reference files). All skill references use bare names (no `plugin:skill` prefix).
+
+## Python dependencies
+
+`setup.sh` installs required Python packages (`jira`, `ratelimit`) automatically. These are needed by `jira_reader.py` and `jira_writer.py`.
+
+## JIRA label reference
+
+See [reference/jira-labels.md](reference/jira-labels.md) for the complete label lifecycle and `jira_writer.py` usage examples.
