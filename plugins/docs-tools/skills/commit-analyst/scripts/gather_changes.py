@@ -20,6 +20,8 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import quote
+from urllib.request import Request, urlopen
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 GIT_PR_READER = (
@@ -31,6 +33,9 @@ GITHUB_PR_RE = re.compile(
 )
 GITLAB_MR_RE = re.compile(
     r"https?://([^/]+)/(.+?)/-/merge_requests/(\d+)"
+)
+GITLAB_COMMIT_RE = re.compile(
+    r"https?://([^/]+)/(.+?)/-/commit/([0-9a-f]{7,40})"
 )
 SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
 JIRA_KEY_RE = re.compile(r"\b([A-Z][A-Z0-9]+-\d+)\b")
@@ -96,8 +101,12 @@ def _err(msg):
 # ---- Ref type detection ----
 
 def detect_ref_type(ref):
-    if GITHUB_PR_RE.match(ref) or GITLAB_MR_RE.match(ref):
-        return "pr"
+    if GITHUB_PR_RE.match(ref):
+        return "github_pr"
+    if GITLAB_MR_RE.match(ref):
+        return "gitlab_mr"
+    if GITLAB_COMMIT_RE.match(ref):
+        return "gitlab_commit"
     if SHA_RE.match(ref):
         return "commit"
     return "branch"
@@ -169,6 +178,106 @@ def _build_pr_metadata(ref, info):
     metadata["linked_issues"].extend(gh_refs)
 
     return metadata
+
+
+# ---- Extraction: GitLab (REST API, unauthenticated) ----
+
+def _gitlab_api_get(host, endpoint):
+    """GET a GitLab REST API endpoint. Returns parsed JSON or None."""
+    url = f"https://{host}/api/v4{endpoint}"
+    token = os.environ.get("GITLAB_TOKEN") or os.environ.get("GITLAB_PRIVATE_TOKEN")
+    req = Request(url)
+    if token:
+        req.add_header("PRIVATE-TOKEN", token)
+    try:
+        with urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read())
+    except Exception:
+        return None
+
+
+def _parse_gitlab_diffs(diff_data):
+    """Convert GitLab diff JSON array into files list and unified diff text."""
+    files = []
+    diff_lines = []
+    for d in diff_data:
+        path = d.get("new_path", d.get("old_path", ""))
+        old_path = d.get("old_path", "")
+
+        if d.get("new_file"):
+            status = "added"
+        elif d.get("deleted_file"):
+            status = "deleted"
+        elif d.get("renamed_file"):
+            status = "renamed"
+        else:
+            status = "modified"
+
+        patch = d.get("diff", "")
+        added = sum(1 for ln in patch.split("\n") if ln.startswith("+") and not ln.startswith("+++"))
+        removed = sum(1 for ln in patch.split("\n") if ln.startswith("-") and not ln.startswith("---"))
+
+        files.append({
+            "path": path, "status": status,
+            "added": added, "removed": removed,
+        })
+
+        diff_lines.append(f"diff --git a/{old_path} b/{path}")
+        diff_lines.append(patch)
+
+    return files, "\n".join(diff_lines)
+
+
+def extract_gitlab_mr(ref):
+    """Extract files, diff, and metadata from a GitLab MR URL."""
+    m = GITLAB_MR_RE.match(ref)
+    host, project_path, mr_iid = m.group(1), m.group(2), m.group(3)
+    encoded = quote(project_path, safe="")
+
+    mr_info = _gitlab_api_get(host, f"/projects/{encoded}/merge_requests/{mr_iid}")
+    mr_changes = _gitlab_api_get(host, f"/projects/{encoded}/merge_requests/{mr_iid}/changes")
+
+    diff_data = mr_changes.get("changes", []) if mr_changes else []
+    files, diff_text = _parse_gitlab_diffs(diff_data)
+
+    metadata = {
+        "title": (mr_info or {}).get("title", ""),
+        "description": (mr_info or {}).get("description", ""),
+        "labels": (mr_info or {}).get("labels", []),
+        "linked_issues": [],
+        "milestone": None,
+    }
+    ms = (mr_info or {}).get("milestone")
+    if ms:
+        metadata["milestone"] = ms.get("title")
+
+    text = f"{metadata['title']} {metadata['description']}"
+    metadata["linked_issues"] = sorted(set(JIRA_KEY_RE.findall(text)))
+
+    return files, diff_text, metadata
+
+
+def extract_gitlab_commit(ref):
+    """Extract files, diff, and metadata from a GitLab commit URL."""
+    m = GITLAB_COMMIT_RE.match(ref)
+    host, project_path, sha = m.group(1), m.group(2), m.group(3)
+    encoded = quote(project_path, safe="")
+
+    commit_info = _gitlab_api_get(host, f"/projects/{encoded}/repository/commits/{sha}")
+    diff_data = _gitlab_api_get(host, f"/projects/{encoded}/repository/commits/{sha}/diff") or []
+
+    files, diff_text = _parse_gitlab_diffs(diff_data)
+
+    msg = (commit_info or {}).get("message", "")
+    metadata = {
+        "title": msg.split("\n")[0] if msg else "",
+        "description": msg,
+        "labels": [],
+        "linked_issues": sorted(set(JIRA_KEY_RE.findall(msg))),
+        "milestone": None,
+    }
+
+    return files, diff_text, metadata
 
 
 # ---- Extraction: local commit / branch ----
@@ -497,8 +606,12 @@ def main():
 
     ref_type = detect_ref_type(args.commit)
 
-    if ref_type == "pr":
+    if ref_type == "github_pr":
         files, diff_text, metadata = extract_pr(args.commit)
+    elif ref_type == "gitlab_mr":
+        files, diff_text, metadata = extract_gitlab_mr(args.commit)
+    elif ref_type == "gitlab_commit":
+        files, diff_text, metadata = extract_gitlab_commit(args.commit)
     else:
         files, diff_text, metadata = extract_local(
             args.commit, args.repo, args.base_branch, ref_type,
@@ -515,8 +628,9 @@ def main():
     code_context = extract_code_context(files, args.repo, signals)
     docs_scan = scan_docs(files, args.docs_root, signals)
 
+    output_ref_type = "pr" if ref_type in ("github_pr", "gitlab_mr") else ref_type
     output = {
-        "ref_type": ref_type,
+        "ref_type": output_ref_type,
         "ref": args.commit,
         "repo": args.repo,
         "pr_metadata": metadata,
