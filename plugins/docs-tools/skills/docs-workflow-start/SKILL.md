@@ -126,15 +126,17 @@ After receiving the answer, determine which configuration questions are relevant
 
 If any questions are relevant, call AskUserQuestion with those questions (same text and options as step 3A). If no questions are relevant, proceed to step 4.
 
-### Step 3C: Commit-driven configuration — call AskUserQuestion
+### Step 3C: Commit-driven configuration
 
-You MUST call the AskUserQuestion tool now. Do not skip this.
+You MUST complete this step before proceeding. Do not skip this.
 
 **Q1: What is the commit, PR, or MR URL?**
 
-This is a free-text input. Ask via AskUserQuestion (textInput): "Enter the commit, PR, or MR URL:"
+Ask the user conversationally (not via AskUserQuestion — URLs are always free-text):
 
-This is the only required input. After receiving the URL, ask the remaining questions together in a single AskUserQuestion call:
+> Enter the commit, PR, or MR URL (e.g., `https://github.com/org/repo/pull/42` or `https://gitlab.com/org/repo/-/merge_requests/5`):
+
+Wait for the user's response. This is the only required input. After receiving the URL, ask the remaining questions together in a single AskUserQuestion call:
 
 **Q2: Do you have a related JIRA ticket?**
 
@@ -157,7 +159,7 @@ Based on answers from step 3, collect any needed free-text inputs. Use AskUserQu
 
 **If "Yes" was selected for JIRA ticket (commit-driven path)**:
 
-Ask via AskUserQuestion (textInput): "Enter the JIRA ticket ID (e.g., PROJ-123):"
+Ask the user conversationally: "Enter the JIRA ticket ID (e.g., PROJ-123):"
 
 Maps to `$1` (positional arg before flags).
 
@@ -231,10 +233,22 @@ Invoke the orchestrator with the ticket ID and all constructed flags:
 Skill: docs-orchestrator, args: "<ticket> <constructed flags>"
 ```
 
-Example:
+Examples:
 
 ```
 Skill: docs-orchestrator, args: "PROJ-123 --mkdocs --pr https://github.com/org/repo/pull/42 --draft"
+```
+
+Commit-driven (with JIRA):
+
+```
+Skill: docs-orchestrator, args: "PROJ-123 --commit https://github.com/org/repo/pull/42"
+```
+
+Commit-driven (without JIRA):
+
+```
+Skill: docs-orchestrator, args: "--commit https://gitlab.com/org/repo/-/merge_requests/5"
 ```
 
 #### Resume execution
