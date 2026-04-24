@@ -33,43 +33,53 @@ SKIP_DIRS = {"legacy-content-do-not-use"}
 # Fluff patterns: (compiled regex, display pattern, fix guidance)
 FLUFF_PATTERNS = [
     # Self-referential
-    (re.compile(r'\b[Tt]his section (describes|provides|covers|explains)\b'),
-     "This section describes/provides/covers",
-     "State the content directly"),
-    (re.compile(r'\b[Tt]his topic (describes|provides|covers|explains)\b'),
-     "This topic describes/provides/covers",
-     "State the content directly"),
-    (re.compile(r'\b[Tt]his (procedure|document) (describes|provides|explains|shows)\b'),
-     "This procedure/document describes",
-     "State the action directly"),
-    (re.compile(r'\b[Ii]n this (chapter|section|topic)\b'),
-     "In this chapter/section/topic",
-     "Remove self-reference"),
+    (
+        re.compile(r"\b[Tt]his section (describes|provides|covers|explains)\b"),
+        "This section describes/provides/covers",
+        "State the content directly",
+    ),
+    (
+        re.compile(r"\b[Tt]his topic (describes|provides|covers|explains)\b"),
+        "This topic describes/provides/covers",
+        "State the content directly",
+    ),
+    (
+        re.compile(r"\b[Tt]his (procedure|document) (describes|provides|explains|shows)\b"),
+        "This procedure/document describes",
+        "State the action directly",
+    ),
+    (
+        re.compile(r"\b[Ii]n this (chapter|section|topic)\b"),
+        "In this chapter/section/topic",
+        "Remove self-reference",
+    ),
     # Forward-referencing
-    (re.compile(r'\b[Tt]he following (describes|provides|explains|lists|shows)\b'),
-     "The following describes/shows",
-     "State the content directly"),
+    (
+        re.compile(r"\b[Tt]he following (describes|provides|explains|lists|shows)\b"),
+        "The following describes/shows",
+        "State the content directly",
+    ),
     # Filler phrases
-    (re.compile(r'\b[Ii]t is important to note that\b'),
-     "It is important to note that",
-     "State the fact directly"),
-    (re.compile(r'\b[Pp]lease note that\b'),
-     "Please note that",
-     "Remove or state directly"),
+    (
+        re.compile(r"\b[Ii]t is important to note that\b"),
+        "It is important to note that",
+        "State the fact directly",
+    ),
+    (re.compile(r"\b[Pp]lease note that\b"), "Please note that", "Remove or state directly"),
     # Learning-oriented (not action-oriented)
-    (re.compile(r'\b[Ll]earn how to\b'),
-     "Learn how to",
-     "Use action-oriented language"),
-    (re.compile(r'\b[Ll]earn about\b'),
-     "Learn about",
-     "State what the content covers directly"),
-    (re.compile(r'\b[Ll]earn more about\b'),
-     "Learn more about",
-     "Replace with 'See' or direct xref"),
+    (re.compile(r"\b[Ll]earn how to\b"), "Learn how to", "Use action-oriented language"),
+    (re.compile(r"\b[Ll]earn about\b"), "Learn about", "State what the content covers directly"),
+    (
+        re.compile(r"\b[Ll]earn more about\b"),
+        "Learn more about",
+        "Replace with 'See' or direct xref",
+    ),
     # As mentioned
-    (re.compile(r'\b[Aa]s mentioned (above|below|earlier|previously)\b'),
-     "As mentioned above/below",
-     "Remove or provide a direct xref"),
+    (
+        re.compile(r"\b[Aa]s mentioned (above|below|earlier|previously)\b"),
+        "As mentioned above/below",
+        "Remove or provide a direct xref",
+    ),
 ]
 
 
@@ -97,7 +107,7 @@ def read_file_list(file_list_path, docs_dir):
     if file_list_path == "-":
         lines = sys.stdin.read().splitlines()
     else:
-        with open(file_list_path, "r") as f:
+        with open(file_list_path) as f:
             lines = f.read().splitlines()
     files = []
     for line in lines:
@@ -120,14 +130,12 @@ def find_block_ranges(lines):
         stripped = line.strip()
         is_delim = False
         matched_key = None
-        if re.match(r'^[,|]={3,}$', stripped):
+        if re.match(r"^[,|]={3,}$", stripped):
             is_delim = True
             matched_key = stripped[0]
         else:
             for delim in ("----", "....", "++++"):
-                if stripped.startswith(delim) and all(
-                    c == delim[0] for c in stripped
-                ):
+                if stripped.startswith(delim) and all(c == delim[0] for c in stripped):
                     is_delim = True
                     matched_key = delim[0]
                     break
@@ -155,28 +163,28 @@ def is_skip_line(line):
     if s.startswith("//"):
         return True
     # Attribute definitions
-    if re.match(r'^:[\w_][\w_-]*:', s):
+    if re.match(r"^:[\w_][\w_-]*:", s):
         return True
     # Block attributes/annotations
     if s.startswith("["):
         return True
     # Include/image/ifdef directives
-    if re.match(r'^(include|image|ifdef|ifndef|endif|ifeval)::', s):
+    if re.match(r"^(include|image|ifdef|ifndef|endif|ifeval)::", s):
         return True
     # Headings
-    if re.match(r'^={1,5}\s', s):
+    if re.match(r"^={1,5}\s", s):
         return True
     # Table delimiters and rows
     if s.startswith("|"):
         return True
     # Block delimiters
-    if re.match(r'^(-{4,}|\.{4,}|\+{4,}|\*{4,}|={4,})$', s):
+    if re.match(r"^(-{4,}|\.{4,}|\+{4,}|\*{4,}|={4,})$", s):
         return True
     # List continuation marker
     if s == "+":
         return True
     # Block titles
-    if re.match(r'^\.\w', s) and not s.startswith(".. "):
+    if re.match(r"^\.\w", s) and not s.startswith(".. "):
         return True
     # Pass macros on their own line
     if s.startswith("pass:"):
@@ -187,9 +195,9 @@ def is_skip_line(line):
 def check_file(filepath, rel_path):
     """Check a single file for fluff patterns."""
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             lines = f.read().splitlines()
-    except (UnicodeDecodeError, IOError):
+    except (OSError, UnicodeDecodeError):
         return []
 
     block_lines = find_block_ranges(lines)
@@ -212,21 +220,21 @@ def check_file(filepath, rel_path):
                 if end < len(line):
                     context = context + "..."
 
-                violations.append({
-                    "line": i + 1,
-                    "pattern": display,
-                    "matched": matched_text,
-                    "fix": fix,
-                    "context": context,
-                })
+                violations.append(
+                    {
+                        "line": i + 1,
+                        "pattern": display,
+                        "matched": matched_text,
+                        "fix": fix,
+                        "context": context,
+                    }
+                )
 
     return violations
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Check for fluff patterns in AsciiDoc docs."
-    )
+    parser = argparse.ArgumentParser(description="Check for fluff patterns in AsciiDoc docs.")
     parser.add_argument(
         "docs_dir",
         help="Path to the documentation repository root",
@@ -273,8 +281,7 @@ def main():
     if all_violations:
         for rel_path, violations in all_violations:
             for v in violations:
-                print(f"  {rel_path}:{v['line']}  "
-                      f"\"{v['matched']}\"")
+                print(f'  {rel_path}:{v["line"]}  "{v["matched"]}"')
                 print(f"    Fix: {v['fix']}")
                 print(f"    {v['context']}")
                 print()
@@ -285,12 +292,9 @@ def main():
     # Per-pattern summary
     print("PER-PATTERN SUMMARY:")
     for _, display, _ in FLUFF_PATTERNS:
-        count = sum(
-            1 for _, vs in all_violations
-            for v in vs if v["pattern"] == display
-        )
+        count = sum(1 for _, vs in all_violations for v in vs if v["pattern"] == display)
         status = "PASS" if count == 0 else f"FAIL ({count})"
-        print(f"  \"{display}\": {status}")
+        print(f'  "{display}": {status}')
     print()
 
     # Metrics

@@ -12,10 +12,11 @@ Usage:
     python jira_writer.py --issue COO-1145 --labels-add docs-needed --labels-remove docs-pending
 """
 
+import argparse
+import json
 import os
 import sys
-import json
-import argparse
+
 from ratelimit import limits, sleep_and_retry
 
 try:
@@ -38,8 +39,8 @@ def load_env_file():
 
 
 # Custom field IDs used in Red Hat JIRA
-CUSTOM_FIELD_RELEASE_NOTE_CONTENT = 'customfield_10783'
-CUSTOM_FIELD_RELEASE_NOTE_STATUS = 'customfield_10807'
+CUSTOM_FIELD_RELEASE_NOTE_CONTENT = "customfield_10783"
+CUSTOM_FIELD_RELEASE_NOTE_STATUS = "customfield_10807"
 
 
 class JiraWriter:
@@ -49,16 +50,18 @@ class JiraWriter:
         """Initialize JIRA connection with appropriate authentication."""
         load_env_file()
 
-        token = os.environ.get('JIRA_API_TOKEN') or os.environ.get('JIRA_AUTH_TOKEN')
+        token = os.environ.get("JIRA_API_TOKEN") or os.environ.get("JIRA_AUTH_TOKEN")
         if not token:
             raise ValueError("JIRA_API_TOKEN environment variable not set. Add it to ~/.env")
 
-        server = server or os.environ.get('JIRA_URL', 'https://redhat.atlassian.net')
+        server = server or os.environ.get("JIRA_URL", "https://redhat.atlassian.net")
 
-        if 'atlassian.net' in server:
-            email = os.environ.get('JIRA_EMAIL')
+        if "atlassian.net" in server:
+            email = os.environ.get("JIRA_EMAIL")
             if not email:
-                raise ValueError("JIRA_EMAIL environment variable not set. Required for Atlassian Cloud. Add it to ~/.env")
+                raise ValueError(
+                    "JIRA_EMAIL environment variable not set. Required for Atlassian Cloud. Add it to ~/.env"
+                )
             self.jira = JIRA(server=server, basic_auth=(email, token))
         else:
             self.jira = JIRA(server=server, token_auth=token)
@@ -88,14 +91,14 @@ class JiraWriter:
                 "success": True,
                 "issue_key": jira_id,
                 "updated_fields": fields_to_update,
-                "url": f"{self.server}/browse/{jira_id}"
+                "url": f"{self.server}/browse/{jira_id}",
             }
 
         except Exception as e:
             return {
                 "success": False,
                 "error": f"Failed to update issue {jira_id}: {str(e)}",
-                "issue_key": jira_id
+                "issue_key": jira_id,
             }
 
     def push_release_note(self, jira_id, release_note, status="Proposed"):
@@ -114,7 +117,7 @@ class JiraWriter:
         """
         fields = {
             CUSTOM_FIELD_RELEASE_NOTE_CONTENT: release_note,
-            CUSTOM_FIELD_RELEASE_NOTE_STATUS: {'value': status}
+            CUSTOM_FIELD_RELEASE_NOTE_STATUS: {"value": status},
         }
 
         return self.update_issue(jira_id, fields)
@@ -130,9 +133,7 @@ class JiraWriter:
         Returns:
             Dictionary with update results
         """
-        fields = {
-            CUSTOM_FIELD_RELEASE_NOTE_STATUS: {'value': status}
-        }
+        fields = {CUSTOM_FIELD_RELEASE_NOTE_STATUS: {"value": status}}
 
         return self.update_issue(jira_id, fields)
 
@@ -170,9 +171,9 @@ class JiraWriter:
             Dictionary with update results
         """
         label_updates = []
-        for label in (add_labels or []):
+        for label in add_labels or []:
             label_updates.append({"add": label})
-        for label in (remove_labels or []):
+        for label in remove_labels or []:
             label_updates.append({"remove": label})
 
         if not label_updates:
@@ -181,7 +182,7 @@ class JiraWriter:
                 "issue_key": jira_id,
                 "labels_added": [],
                 "labels_removed": [],
-                "note": "no label changes requested"
+                "note": "no label changes requested",
             }
 
         try:
@@ -193,65 +194,48 @@ class JiraWriter:
                 "issue_key": jira_id,
                 "labels_added": add_labels or [],
                 "labels_removed": remove_labels or [],
-                "url": f"{self.server}/browse/{jira_id}"
+                "url": f"{self.server}/browse/{jira_id}",
             }
 
         except Exception as e:
             return {
                 "success": False,
                 "error": f"Failed to update labels on {jira_id}: {str(e)}",
-                "issue_key": jira_id
+                "issue_key": jira_id,
             }
 
 
 def main():
     """Main entry point for the script."""
-    parser = argparse.ArgumentParser(
-        description="Update JIRA issues on Red Hat Issue Tracker"
-    )
+    parser = argparse.ArgumentParser(description="Update JIRA issues on Red Hat Issue Tracker")
     parser.add_argument(
-        '--issue',
-        action='append',
+        "--issue",
+        action="append",
         required=True,
-        help='JIRA issue key (e.g., COO-1145). Can be specified multiple times for batch updates.'
+        help="JIRA issue key (e.g., COO-1145). Can be specified multiple times for batch updates.",
+    )
+    parser.add_argument("--release-note", help="Release note content to push to the issue")
+    parser.add_argument("--release-note-file", help="Path to file containing release note content")
+    parser.add_argument(
+        "--status",
+        choices=["Proposed", "Approved", "Rejected", "Not Required"],
+        help="Release note status",
     )
     parser.add_argument(
-        '--release-note',
-        help='Release note content to push to the issue'
+        "--custom-field", help="Custom field ID to update (e.g., customfield_12317313)"
+    )
+    parser.add_argument("--value", help="Value for the custom field")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Show what would be updated without making changes"
     )
     parser.add_argument(
-        '--release-note-file',
-        help='Path to file containing release note content'
+        "--labels-add", action="append", default=[], help="Label to add to the issue (repeatable)"
     )
     parser.add_argument(
-        '--status',
-        choices=['Proposed', 'Approved', 'Rejected', 'Not Required'],
-        help='Release note status'
-    )
-    parser.add_argument(
-        '--custom-field',
-        help='Custom field ID to update (e.g., customfield_12317313)'
-    )
-    parser.add_argument(
-        '--value',
-        help='Value for the custom field'
-    )
-    parser.add_argument(
-        '--dry-run',
-        action='store_true',
-        help='Show what would be updated without making changes'
-    )
-    parser.add_argument(
-        '--labels-add',
-        action='append',
+        "--labels-remove",
+        action="append",
         default=[],
-        help='Label to add to the issue (repeatable)'
-    )
-    parser.add_argument(
-        '--labels-remove',
-        action='append',
-        default=[],
-        help='Label to remove from the issue (repeatable)'
+        help="Label to remove from the issue (repeatable)",
     )
 
     args = parser.parse_args()
@@ -263,7 +247,9 @@ def main():
     has_label_update = args.labels_add or args.labels_remove
 
     if not (has_release_note or has_status or has_custom_field or has_label_update):
-        parser.error("Must specify one of: --release-note, --release-note-file, --status, --custom-field with --value, or --labels-add/--labels-remove")
+        parser.error(
+            "Must specify one of: --release-note, --release-note-file, --status, --custom-field with --value, or --labels-add/--labels-remove"
+        )
 
     if args.custom_field and not args.value:
         parser.error("--custom-field requires --value")
@@ -275,7 +261,7 @@ def main():
     release_note = args.release_note
     if args.release_note_file:
         try:
-            with open(args.release_note_file, 'r') as f:
+            with open(args.release_note_file) as f:
                 release_note = f.read()
         except Exception as e:
             print(json.dumps({"error": f"Failed to read file {args.release_note_file}: {str(e)}"}))
@@ -287,20 +273,22 @@ def main():
 
         for issue_key in args.issue:
             if args.dry_run:
-                result = {
-                    "dry_run": True,
-                    "issue_key": issue_key,
-                    "would_update": {}
-                }
+                result = {"dry_run": True, "issue_key": issue_key, "would_update": {}}
 
                 if release_note:
-                    result["would_update"][CUSTOM_FIELD_RELEASE_NOTE_CONTENT] = release_note[:100] + "..." if len(release_note) > 100 else release_note
+                    result["would_update"][CUSTOM_FIELD_RELEASE_NOTE_CONTENT] = (
+                        release_note[:100] + "..." if len(release_note) > 100 else release_note
+                    )
 
                 if args.status:
                     result["would_update"][CUSTOM_FIELD_RELEASE_NOTE_STATUS] = args.status
 
                 if args.custom_field:
-                    result["would_update"][args.custom_field] = args.value[:100] + "..." if isinstance(args.value, str) and len(args.value) > 100 else args.value
+                    result["would_update"][args.custom_field] = (
+                        args.value[:100] + "..."
+                        if isinstance(args.value, str) and len(args.value) > 100
+                        else args.value
+                    )
 
                 if has_label_update:
                     result["would_add_labels"] = args.labels_add
@@ -323,7 +311,9 @@ def main():
 
                 # Perform label updates (can run alongside field updates)
                 if has_label_update:
-                    label_result = writer.update_labels(issue_key, args.labels_add, args.labels_remove)
+                    label_result = writer.update_labels(
+                        issue_key, args.labels_add, args.labels_remove
+                    )
                     if result is None:
                         result = label_result
                     else:
@@ -342,7 +332,7 @@ def main():
             print(json.dumps(results, indent=2))
 
         # Exit with error code if any updates failed
-        if any(not r.get('success', True) and not r.get('dry_run') for r in results):
+        if any(not r.get("success", True) and not r.get("dry_run") for r in results):
             sys.exit(1)
 
     except ValueError as e:

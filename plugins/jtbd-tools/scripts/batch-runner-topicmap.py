@@ -27,7 +27,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-
 STATE_FILE = ".batch-runner-topicmap-state.json"
 
 
@@ -75,10 +74,10 @@ def run_batch(repo: str, books: list[str], distro: str | None, output: str | Non
 
         cmd_parts.append(skill_args)
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Running batch: {', '.join(books)}")
         print(f"Command: {' '.join(cmd_parts)}")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
         result = subprocess.run(
             cmd_parts,
@@ -90,7 +89,7 @@ def run_batch(repo: str, books: list[str], distro: str | None, output: str | Non
         return result.returncode == 0
 
     except subprocess.TimeoutExpired:
-        print(f"ERROR: Batch timed out after 1 hour")
+        print("ERROR: Batch timed out after 1 hour")
         return False
     except FileNotFoundError:
         print("ERROR: 'claude' command not found. Ensure Claude Code CLI is installed.")
@@ -100,11 +99,11 @@ def run_batch(repo: str, books: list[str], distro: str | None, output: str | Non
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Batch runner for jtbd-workflow-topicmap skill"
-    )
+    parser = argparse.ArgumentParser(description="Batch runner for jtbd-workflow-topicmap skill")
     parser.add_argument("--repo", required=True, help="Path to repo root")
-    parser.add_argument("--books-file", required=True, help="File with book dir names, one per line")
+    parser.add_argument(
+        "--books-file", required=True, help="File with book dir names, one per line"
+    )
     parser.add_argument("--distro", help="Filter by distro")
     parser.add_argument("--output", help="Output base directory")
     parser.add_argument("--batch-size", type=int, default=5, help="Books per batch (default: 5)")
@@ -136,15 +135,17 @@ def main():
         state = load_state(state_path)
         completed = set(state["completed"])
         remaining = [b for b in all_books if b not in completed]
-        print(f"Resuming: {len(state['completed'])} completed, {len(state['failed'])} failed, {len(remaining)} remaining")
+        print(
+            f"Resuming: {len(state['completed'])} completed, {len(state['failed'])} failed, {len(remaining)} remaining"
+        )
     else:
         state = {"completed": [], "failed": [], "remaining": list(all_books)}
         remaining = list(all_books)
 
     # Split into batches
-    batches = [remaining[i:i + batch_size] for i in range(0, len(remaining), batch_size)]
+    batches = [remaining[i : i + batch_size] for i in range(0, len(remaining), batch_size)]
 
-    print(f"\nBatch Plan:")
+    print("\nBatch Plan:")
     print(f"  Total books: {len(all_books)}")
     print(f"  Already completed: {len(state['completed'])}")
     print(f"  Remaining: {len(remaining)}")
@@ -153,7 +154,7 @@ def main():
     print()
 
     for i, batch in enumerate(batches):
-        print(f"  Batch {i+1}: {', '.join(batch)}")
+        print(f"  Batch {i + 1}: {', '.join(batch)}")
 
     if args.dry_run:
         print("\n[Dry run — no batches executed]")
@@ -167,33 +168,37 @@ def main():
 
     # Execute batches
     for i, batch in enumerate(batches):
-        print(f"\n>>> Batch {i+1}/{len(batches)} ({len(batch)} books)")
+        print(f"\n>>> Batch {i + 1}/{len(batches)} ({len(batch)} books)")
 
         success = run_batch(str(repo), batch, args.distro, args.output)
 
         if success:
             state["completed"].extend(batch)
             state["remaining"] = [b for b in state["remaining"] if b not in batch]
-            print(f"Batch {i+1} completed successfully")
+            print(f"Batch {i + 1} completed successfully")
         else:
             state["failed"].extend(batch)
             state["remaining"] = [b for b in state["remaining"] if b not in batch]
-            print(f"Batch {i+1} FAILED for: {', '.join(batch)}")
+            print(f"Batch {i + 1} FAILED for: {', '.join(batch)}")
 
         save_state(state_path, state)
-        print(f"Progress: {len(state['completed'])}/{len(all_books)} completed, {len(state['failed'])} failed")
+        print(
+            f"Progress: {len(state['completed'])}/{len(all_books)} completed, {len(state['failed'])} failed"
+        )
 
     # Final report
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("FINAL REPORT")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"Completed: {len(state['completed'])}/{len(all_books)}")
     if state["completed"]:
         print(f"  Books: {', '.join(state['completed'])}")
     if state["failed"]:
         print(f"Failed: {len(state['failed'])}")
         print(f"  Books: {', '.join(state['failed'])}")
-        print(f"\nTo retry failed books, create a new books file with the failed entries and run again.")
+        print(
+            "\nTo retry failed books, create a new books file with the failed entries and run again."
+        )
 
     # Clean up state file on full completion
     if not state["failed"] and not state["remaining"]:

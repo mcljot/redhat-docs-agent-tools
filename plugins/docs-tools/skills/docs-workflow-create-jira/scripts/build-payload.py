@@ -3,6 +3,7 @@
 
 Usage: python3 build-payload.py <wiki_file> <output_file> <project_key> <summary>
 """
+
 import json
 import sys
 

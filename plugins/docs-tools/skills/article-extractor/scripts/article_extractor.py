@@ -11,21 +11,31 @@ Usage:
     python article_extractor.py --url "https://example.com/page" --output article.md
 """
 
-import sys
-import json
 import argparse
+import json
 import re
+import sys
 
 try:
     import requests
 except ImportError:
-    print(json.dumps({"error": "requests package not installed. Run: python3 -m pip install requests"}))
+    print(
+        json.dumps(
+            {"error": "requests package not installed. Run: python3 -m pip install requests"}
+        )
+    )
     sys.exit(1)
 
 try:
     from bs4 import BeautifulSoup
 except ImportError:
-    print(json.dumps({"error": "beautifulsoup4 package not installed. Run: python3 -m pip install beautifulsoup4"}))
+    print(
+        json.dumps(
+            {
+                "error": "beautifulsoup4 package not installed. Run: python3 -m pip install beautifulsoup4"
+            }
+        )
+    )
     sys.exit(1)
 
 
@@ -42,12 +52,12 @@ class ArticleExtractor:
         """Download HTML content from URL."""
         try:
             headers = {
-                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
             }
             response = requests.get(self.url, headers=headers, timeout=30)
             response.raise_for_status()
             self.html_content = response.text
-            self.soup = BeautifulSoup(self.html_content, 'html.parser')
+            self.soup = BeautifulSoup(self.html_content, "html.parser")
             return True
         except requests.RequestException as e:
             return {"error": f"Failed to download URL: {str(e)}"}
@@ -71,14 +81,14 @@ class ArticleExtractor:
         # If not found, try fallback selectors
         if not article:
             fallback_selectors = [
-                'article[aria-live]',
-                'article.main-content',
-                'article.content',
-                'article',
-                'main article',
+                "article[aria-live]",
+                "article.main-content",
+                "article.content",
+                "article",
+                "main article",
                 '[role="article"]',
-                '.article-content',
-                '#article-content'
+                ".article-content",
+                "#article-content",
             ]
 
             for fallback in fallback_selectors:
@@ -102,28 +112,35 @@ class ArticleExtractor:
             return None
 
         # Remove script and style tags
-        for tag in element.find_all(['script', 'style', 'noscript']):
+        for tag in element.find_all(["script", "style", "noscript"]):
             tag.decompose()
 
         # Remove comments
         from bs4 import Comment
+
         for comment in element.find_all(string=lambda text: isinstance(text, Comment)):
             comment.extract()
 
         # Remove "Copy link" tooltips and buttons (common in Red Hat docs)
-        for tag in element.find_all(['rh-tooltip', 'rh-button']):
+        for tag in element.find_all(["rh-tooltip", "rh-button"]):
             tag.decompose()
 
         # Remove elements that contain "Copy link" text
-        for tag in element.find_all(class_=['copy-link-btn', 'copy-link-text',
-                                              'copy-link-text-confirmation',
-                                              'tooltip-content', 'section-link']):
+        for tag in element.find_all(
+            class_=[
+                "copy-link-btn",
+                "copy-link-text",
+                "copy-link-text-confirmation",
+                "tooltip-content",
+                "section-link",
+            ]
+        ):
             tag.decompose()
 
         # Remove data attributes and other noise
         for tag in element.find_all(True):
             # Keep only essential attributes
-            attrs_to_keep = ['href', 'src', 'alt', 'title', 'id', 'class']
+            attrs_to_keep = ["href", "src", "alt", "title", "id", "class"]
             tag.attrs = {k: v for k, v in tag.attrs.items() if k in attrs_to_keep}
 
         return element
@@ -161,6 +178,7 @@ class ArticleExtractor:
 
         try:
             import html2text
+
             h = html2text.HTML2Text()
             h.ignore_links = False
             h.ignore_images = False
@@ -182,10 +200,10 @@ class ArticleExtractor:
             Markdown-like string
         """
         # This is a simplified converter for when html2text is not available
-        text = article.get_text(separator='\n', strip=True)
+        text = article.get_text(separator="\n", strip=True)
 
         # Clean up multiple newlines
-        text = re.sub(r'\n{3,}', '\n\n', text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
 
         return text
 
@@ -203,13 +221,13 @@ class ArticleExtractor:
             return ""
 
         # Get text content
-        text = article.get_text(separator='\n', strip=True)
+        text = article.get_text(separator="\n", strip=True)
 
         # Clean up multiple newlines
-        text = re.sub(r'\n{3,}', '\n\n', text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
 
         # Clean up multiple spaces
-        text = re.sub(r' {2,}', ' ', text)
+        text = re.sub(r" {2,}", " ", text)
 
         return text
 
@@ -223,45 +241,32 @@ class ArticleExtractor:
         Returns:
             BeautifulSoup element with links removed
         """
-        for a_tag in article.find_all('a'):
+        for a_tag in article.find_all("a"):
             a_tag.unwrap()
         return article
 
 
 def main():
     """Main entry point for the script."""
-    parser = argparse.ArgumentParser(
-        description="Extract article content from HTML pages"
-    )
+    parser = argparse.ArgumentParser(description="Extract article content from HTML pages")
+    parser.add_argument("--url", required=True, help="URL to fetch HTML from")
     parser.add_argument(
-        '--url',
-        required=True,
-        help='URL to fetch HTML from'
+        "--format",
+        choices=["html", "markdown", "text"],
+        default="markdown",
+        help="Output format (default: markdown)",
     )
+    parser.add_argument("--output", help="Output file path (default: stdout)")
     parser.add_argument(
-        '--format',
-        choices=['html', 'markdown', 'text'],
-        default='markdown',
-        help='Output format (default: markdown)'
-    )
-    parser.add_argument(
-        '--output',
-        help='Output file path (default: stdout)'
-    )
-    parser.add_argument(
-        '--selector',
+        "--selector",
         default='article[aria-live="polite"]',
-        help='CSS selector for article element (default: article[aria-live="polite"])'
+        help='CSS selector for article element (default: article[aria-live="polite"])',
     )
     parser.add_argument(
-        '--pretty',
-        action='store_true',
-        help='Pretty-print HTML output (only for HTML format)'
+        "--pretty", action="store_true", help="Pretty-print HTML output (only for HTML format)"
     )
     parser.add_argument(
-        '--strip-links',
-        action='store_true',
-        help='Remove all hyperlinks from output'
+        "--strip-links", action="store_true", help="Remove all hyperlinks from output"
     )
 
     args = parser.parse_args()
@@ -271,7 +276,7 @@ def main():
         extractor = ArticleExtractor(args.url)
         result = extractor.download()
 
-        if isinstance(result, dict) and 'error' in result:
+        if isinstance(result, dict) and "error" in result:
             print(json.dumps(result, indent=2))
             sys.exit(1)
 
@@ -285,7 +290,7 @@ def main():
             error_msg = {
                 "error": f"No article found with selector: {args.selector}",
                 "url": args.url,
-                "suggestion": "Try using a different selector or check if the page has an <article> tag"
+                "suggestion": "Try using a different selector or check if the page has an <article> tag",
             }
             print(json.dumps(error_msg, indent=2))
             sys.exit(1)
@@ -297,37 +302,42 @@ def main():
         article_html_size = len(str(article))
 
         # Calculate markdown size for stats (always, regardless of output format)
-        article_markdown_size = len(extractor.to_markdown(article).encode('utf-8'))
+        article_markdown_size = len(extractor.to_markdown(article).encode("utf-8"))
 
         # Strip links if requested
         if args.strip_links:
             article = extractor.strip_links(article)
 
         # Convert to requested format
-        if args.format == 'html':
+        if args.format == "html":
             output = extractor.to_html(article, pretty=args.pretty)
-        elif args.format == 'markdown':
+        elif args.format == "markdown":
             output = extractor.to_markdown(article)
         else:  # text
             output = extractor.to_text(article)
 
         # Write output
         if args.output:
-            with open(args.output, 'w', encoding='utf-8') as f:
+            with open(args.output, "w", encoding="utf-8") as f:
                 f.write(output)
 
-            print(json.dumps({
-                "success": True,
-                "message": f"Article extracted and saved to {args.output}",
-                "url": args.url,
-                "format": args.format,
-                "file": args.output,
-                "file_sizes": {
-                    "original_html_bytes": original_html_size,
-                    "article_html_bytes": article_html_size,
-                    "article_markdown_bytes": article_markdown_size
-                }
-            }, indent=2))
+            print(
+                json.dumps(
+                    {
+                        "success": True,
+                        "message": f"Article extracted and saved to {args.output}",
+                        "url": args.url,
+                        "format": args.format,
+                        "file": args.output,
+                        "file_sizes": {
+                            "original_html_bytes": original_html_size,
+                            "article_html_bytes": article_html_size,
+                            "article_markdown_bytes": article_markdown_size,
+                        },
+                    },
+                    indent=2,
+                )
+            )
         else:
             # Print to stdout
             print(output)

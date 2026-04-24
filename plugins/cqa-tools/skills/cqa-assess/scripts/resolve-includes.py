@@ -26,11 +26,11 @@ import sys
 from collections import OrderedDict
 
 # Patterns for detecting conditionals and includes
-CONDITIONAL_RE = re.compile(r'^(ifdef|ifndef)::([^\[]+)\[')
-INCLUDE_DIRECTIVE_RE = re.compile(r'include::([^\[]+)\[([^\]]*)\]')
+CONDITIONAL_RE = re.compile(r"^(ifdef|ifndef)::([^\[]+)\[")
+INCLUDE_DIRECTIVE_RE = re.compile(r"include::([^\[]+)\[([^\]]*)\]")
 
 # Matches AsciiDoc attribute references like {snippets-dir}, {prod-short}
-ATTR_REF_RE = re.compile(r'\{[\w_][\w_-]*\}')
+ATTR_REF_RE = re.compile(r"\{[\w_][\w_-]*\}")
 
 
 def parse_include_line(line):
@@ -63,7 +63,7 @@ def parse_include_line(line):
         cond_attr = cond_match.group(2)  # the condition attribute
         conditional = (cond_type, cond_attr)
         # Check if the include is on the same line (inline conditional)
-        remaining = stripped[cond_match.end():]
+        remaining = stripped[cond_match.end() :]
         inc_match = INCLUDE_DIRECTIVE_RE.search(remaining)
         if inc_match:
             return {
@@ -125,8 +125,16 @@ def resolve_include_path(include_path, current_file_dir, base_dir):
     return None
 
 
-def resolve_includes(filepath, base_dir, visited=None, depth=0, results=None,
-                     tree=None, warnings=None, conditional_context=None):
+def resolve_includes(
+    filepath,
+    base_dir,
+    visited=None,
+    depth=0,
+    results=None,
+    tree=None,
+    warnings=None,
+    conditional_context=None,
+):
     """Recursively resolve all includes from a file.
 
     Args:
@@ -160,9 +168,9 @@ def resolve_includes(filepath, base_dir, visited=None, depth=0, results=None,
 
     # Read the file
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             lines = f.readlines()
-    except (IOError, UnicodeDecodeError) as e:
+    except (OSError, UnicodeDecodeError) as e:
         warnings.append(f"Cannot read {filepath}: {e}")
         return results, tree, warnings, True
 
@@ -248,8 +256,7 @@ def resolve_includes(filepath, base_dir, visited=None, depth=0, results=None,
 
         # Recurse into the included file
         _, _, _, child_errors = resolve_includes(
-            resolved, base_dir, visited, depth + 1, results, tree,
-            warnings, conditional
+            resolved, base_dir, visited, depth + 1, results, tree, warnings, conditional
         )
         if child_errors:
             has_errors = True
@@ -262,7 +269,7 @@ def format_files(results, base_dir, include_root, root_file):
     paths = set()
     if include_root:
         paths.add(os.path.relpath(os.path.realpath(root_file), base_dir))
-    for real_path, info in results.items():
+    for _real_path, info in results.items():
         if info.get("resolved", False):
             paths.add(info["relative_path"])
     return "\n".join(sorted(paths))
@@ -294,21 +301,22 @@ def format_tree(tree_data, base_dir, include_root, root_file):
     return "\n".join(lines)
 
 
-def format_json(results, tree_data, warnings, base_dir, include_root,
-                root_file, has_errors):
+def format_json(results, tree_data, warnings, base_dir, include_root, root_file, has_errors):
     """Format output as machine-readable JSON."""
     files = []
     if include_root:
         root_rel = os.path.relpath(os.path.realpath(root_file), base_dir)
-        files.append({
-            "path": root_rel,
-            "resolved": True,
-            "is_root": True,
-            "depth": 0,
-        })
+        files.append(
+            {
+                "path": root_rel,
+                "resolved": True,
+                "is_root": True,
+                "depth": 0,
+            }
+        )
 
     seen_paths = set()
-    for real_path, info in results.items():
+    for _real_path, info in results.items():
         rel = info.get("relative_path", info.get("raw_path"))
         if rel in seen_paths:
             continue
@@ -350,10 +358,7 @@ def format_json(results, tree_data, warnings, base_dir, include_root,
         "base_dir": os.path.abspath(base_dir),
         "total_files": len([f for f in files if f.get("resolved", False)]),
         "has_errors": has_errors,
-        "files": sorted(
-            [f for f in files if f.get("resolved", False)],
-            key=lambda x: x["path"]
-        ),
+        "files": sorted([f for f in files if f.get("resolved", False)], key=lambda x: x["path"]),
         "unresolved": [f for f in files if not f.get("resolved", False)],
         "tree": tree_entries,
         "warnings": warnings,
@@ -418,14 +423,11 @@ def main():
         base_dir = os.path.dirname(input_file)
 
     if not os.path.isdir(base_dir):
-        print(f"Error: Base directory not found: {args.base_dir}",
-              file=sys.stderr)
+        print(f"Error: Base directory not found: {args.base_dir}", file=sys.stderr)
         sys.exit(2)
 
     # Resolve the include tree
-    results, tree_data, warnings, has_errors = resolve_includes(
-        input_file, base_dir
-    )
+    results, tree_data, warnings, has_errors = resolve_includes(input_file, base_dir)
 
     # Print warnings to stderr
     for warning in warnings:
@@ -435,13 +437,10 @@ def main():
     if args.output_format == "files":
         output = format_files(results, base_dir, args.include_root, input_file)
     elif args.output_format == "tree":
-        output = format_tree(
-            tree_data, base_dir, args.include_root, input_file
-        )
+        output = format_tree(tree_data, base_dir, args.include_root, input_file)
     elif args.output_format == "json":
         output = format_json(
-            results, tree_data, warnings, base_dir, args.include_root,
-            input_file, has_errors
+            results, tree_data, warnings, base_dir, args.include_root, input_file, has_errors
         )
 
     if output:

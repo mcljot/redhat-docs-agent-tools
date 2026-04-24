@@ -14,9 +14,8 @@ import sys
 import time
 from io import BytesIO
 from pathlib import Path
-from urllib.request import Request, urlopen
 from urllib.error import HTTPError
-
+from urllib.request import Request, urlopen
 
 # tolerates trailing segments like /edit, /view, ?usp=sharing
 VALID_URL_RE = re.compile(
@@ -37,20 +36,17 @@ EXTENSIONS = {"doc": ".md", "slides": ".md", "sheets": ".csv"}
 # Argument parsing & validation
 # ---------------------------------------------------------------------------
 
+
 def parse_and_validate_args():
     if len(sys.argv) < 2:
-        print(
-            f"Usage: {sys.argv[0]} "
-            "<google-doc-or-slides-or-sheets-url> [output]"
-        )
+        print(f"Usage: {sys.argv[0]} <google-doc-or-slides-or-sheets-url> [output]")
         sys.exit(1)
 
     url = sys.argv[1]
     match = VALID_URL_RE.match(url)
     if not match:
         print(
-            "Error: URL must be a Google Docs, Slides, or Sheets URL "
-            "(https://docs.google.com/...)",
+            "Error: URL must be a Google Docs, Slides, or Sheets URL (https://docs.google.com/...)",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -68,13 +64,13 @@ def parse_and_validate_args():
 # Dependency check
 # ---------------------------------------------------------------------------
 
+
 def check_dependencies():
     result = subprocess.run(["gcloud", "version"], capture_output=True)
     if result.returncode != 0:
         print("Error: gcloud CLI is not installed.", file=sys.stderr)
         print(
-            "  Install: "
-            "https://cloud.google.com/sdk/docs/install",
+            "  Install: https://cloud.google.com/sdk/docs/install",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -84,6 +80,7 @@ def check_dependencies():
 # Auth — single source of truth for obtaining a token
 # ---------------------------------------------------------------------------
 
+
 def get_token() -> str:
     """
     Return a valid access token, prompting the user to log in if needed.
@@ -91,7 +88,8 @@ def get_token() -> str:
     """
     result = subprocess.run(
         ["gcloud", "auth", "print-access-token"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if result.returncode == 0 and result.stdout.strip():
         return result.stdout.strip()
@@ -110,7 +108,8 @@ def get_token() -> str:
     # Re-fetch after successful login
     result = subprocess.run(
         ["gcloud", "auth", "print-access-token"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if result.returncode != 0 or not result.stdout.strip():
         print(
@@ -126,6 +125,7 @@ def get_token() -> str:
 # Download
 # ---------------------------------------------------------------------------
 
+
 def download(url: str, token: str, retries: int = 3) -> bytes:
     req = Request(url, headers={"Authorization": f"Bearer {token}"})
     for attempt in range(retries + 1):
@@ -134,7 +134,7 @@ def download(url: str, token: str, retries: int = 3) -> bytes:
                 return resp.read()
         except HTTPError as e:
             if e.code == 429 and attempt < retries:
-                wait = 2 ** attempt
+                wait = 2**attempt
                 print(
                     f"Rate limited (429), retrying in {wait}s...",
                     file=sys.stderr,
@@ -142,15 +142,8 @@ def download(url: str, token: str, retries: int = 3) -> bytes:
                 time.sleep(wait)
                 continue
             messages = {
-                401: (
-                    "Authentication failed (401). "
-                    "Try: gcloud auth login "
-                    "--enable-gdrive-access"
-                ),
-                403: (
-                    "Access denied (403). Check you have "
-                    "permission to access this file."
-                ),
+                401: ("Authentication failed (401). Try: gcloud auth login --enable-gdrive-access"),
+                403: ("Access denied (403). Check you have permission to access this file."),
                 404: "Not found (404). Check the URL is correct.",
             }
             print(
@@ -163,6 +156,7 @@ def download(url: str, token: str, retries: int = 3) -> bytes:
 # ---------------------------------------------------------------------------
 # PPTX → Markdown conversion
 # ---------------------------------------------------------------------------
+
 
 def pptx_to_markdown(data: bytes) -> str:
     """
@@ -205,15 +199,10 @@ def pptx_to_markdown(data: bytes) -> str:
             elif shape.has_table:
                 table = shape.table
                 for row_idx, row in enumerate(table.rows):
-                    cells = [
-                        cell.text.strip().replace("|", "\\|")
-                        for cell in row.cells
-                    ]
+                    cells = [cell.text.strip().replace("|", "\\|") for cell in row.cells]
                     lines.append("| " + " | ".join(cells) + " |")
                     if row_idx == 0:
-                        sep = "| " + " | ".join(
-                            ["---"] * len(cells)
-                        ) + " |"
+                        sep = "| " + " | ".join(["---"] * len(cells)) + " |"
                         lines.append(sep)
                 lines.append("")
 
@@ -234,12 +223,10 @@ def pptx_to_markdown(data: bytes) -> str:
 # Sheets metadata
 # ---------------------------------------------------------------------------
 
+
 def get_sheet_metadata(file_id: str, token: str):
     """Return list of (gid, title) for each sheet."""
-    api_url = (
-        "https://sheets.googleapis.com/v4/spreadsheets/"
-        f"{file_id}?fields=sheets.properties"
-    )
+    api_url = f"https://sheets.googleapis.com/v4/spreadsheets/{file_id}?fields=sheets.properties"
     data = download(api_url, token)
     info = json.loads(data)
     return [
@@ -260,6 +247,7 @@ def _sanitize_filename(name: str) -> str:
 # Fetch & write
 # ---------------------------------------------------------------------------
 
+
 def fetch(file_id: str, output: str, mode: str):
     token = get_token()
     base = "https://docs.google.com"
@@ -269,14 +257,8 @@ def fetch(file_id: str, output: str, mode: str):
         return
 
     export_urls = {
-        "slides": (
-            f"{base}/presentation/d/{file_id}"
-            "/export?format=pptx"
-        ),
-        "doc": (
-            f"{base}/document/d/{file_id}"
-            "/export?format=md"
-        ),
+        "slides": (f"{base}/presentation/d/{file_id}/export?format=pptx"),
+        "doc": (f"{base}/document/d/{file_id}/export?format=md"),
     }
 
     data = download(export_urls[mode], token)
@@ -289,18 +271,14 @@ def fetch(file_id: str, output: str, mode: str):
         )
 
     if mode == "slides":
-        output_path.write_text(
-            pptx_to_markdown(data), encoding="utf-8"
-        )
+        output_path.write_text(pptx_to_markdown(data), encoding="utf-8")
     else:
         output_path.write_bytes(data)
 
     print(f"Saved to {output}")
 
 
-def _fetch_sheets(
-    file_id: str, output: str, token: str, base: str
-):
+def _fetch_sheets(file_id: str, output: str, token: str, base: str):
     """Export every sheet in a spreadsheet as a separate CSV."""
     try:
         sheets = get_sheet_metadata(file_id, token)
@@ -319,15 +297,11 @@ def _fetch_sheets(
 
     if len(sheets) == 1:
         gid, title = sheets[0]
-        url = (
-            f"{base}/spreadsheets/d/{file_id}"
-            f"/export?format=csv&gid={gid}"
-        )
+        url = f"{base}/spreadsheets/d/{file_id}/export?format=csv&gid={gid}"
         data = download(url, token)
         if out_path.exists():
             print(
-                "Warning: overwriting existing "
-                f"file '{out_path}'",
+                f"Warning: overwriting existing file '{out_path}'",
                 file=sys.stderr,
             )
         out_path.write_bytes(data)
@@ -337,15 +311,11 @@ def _fetch_sheets(
     for gid, title in sheets:
         safe_title = _sanitize_filename(title)
         csv_path = parent / f"{stem}_{safe_title}.csv"
-        url = (
-            f"{base}/spreadsheets/d/{file_id}"
-            f"/export?format=csv&gid={gid}"
-        )
+        url = f"{base}/spreadsheets/d/{file_id}/export?format=csv&gid={gid}"
         data = download(url, token)
         if csv_path.exists():
             print(
-                "Warning: overwriting existing "
-                f"file '{csv_path}'",
+                f"Warning: overwriting existing file '{csv_path}'",
                 file=sys.stderr,
             )
         csv_path.write_bytes(data)
@@ -355,6 +325,7 @@ def _fetch_sheets(
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
 
 def main():
     # Validate args first — fast failure before any subprocess calls

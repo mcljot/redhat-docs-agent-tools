@@ -38,35 +38,21 @@ SKIP_DIRS = {"legacy-content-do-not-use"}
 # Complex words/phrases and their simpler replacements.
 # Each entry: (compiled regex, display pattern, replacement)
 COMPLEX_WORDS = [
-    (re.compile(r'\butilize[sd]?\b', re.IGNORECASE),
-     "utilize", "use"),
-    (re.compile(r'\bleverage[sd]?\b', re.IGNORECASE),
-     "leverage", "use"),
-    (re.compile(r'\bin order to\b', re.IGNORECASE),
-     "in order to", "to"),
-    (re.compile(r'\bprior to\b', re.IGNORECASE),
-     "prior to", "before"),
-    (re.compile(r'\bsubsequent to\b', re.IGNORECASE),
-     "subsequent to", "after"),
-    (re.compile(r'\bcommence[sd]?\b', re.IGNORECASE),
-     "commence", "start"),
-    (re.compile(r'\bterminate[sd]?\b', re.IGNORECASE),
-     "terminate", "stop"),
-    (re.compile(r'\bfacilitate[sd]?\b', re.IGNORECASE),
-     "facilitate", "help"),
-    (re.compile(r'\baforementioned\b', re.IGNORECASE),
-     "aforementioned", "name the thing directly"),
-    (re.compile(r'\bin the event that\b', re.IGNORECASE),
-     "in the event that", "if"),
+    (re.compile(r"\butilize[sd]?\b", re.IGNORECASE), "utilize", "use"),
+    (re.compile(r"\bleverage[sd]?\b", re.IGNORECASE), "leverage", "use"),
+    (re.compile(r"\bin order to\b", re.IGNORECASE), "in order to", "to"),
+    (re.compile(r"\bprior to\b", re.IGNORECASE), "prior to", "before"),
+    (re.compile(r"\bsubsequent to\b", re.IGNORECASE), "subsequent to", "after"),
+    (re.compile(r"\bcommence[sd]?\b", re.IGNORECASE), "commence", "start"),
+    (re.compile(r"\bterminate[sd]?\b", re.IGNORECASE), "terminate", "stop"),
+    (re.compile(r"\bfacilitate[sd]?\b", re.IGNORECASE), "facilitate", "help"),
+    (re.compile(r"\baforementioned\b", re.IGNORECASE), "aforementioned", "name the thing directly"),
+    (re.compile(r"\bin the event that\b", re.IGNORECASE), "in the event that", "if"),
     # Phrasal verbs (IBM Style: replace with single-word equivalents)
-    (re.compile(r'\bmake sure\b', re.IGNORECASE),
-     "make sure", "ensure"),
-    (re.compile(r'\bset up\b', re.IGNORECASE),
-     "set up", "configure"),
-    (re.compile(r'\bfind out\b', re.IGNORECASE),
-     "find out", "determine"),
-    (re.compile(r'\bcarry out\b', re.IGNORECASE),
-     "carry out", "perform"),
+    (re.compile(r"\bmake sure\b", re.IGNORECASE), "make sure", "ensure"),
+    (re.compile(r"\bset up\b", re.IGNORECASE), "set up", "configure"),
+    (re.compile(r"\bfind out\b", re.IGNORECASE), "find out", "determine"),
+    (re.compile(r"\bcarry out\b", re.IGNORECASE), "carry out", "perform"),
 ]
 
 
@@ -94,7 +80,7 @@ def read_file_list(file_list_path, docs_dir):
     if file_list_path == "-":
         lines = sys.stdin.read().splitlines()
     else:
-        with open(file_list_path, "r") as f:
+        with open(file_list_path) as f:
             lines = f.read().splitlines()
     files = []
     for line in lines:
@@ -117,14 +103,12 @@ def find_block_ranges(lines):
         stripped = line.strip()
         is_delim = False
         matched_key = None
-        if re.match(r'^[,|]={3,}$', stripped):
+        if re.match(r"^[,|]={3,}$", stripped):
             is_delim = True
             matched_key = stripped[0]
         else:
             for delim in ("----", "....", "++++"):
-                if stripped.startswith(delim) and all(
-                    c == delim[0] for c in stripped
-                ):
+                if stripped.startswith(delim) and all(c == delim[0] for c in stripped):
                     is_delim = True
                     matched_key = delim[0]
                     break
@@ -152,28 +136,28 @@ def is_skip_line(line):
     if s.startswith("//"):
         return True
     # Attribute definitions
-    if re.match(r'^:[\w_][\w_-]*:', s):
+    if re.match(r"^:[\w_][\w_-]*:", s):
         return True
     # Block attributes/annotations
     if s.startswith("["):
         return True
     # Include/image/ifdef directives
-    if re.match(r'^(include|image|ifdef|ifndef|endif|ifeval)::', s):
+    if re.match(r"^(include|image|ifdef|ifndef|endif|ifeval)::", s):
         return True
     # Headings
-    if re.match(r'^={1,5}\s', s):
+    if re.match(r"^={1,5}\s", s):
         return True
     # Table delimiters and rows
     if s.startswith("|"):
         return True
     # Block delimiters
-    if re.match(r'^(-{4,}|\.{4,}|\+{4,}|\*{4,}|={4,})$', s):
+    if re.match(r"^(-{4,}|\.{4,}|\+{4,}|\*{4,}|={4,})$", s):
         return True
     # List continuation marker
     if s == "+":
         return True
     # Block titles
-    if re.match(r'^\.\w', s) and not s.startswith(".. "):
+    if re.match(r"^\.\w", s) and not s.startswith(".. "):
         return True
     # Pass macros on their own line
     if s.startswith("pass:"):
@@ -184,9 +168,9 @@ def is_skip_line(line):
 def check_file(filepath, rel_path):
     """Check a single file for complex word usage."""
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             lines = f.read().splitlines()
-    except (UnicodeDecodeError, IOError):
+    except (OSError, UnicodeDecodeError):
         return []
 
     block_lines = find_block_ranges(lines)
@@ -213,21 +197,21 @@ def check_file(filepath, rel_path):
                 if end < len(line):
                     context = context + "..."
 
-                violations.append({
-                    "line": i + 1,
-                    "word": matched_text,
-                    "display": display,
-                    "replacement": replacement,
-                    "context": context,
-                })
+                violations.append(
+                    {
+                        "line": i + 1,
+                        "word": matched_text,
+                        "display": display,
+                        "replacement": replacement,
+                        "context": context,
+                    }
+                )
 
     return violations
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Check for complex words in AsciiDoc docs."
-    )
+    parser = argparse.ArgumentParser(description="Check for complex words in AsciiDoc docs.")
     parser.add_argument(
         "docs_dir",
         help="Path to the documentation repository root",
@@ -274,8 +258,7 @@ def main():
     if all_violations:
         for rel_path, violations in all_violations:
             for v in violations:
-                print(f"  {rel_path}:{v['line']}  "
-                      f"\"{v['word']}\" -> \"{v['replacement']}\"")
+                print(f'  {rel_path}:{v["line"]}  "{v["word"]}" -> "{v["replacement"]}"')
                 print(f"    {v['context']}")
                 print()
     else:
@@ -285,12 +268,9 @@ def main():
     # Per-pattern summary
     print("PER-PATTERN SUMMARY:")
     for _, display, replacement in COMPLEX_WORDS:
-        count = sum(
-            1 for _, vs in all_violations
-            for v in vs if v["display"] == display
-        )
+        count = sum(1 for _, vs in all_violations for v in vs if v["display"] == display)
         status = "PASS" if count == 0 else f"FAIL ({count})"
-        print(f"  \"{display}\" -> \"{replacement}\": {status}")
+        print(f'  "{display}" -> "{replacement}": {status}')
     print()
 
     # Metrics

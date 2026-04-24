@@ -71,7 +71,7 @@ def read_file_list(file_list_path, docs_dir):
     if file_list_path == "-":
         lines = sys.stdin.read().splitlines()
     else:
-        with open(file_list_path, "r") as f:
+        with open(file_list_path) as f:
             lines = f.read().splitlines()
     files = []
     for line in lines:
@@ -96,12 +96,10 @@ def parse_code_block_lines(lines):
     for i, line in enumerate(lines):
         stripped = line.strip()
         is_source_delim = (
-            stripped.startswith("----") and len(stripped) >= 4
-            and all(c == "-" for c in stripped)
+            stripped.startswith("----") and len(stripped) >= 4 and all(c == "-" for c in stripped)
         )
         is_literal_delim = (
-            stripped.startswith("....") and len(stripped) >= 4
-            and all(c == "." for c in stripped)
+            stripped.startswith("....") and len(stripped) >= 4 and all(c == "." for c in stripped)
         )
         if is_source_delim and current_block in (None, "source"):
             code_lines.add(i)
@@ -119,11 +117,11 @@ def parse_code_block_lines(lines):
 def is_master_in_url(line, match_start):
     """Check if 'master' appears inside a URL (e.g., /blob/master/)."""
     # Find all URLs on the line
-    for m in re.finditer(r'https?://\S+', line):
+    for m in re.finditer(r"https?://\S+", line):
         if match_start >= m.start() and match_start < m.end():
             return True
     # Also check link: macro URLs
-    for m in re.finditer(r'link:\S+\[', line):
+    for m in re.finditer(r"link:\S+\[", line):
         if match_start >= m.start() and match_start < m.end():
             return True
     return False
@@ -149,12 +147,12 @@ def is_master_legitimate(line, match_start, match_end):
         return True, "URL"
 
     # Part of a filename (master.adoc, master.xml)
-    context = line[max(0, match_start - 1):match_end + 10]
-    if re.search(r'master\.\w+', context):
+    context = line[max(0, match_start - 1) : match_end + 10]
+    if re.search(r"master\.\w+", context):
         return True, "FILENAME"
 
     # Part of "master file" or "master document" (doc terminology)
-    after = line[match_end:match_end + 15].strip().lower()
+    after = line[match_end : match_end + 15].strip().lower()
     if after.startswith(("file", "document", ".adoc", ".xml")):
         return True, "DOC_TERM"
 
@@ -200,7 +198,7 @@ def find_term_occurrences(line, term, case_sensitive=False):
     (e.g., 'master' should not match 'webmaster' or 'mastery').
     """
     flags = 0 if case_sensitive else re.IGNORECASE
-    pattern = r'\b' + re.escape(term) + r'\b'
+    pattern = r"\b" + re.escape(term) + r"\b"
     matches = []
     for m in re.finditer(pattern, line, flags):
         matches.append((m.start(), m.group()))
@@ -211,9 +209,9 @@ def check_file(filepath, rel_path):
     """Check a single file for exclusionary language."""
     findings = []
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             content = f.read()
-    except (UnicodeDecodeError, IOError):
+    except (OSError, UnicodeDecodeError):
         return findings
 
     lines = content.splitlines()
@@ -226,32 +224,32 @@ def check_file(filepath, rel_path):
         # Check "master" with special handling
         term, replacements, case_sensitive = MASTER_TERM
         for pos, matched_text in find_term_occurrences(line, term, case_sensitive):
-            classification, _ = classify_term_match(
-                line, pos, pos + len(matched_text), term
-            )
-            findings.append({
-                "file": rel_path,
-                "line_num": line_idx + 1,
-                "line": line.rstrip(),
-                "term": matched_text,
-                "replacements": replacements,
-                "classification": classification,
-            })
-
-        # Check other exclusionary terms
-        for term, replacements, case_sensitive in EXCLUSIONARY_TERMS:
-            for pos, matched_text in find_term_occurrences(line, term, case_sensitive):
-                classification, _ = classify_term_match(
-                    line, pos, pos + len(matched_text), term
-                )
-                findings.append({
+            classification, _ = classify_term_match(line, pos, pos + len(matched_text), term)
+            findings.append(
+                {
                     "file": rel_path,
                     "line_num": line_idx + 1,
                     "line": line.rstrip(),
                     "term": matched_text,
                     "replacements": replacements,
                     "classification": classification,
-                })
+                }
+            )
+
+        # Check other exclusionary terms
+        for term, replacements, case_sensitive in EXCLUSIONARY_TERMS:
+            for pos, matched_text in find_term_occurrences(line, term, case_sensitive):
+                classification, _ = classify_term_match(line, pos, pos + len(matched_text), term)
+                findings.append(
+                    {
+                        "file": rel_path,
+                        "line_num": line_idx + 1,
+                        "line": line.rstrip(),
+                        "term": matched_text,
+                        "replacements": replacements,
+                        "classification": classification,
+                    }
+                )
 
     return findings
 
@@ -268,8 +266,7 @@ def main():
         "--scan-dirs",
         nargs="+",
         default=DEFAULT_SCAN_DIRS,
-        help=("Directories to scan relative to docs_dir "
-              f"(default: {' '.join(DEFAULT_SCAN_DIRS)})"),
+        help=(f"Directories to scan relative to docs_dir (default: {' '.join(DEFAULT_SCAN_DIRS)})"),
     )
     parser.add_argument(
         "--file-list",
@@ -308,7 +305,7 @@ def main():
         for f in violations:
             replacements = ", ".join(f["replacements"])
             print(f"  {f['file']}:{f['line_num']}")
-            print(f"    Found: \"{f['term']}\" -> use: {replacements}")
+            print(f'    Found: "{f["term"]}" -> use: {replacements}')
             print(f"    Line:  {f['line'].strip()}")
             print()
     else:
@@ -325,7 +322,7 @@ def main():
         for cls, items in sorted(by_type.items()):
             print(f"  [{cls}] ({len(items)} occurrences):")
             for f in items:
-                print(f"    {f['file']}:{f['line_num']}  \"{f['term']}\"")
+                print(f'    {f["file"]}:{f["line_num"]}  "{f["term"]}"')
             print()
     else:
         print("  (none)")
@@ -333,8 +330,7 @@ def main():
 
     # Summary
     print("-" * 60)
-    print(f"Summary: {len(violations)} violations, "
-          f"{len(exceptions)} exceptions")
+    print(f"Summary: {len(violations)} violations, {len(exceptions)} exceptions")
     print(f"Files scanned: {len(files)}")
 
     if violations:

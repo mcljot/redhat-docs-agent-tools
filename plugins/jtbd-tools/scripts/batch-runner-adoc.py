@@ -27,7 +27,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-
 STATE_FILE = ".batch-runner-adoc-state.json"
 
 
@@ -51,7 +50,9 @@ def read_docs_file(docs_file: Path) -> list[str]:
         return [line.strip() for line in f if line.strip() and not line.startswith("#")]
 
 
-def run_batch(docs: list[str], variant: str | None, research: str | None, output: str | None) -> bool:
+def run_batch(
+    docs: list[str], variant: str | None, research: str | None, output: str | None
+) -> bool:
     """Run a single batch of docs through the workflow skill."""
     # Create a temporary docs file for this batch
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
@@ -77,12 +78,12 @@ def run_batch(docs: list[str], variant: str | None, research: str | None, output
 
         cmd_parts.append(skill_args)
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Running batch: {len(docs)} documents")
         for doc in docs:
             print(f"  - {doc}")
         print(f"Command: {' '.join(cmd_parts)}")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
         result = subprocess.run(
             cmd_parts,
@@ -94,7 +95,7 @@ def run_batch(docs: list[str], variant: str | None, research: str | None, output
         return result.returncode == 0
 
     except subprocess.TimeoutExpired:
-        print(f"ERROR: Batch timed out after 1 hour")
+        print("ERROR: Batch timed out after 1 hour")
         return False
     except FileNotFoundError:
         print("ERROR: 'claude' command not found. Ensure Claude Code CLI is installed.")
@@ -104,10 +105,10 @@ def run_batch(docs: list[str], variant: str | None, research: str | None, output
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Batch runner for jtbd-workflow-adoc skill"
+    parser = argparse.ArgumentParser(description="Batch runner for jtbd-workflow-adoc skill")
+    parser.add_argument(
+        "--docs-file", required=True, help="File with paths to master.adoc files, one per line"
     )
-    parser.add_argument("--docs-file", required=True, help="File with paths to master.adoc files, one per line")
     parser.add_argument("--variant", help="Conditional variant (e.g., self-managed, cloud-service)")
     parser.add_argument("--research", help="Research config name")
     parser.add_argument("--output", help="Output base directory")
@@ -135,15 +136,17 @@ def main():
         state = load_state(state_path)
         completed = set(state["completed"])
         remaining = [d for d in all_docs if d not in completed]
-        print(f"Resuming: {len(state['completed'])} completed, {len(state['failed'])} failed, {len(remaining)} remaining")
+        print(
+            f"Resuming: {len(state['completed'])} completed, {len(state['failed'])} failed, {len(remaining)} remaining"
+        )
     else:
         state = {"completed": [], "failed": [], "remaining": list(all_docs)}
         remaining = list(all_docs)
 
     # Split into batches
-    batches = [remaining[i:i + batch_size] for i in range(0, len(remaining), batch_size)]
+    batches = [remaining[i : i + batch_size] for i in range(0, len(remaining), batch_size)]
 
-    print(f"\nBatch Plan:")
+    print("\nBatch Plan:")
     print(f"  Total docs: {len(all_docs)}")
     print(f"  Already completed: {len(state['completed'])}")
     print(f"  Remaining: {len(remaining)}")
@@ -152,7 +155,7 @@ def main():
     print()
 
     for i, batch in enumerate(batches):
-        print(f"  Batch {i+1}:")
+        print(f"  Batch {i + 1}:")
         for doc in batch:
             print(f"    - {doc}")
 
@@ -168,26 +171,28 @@ def main():
 
     # Execute batches
     for i, batch in enumerate(batches):
-        print(f"\n>>> Batch {i+1}/{len(batches)} ({len(batch)} docs)")
+        print(f"\n>>> Batch {i + 1}/{len(batches)} ({len(batch)} docs)")
 
         success = run_batch(batch, args.variant, args.research, args.output)
 
         if success:
             state["completed"].extend(batch)
             state["remaining"] = [d for d in state["remaining"] if d not in batch]
-            print(f"Batch {i+1} completed successfully")
+            print(f"Batch {i + 1} completed successfully")
         else:
             state["failed"].extend(batch)
             state["remaining"] = [d for d in state["remaining"] if d not in batch]
-            print(f"Batch {i+1} FAILED")
+            print(f"Batch {i + 1} FAILED")
 
         save_state(state_path, state)
-        print(f"Progress: {len(state['completed'])}/{len(all_docs)} completed, {len(state['failed'])} failed")
+        print(
+            f"Progress: {len(state['completed'])}/{len(all_docs)} completed, {len(state['failed'])} failed"
+        )
 
     # Final report
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("FINAL REPORT")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"Completed: {len(state['completed'])}/{len(all_docs)}")
     if state["completed"]:
         for doc in state["completed"]:
@@ -196,7 +201,9 @@ def main():
         print(f"Failed: {len(state['failed'])}")
         for doc in state["failed"]:
             print(f"  - {doc}")
-        print(f"\nTo retry failed docs, create a new docs file with the failed entries and run again.")
+        print(
+            "\nTo retry failed docs, create a new docs file with the failed entries and run again."
+        )
 
     # Clean up state file on full completion
     if not state["failed"] and not state["remaining"]:

@@ -43,6 +43,7 @@ OPL_KEY = "PW5pDaUCh-YMeZ0a-1FGW_0tZHm6IZCrT2qMiwJstkY"
 
 # ── Attribute parsing ────────────────────────────────────────────────
 
+
 def parse_attributes(docs_dir):
     """Parse attributes.adoc files from the common/ directory.
 
@@ -59,10 +60,9 @@ def parse_attributes(docs_dir):
         if fname.endswith("attributes.adoc"):
             fpath = os.path.join(common_dir, fname)
             try:
-                with open(fpath, "r", encoding="utf-8") as f:
+                with open(fpath, encoding="utf-8") as f:
                     for line in f:
-                        m = re.match(r'^:([a-zA-Z][\w-]*):\s+(.+)$',
-                                     line.strip())
+                        m = re.match(r"^:([a-zA-Z][\w-]*):\s+(.+)$", line.strip())
                         if m:
                             attr_values[m.group(1)] = m.group(2).strip()
             except (OSError, UnicodeDecodeError):
@@ -89,7 +89,7 @@ def resolve_value(raw, all_attrs, _seen=None):
             return m.group(0)  # leave unresolved
         return resolve_value(all_attrs[ref], all_attrs, _seen | {ref})
 
-    return re.sub(r'\{([\w-]+)\}', replacer, raw)
+    return re.sub(r"\{([\w-]+)\}", replacer, raw)
 
 
 def is_product_name(resolved_value):
@@ -102,13 +102,13 @@ def is_product_name(resolved_value):
     if not v:
         return False
     # Exclude URLs and macro-based values
-    if re.match(r'^(https?://|link:|pass:|registry[./])', v, re.I):
+    if re.match(r"^(https?://|link:|pass:|registry[./])", v, re.I):
         return False
     # Exclude pure version numbers (3.27, 4.19, 0.36.0)
-    if re.match(r'^\d[\d.]*$', v):
+    if re.match(r"^\d[\d.]*$", v):
         return False
     # Exclude paths and image references
-    if '/' in v[1:]:
+    if "/" in v[1:]:
         return False
     # Exclude values with AsciiDoc formatting ('`oc`', etc.)
     if v.startswith("'") or v.startswith('"'):
@@ -132,7 +132,7 @@ def build_product_names(docs_dir):
     product_names = []
     for attr_name, raw in raw_attrs.items():
         resolved = resolve_value(raw, raw_attrs)
-        if '{' in resolved:
+        if "{" in resolved:
             continue  # still has unresolved refs
         if is_product_name(resolved):
             product_names.append((resolved, "{" + attr_name + "}"))
@@ -174,6 +174,7 @@ def collect_attribute_filenames(docs_dir):
 
 # ── File collection ──────────────────────────────────────────────────
 
+
 def collect_adoc_files(docs_dir, scan_dirs=None, skip_files=None):
     """Collect all .adoc files from scan directories, skipping exclusions."""
     if scan_dirs is None:
@@ -201,7 +202,7 @@ def read_file_list(file_list_path, docs_dir):
     if file_list_path == "-":
         lines = sys.stdin.read().splitlines()
     else:
-        with open(file_list_path, "r") as f:
+        with open(file_list_path) as f:
             lines = f.read().splitlines()
     files = []
     for line in lines:
@@ -215,6 +216,7 @@ def read_file_list(file_list_path, docs_dir):
 
 
 # ── Block parsing ────────────────────────────────────────────────────
+
 
 def parse_code_block_lines(lines):
     """Return a set of line indices inside code, literal, passthrough, or comment blocks.
@@ -232,8 +234,11 @@ def parse_code_block_lines(lines):
         matched_char = None
         for delim_char in ("-", ".", "+", "/"):
             prefix = delim_char * 4
-            if (stripped.startswith(prefix) and len(stripped) >= 4
-                    and all(c == delim_char for c in stripped)):
+            if (
+                stripped.startswith(prefix)
+                and len(stripped) >= 4
+                and all(c == delim_char for c in stripped)
+            ):
                 matched_char = delim_char
                 break
 
@@ -248,6 +253,7 @@ def parse_code_block_lines(lines):
 
 
 # ── Match detection ──────────────────────────────────────────────────
+
 
 def find_product_names(line, product_names, case_checks):
     """Find all hardcoded product names in a line, avoiding double-counting.
@@ -288,6 +294,7 @@ def find_product_names(line, product_names, case_checks):
 
 
 # ── Match classification ─────────────────────────────────────────────
+
 
 def is_inside_pattern(line, match_start, match_end, regex):
     """Check if position range falls inside a regex capture group."""
@@ -361,15 +368,15 @@ def classify_match(line, match_start, matched_text, known_exceptions):
 
 # ── File checking ────────────────────────────────────────────────────
 
-def check_file(filepath, rel_path, product_names, case_checks,
-               known_exceptions):
+
+def check_file(filepath, rel_path, product_names, case_checks, known_exceptions):
     """Check a single file for hardcoded product names.
 
     Returns (findings_list, error_string_or_None).
     """
     findings = []
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             content = f.read()
     except (UnicodeDecodeError, OSError) as exc:
         return findings, f"{rel_path}: {exc}"
@@ -383,21 +390,23 @@ def check_file(filepath, rel_path, product_names, case_checks,
 
         matches = find_product_names(line, product_names, case_checks)
         for pos, matched_text, replacement in matches:
-            classification = classify_match(line, pos, matched_text,
-                                            known_exceptions)
-            findings.append({
-                "file": rel_path,
-                "line_num": line_idx + 1,
-                "line": line.rstrip(),
-                "match": matched_text,
-                "replacement": replacement,
-                "classification": classification,
-            })
+            classification = classify_match(line, pos, matched_text, known_exceptions)
+            findings.append(
+                {
+                    "file": rel_path,
+                    "line_num": line_idx + 1,
+                    "line": line.rstrip(),
+                    "match": matched_text,
+                    "replacement": replacement,
+                    "classification": classification,
+                }
+            )
 
     return findings, None
 
 
 # ── Auto-fix ─────────────────────────────────────────────────────────
+
 
 def _is_inside_backticks(line, match_start, match_end):
     """Check if a match range falls inside backtick-delimited text."""
@@ -426,12 +435,10 @@ def _is_exception_at(line, match_start, match_end, known_exceptions):
     if _is_inside_backticks(line, match_start, match_end):
         return True
 
-    if is_inside_pattern(line, match_start, match_end,
-                         r"link:[^\[]*\[([^\]]*)\]"):
+    if is_inside_pattern(line, match_start, match_end, r"link:[^\[]*\[([^\]]*)\]"):
         return True
 
-    if is_inside_pattern(line, match_start, match_end,
-                         r"xref:[^\[]*\[([^\]]*)\]"):
+    if is_inside_pattern(line, match_start, match_end, r"xref:[^\[]*\[([^\]]*)\]"):
         return True
 
     return False
@@ -469,13 +476,13 @@ def _fix_file(abs_path, product_names, known_exceptions):
     Returns the number of replacements made.
     """
     try:
-        with open(abs_path, "r", encoding="utf-8") as fh:
+        with open(abs_path, encoding="utf-8") as fh:
             content = fh.read()
     except (UnicodeDecodeError, OSError):
         return 0
 
     lines = content.splitlines(True)  # keep line endings
-    code_lines = parse_code_block_lines([l.rstrip("\n\r") for l in lines])
+    code_lines = parse_code_block_lines([line.rstrip("\n\r") for line in lines])
 
     new_lines = []
     replacements_made = 0
@@ -493,7 +500,8 @@ def _fix_file(abs_path, product_names, known_exceptions):
         for name, replacement in product_names:
             attr = replacement.split(" or ")[0].strip()
             modified_line, count = _replace_name_in_line(
-                modified_line, name, attr, known_exceptions)
+                modified_line, name, attr, known_exceptions
+            )
             replacements_made += count
         new_lines.append(modified_line)
 
@@ -519,13 +527,13 @@ def apply_fixes(findings, docs_dir, product_names, known_exceptions):
 
     total_replacements = 0
     for abs_path in sorted(file_paths):
-        total_replacements += _fix_file(abs_path, product_names,
-                                        known_exceptions)
+        total_replacements += _fix_file(abs_path, product_names, known_exceptions)
 
     return total_replacements
 
 
 # ── OPL verification ─────────────────────────────────────────────────
+
 
 def verify_with_opl(product_names):
     """Cross-check detected product names against the OPL API.
@@ -542,16 +550,13 @@ def verify_with_opl(product_names):
 
     search_term = product_names[0][0]  # longest = most specific
     try:
-        url = (f"{OPL_BASE}/products"
-               f"?q={urllib.parse.quote(search_term)}")
-        req = urllib.request.Request(
-            url, headers={"Authorization": f"Bearer {OPL_KEY}"})
+        url = f"{OPL_BASE}/products?q={urllib.parse.quote(search_term)}"
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {OPL_KEY}"})
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read())
     except Exception as e:
         print(f"  OPL verification skipped: {e}", file=sys.stderr)
-        print("  (Ensure VPN is connected for OPL access)",
-              file=sys.stderr)
+        print("  (Ensure VPN is connected for OPL access)", file=sys.stderr)
         return
 
     products = data.get("products", [])
@@ -576,8 +581,7 @@ def verify_with_opl(product_names):
     # Get aliases
     try:
         url = f"{OPL_BASE}/products/{best['product_id']}/aliases"
-        req = urllib.request.Request(
-            url, headers={"Authorization": f"Bearer {OPL_KEY}"})
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {OPL_KEY}"})
         with urllib.request.urlopen(req, timeout=15) as resp:
             aliases = json.loads(resp.read())
     except Exception as e:
@@ -594,18 +598,19 @@ def verify_with_opl(product_names):
         aname = alias["alias_name"]
         if aname in attr_values:
             if alias.get("previous_name"):
-                print(f"  WARNING: '{aname}' is a deprecated/previous "
-                      f"name in OPL")
+                print(f"  WARNING: '{aname}' is a deprecated/previous name in OPL")
                 issues += 1
             if not alias.get("alias_approved"):
-                print(f"  NOTE: '{aname}' is not an approved alias "
-                      f"in OPL (type: {alias.get('alias_type', '?')})")
+                print(
+                    f"  NOTE: '{aname}' is not an approved alias "
+                    f"in OPL (type: {alias.get('alias_type', '?')})"
+                )
 
     for alias in aliases:
-        if (alias.get("alias_approved")
-                and alias["alias_name"] not in attr_values):
-            print(f"  NOTE: OPL approved alias '{alias['alias_name']}' "
-                  f"not found in attributes.adoc")
+        if alias.get("alias_approved") and alias["alias_name"] not in attr_values:
+            print(
+                f"  NOTE: OPL approved alias '{alias['alias_name']}' not found in attributes.adoc"
+            )
 
     if issues == 0:
         print("  All detected product names verified against OPL.")
@@ -614,46 +619,45 @@ def verify_with_opl(product_names):
 
 # ── Main ─────────────────────────────────────────────────────────────
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="Check for hardcoded product names in AsciiDoc docs. "
-                    "Product names are auto-discovered from the repo's "
-                    "common/attributes.adoc."
+        "Product names are auto-discovered from the repo's "
+        "common/attributes.adoc."
     )
     parser.add_argument(
         "docs_dir",
-        help="Path to the documentation repository root "
-             "(must have common/*attributes.adoc)",
+        help="Path to the documentation repository root (must have common/*attributes.adoc)",
     )
     parser.add_argument(
         "--scan-dirs",
         nargs="+",
         default=DEFAULT_SCAN_DIRS,
-        help=("Directories to scan relative to docs_dir "
-              f"(default: {' '.join(DEFAULT_SCAN_DIRS)})"),
+        help=(f"Directories to scan relative to docs_dir (default: {' '.join(DEFAULT_SCAN_DIRS)})"),
     )
     parser.add_argument(
         "--file-list",
         default=None,
         help="File with paths to check (one per line, relative to "
-             "docs_dir). Use '-' for stdin. Overrides --scan-dirs.",
+        "docs_dir). Use '-' for stdin. Overrides --scan-dirs.",
     )
     parser.add_argument(
         "--config",
         help="Path to a JSON config file for additional product names, "
-             "exceptions, and skip patterns (merged with auto-detected)",
+        "exceptions, and skip patterns (merged with auto-detected)",
     )
     parser.add_argument(
         "--fix",
         action="store_true",
         help="Auto-fix PROSE and IMAGE_ALT violations by replacing "
-             "hardcoded product names with recommended attributes",
+        "hardcoded product names with recommended attributes",
     )
     parser.add_argument(
         "--verify-opl",
         action="store_true",
         help="Cross-check detected product names against the Red Hat "
-             "Official Product List API (VPN required)",
+        "Official Product List API (VPN required)",
     )
     args = parser.parse_args()
 
@@ -669,10 +673,11 @@ def main():
     skip_files = collect_attribute_filenames(docs_dir)
 
     if not product_names:
-        print("Error: no product name attributes found in "
-              f"{docs_dir}/common/*attributes.adoc", file=sys.stderr)
-        print("Expected attribute files with product name definitions "
-              "like:", file=sys.stderr)
+        print(
+            f"Error: no product name attributes found in {docs_dir}/common/*attributes.adoc",
+            file=sys.stderr,
+        )
+        print("Expected attribute files with product name definitions like:", file=sys.stderr)
         print("  :prod: Red Hat Product Name", file=sys.stderr)
         print("  :prod-short: Product Name", file=sys.stderr)
         sys.exit(2)
@@ -681,11 +686,10 @@ def main():
     if args.config:
         config_path = os.path.abspath(args.config)
         try:
-            with open(config_path, "r", encoding="utf-8") as cf:
+            with open(config_path, encoding="utf-8") as cf:
                 config = json.load(cf)
         except (OSError, json.JSONDecodeError) as exc:
-            print(f"Error: failed to read config file: {exc}",
-                  file=sys.stderr)
+            print(f"Error: failed to read config file: {exc}", file=sys.stderr)
             sys.exit(2)
         if "product_names" in config:
             extra = [tuple(pair) for pair in config["product_names"]]
@@ -708,7 +712,7 @@ def main():
     print(f"Directories: {', '.join(args.scan_dirs)}")
     print("Product names detected from attributes.adoc:")
     for name, attr in product_names:
-        print(f"  {attr} = \"{name}\"")
+        print(f'  {attr} = "{name}"')
     if case_checks:
         print(f"Case checks: {', '.join(w + ' → ' + c for w, c in case_checks)}")
     print()
@@ -717,19 +721,18 @@ def main():
     if args.file_list:
         files = read_file_list(args.file_list, docs_dir)
     else:
-        files = collect_adoc_files(docs_dir, scan_dirs=args.scan_dirs,
-                                   skip_files=skip_files)
+        files = collect_adoc_files(docs_dir, scan_dirs=args.scan_dirs, skip_files=skip_files)
     if not files:
-        print("Error: no .adoc files found under "
-              f"{', '.join(args.scan_dirs)}", file=sys.stderr)
+        print(f"Error: no .adoc files found under {', '.join(args.scan_dirs)}", file=sys.stderr)
         sys.exit(2)
 
     # ── Check all files ──
     all_findings = []
     read_errors = []
     for filepath, rel_path in files:
-        findings, error = check_file(filepath, rel_path, product_names,
-                                     case_checks, known_exceptions)
+        findings, error = check_file(
+            filepath, rel_path, product_names, case_checks, known_exceptions
+        )
         all_findings.extend(findings)
         if error is not None:
             read_errors.append(error)
@@ -742,19 +745,19 @@ def main():
     # ── Group by classification ──
     violations = [f for f in all_findings if f["classification"] == "PROSE"]
     image_alt = [f for f in all_findings if f["classification"] == "IMAGE_ALT"]
-    exceptions = [f for f in all_findings if f["classification"] in (
-        "KNOWN_EXCEPTION", "UI_LABEL", "LINK_TEXT", "XREF_TEXT"
-    )]
-    skipped = [f for f in all_findings if f["classification"] in (
-        "COMMENT", "ATTRIBUTE_DEF"
-    )]
+    exceptions = [
+        f
+        for f in all_findings
+        if f["classification"] in ("KNOWN_EXCEPTION", "UI_LABEL", "LINK_TEXT", "XREF_TEXT")
+    ]
+    skipped = [f for f in all_findings if f["classification"] in ("COMMENT", "ATTRIBUTE_DEF")]
 
     # ── Report violations ──
     print("VIOLATIONS (hardcoded product names in prose):")
     if violations:
         for f in violations:
             print(f"  {f['file']}:{f['line_num']}")
-            print(f"    Found: \"{f['match']}\" -> use {f['replacement']}")
+            print(f'    Found: "{f["match"]}" -> use {f["replacement"]}')
             print(f"    Line:  {f['line']}")
             print()
     else:
@@ -766,7 +769,7 @@ def main():
     if image_alt:
         for f in image_alt:
             print(f"  {f['file']}:{f['line_num']}")
-            print(f"    Found: \"{f['match']}\" -> use {f['replacement']}")
+            print(f'    Found: "{f["match"]}" -> use {f["replacement"]}')
             print(f"    Line:  {f['line']}")
             print()
     else:
@@ -778,7 +781,7 @@ def main():
     if exceptions:
         for f in exceptions:
             print(f"  {f['file']}:{f['line_num']}  [{f['classification']}]")
-            print(f"    \"{f['match']}\" in: {f['line'].strip()}")
+            print(f'    "{f["match"]}" in: {f["line"].strip()}')
         print()
     else:
         print("  (none)")
@@ -787,16 +790,17 @@ def main():
     # ── Summary ──
     total_issues = len(violations) + len(image_alt)
     print("-" * 60)
-    print(f"Summary: {len(violations)} violations, "
-          f"{len(image_alt)} image alt text issues, "
-          f"{len(exceptions)} exceptions, "
-          f"{len(skipped)} skipped (comments/attributes)")
+    print(
+        f"Summary: {len(violations)} violations, "
+        f"{len(image_alt)} image alt text issues, "
+        f"{len(exceptions)} exceptions, "
+        f"{len(skipped)} skipped (comments/attributes)"
+    )
     print(f"Files scanned: {len(files)}")
 
     # ── Auto-fix ──
     if args.fix and total_issues > 0:
-        num_fixed = apply_fixes(all_findings, docs_dir, product_names,
-                                known_exceptions)
+        num_fixed = apply_fixes(all_findings, docs_dir, product_names, known_exceptions)
         print(f"\n--fix: {num_fixed} replacements made across files.")
 
     # ── OPL verification ──

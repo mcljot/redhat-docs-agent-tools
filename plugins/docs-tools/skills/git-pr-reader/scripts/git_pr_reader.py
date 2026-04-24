@@ -53,8 +53,8 @@ import re
 import subprocess
 import sys
 import time
-import urllib.request
 import urllib.error
+import urllib.request
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
@@ -66,7 +66,7 @@ except ImportError:
     yaml = None  # type: ignore[assignment]
 
 try:
-    from github import Github, Auth
+    from github import Auth, Github
 except ImportError:
     Github = None  # type: ignore[assignment,misc]
     Auth = None  # type: ignore[assignment,misc]
@@ -103,9 +103,11 @@ def color_print(prefix: str, message: str) -> None:
 # Data classes
 # =============================================================================
 
+
 @dataclass
 class ReviewComment:
     """Represents a single review comment to post."""
+
     file: str
     line: int
     message: str
@@ -134,6 +136,7 @@ class ReviewComment:
 @dataclass
 class DiffLine:
     """Represents a line from a diff with its file line number."""
+
     file_line: int
     content: str
     is_added: bool = True
@@ -142,6 +145,7 @@ class DiffLine:
 @dataclass
 class PostResult:
     """Result of posting comments."""
+
     posted: int = 0
     skipped: int = 0
     failed: int = 0
@@ -160,6 +164,7 @@ class PostResult:
 # =============================================================================
 # File filtering
 # =============================================================================
+
 
 def load_filters(config_path: Optional[str] = None) -> List[re.Pattern]:
     """
@@ -184,7 +189,7 @@ def load_filters(config_path: Optional[str] = None) -> List[re.Pattern]:
         print("Warning: PyYAML not installed; file filtering disabled.", file=sys.stderr)
         return []
 
-    with open(resolved_path, "r") as f:
+    with open(resolved_path) as f:
         config = yaml.safe_load(f)
 
     patterns = config.get("exclude_patterns", [])
@@ -194,6 +199,7 @@ def load_filters(config_path: Optional[str] = None) -> List[re.Pattern]:
 # =============================================================================
 # Abstract base class
 # =============================================================================
+
 
 class GitReviewAPI(ABC):
     """
@@ -315,8 +321,9 @@ class GitReviewAPI(ABC):
         ...
 
     @abstractmethod
-    def post_inline_comment(self, comment: ReviewComment,
-                            signoff: str = "Claude Code docs review") -> Tuple[bool, str]:
+    def post_inline_comment(
+        self, comment: ReviewComment, signoff: str = "Claude Code docs review"
+    ) -> Tuple[bool, str]:
         """
         Post an inline comment on a specific line.
 
@@ -419,9 +426,13 @@ class GitReviewAPI(ABC):
                 in_file = f"b/{target_file}" in line
                 continue
 
-            if line.startswith("---") or line.startswith("+++") or \
-               line.startswith("index") or line.startswith("new file") or \
-               line.startswith("deleted file"):
+            if (
+                line.startswith("---")
+                or line.startswith("+++")
+                or line.startswith("index")
+                or line.startswith("new file")
+                or line.startswith("deleted file")
+            ):
                 continue
 
             if line.startswith("@@") and in_file:
@@ -436,11 +447,13 @@ class GitReviewAPI(ABC):
                 elif line.startswith("+"):
                     file_line += 1
                     content = line[1:]
-                    result.append(DiffLine(
-                        file_line=file_line,
-                        content=content,
-                        is_added=True,
-                    ))
+                    result.append(
+                        DiffLine(
+                            file_line=file_line,
+                            content=content,
+                            is_added=True,
+                        )
+                    )
                 elif line.startswith(" ") or line == "":
                     file_line += 1
 
@@ -491,25 +504,30 @@ class GitReviewAPI(ABC):
             line_lookup = {dl.file_line: dl.content for dl in diff_lines}
 
             if line_num in line_lookup:
-                results.append({
-                    "file": file_path,
-                    "line": line_num,
-                    "valid": True,
-                    "content": line_lookup[line_num][:60],
-                })
+                results.append(
+                    {
+                        "file": file_path,
+                        "line": line_num,
+                        "valid": True,
+                        "content": line_lookup[line_num][:60],
+                    }
+                )
             else:
-                results.append({
-                    "file": file_path,
-                    "line": line_num,
-                    "valid": False,
-                    "content": None,
-                    "reason": "Line not in diff (may be context-only)",
-                })
+                results.append(
+                    {
+                        "file": file_path,
+                        "line": line_num,
+                        "valid": False,
+                        "content": None,
+                        "reason": "Line not in diff (may be context-only)",
+                    }
+                )
 
         return results
 
-    def post_comments(self, comments: List[Dict], dry_run: bool = False,
-                      signoff: str = "Claude Code docs review") -> PostResult:
+    def post_comments(
+        self, comments: List[Dict], dry_run: bool = False, signoff: str = "Claude Code docs review"
+    ) -> PostResult:
         """
         Post multiple review comments.
 
@@ -547,7 +565,7 @@ class GitReviewAPI(ABC):
                 result.posted += 1
                 continue
 
-            body = f"{comment.message}\n\n\U0001F916 {signoff}"
+            body = f"{comment.message}\n\n\U0001f916 {signoff}"
 
             success, error = self.post_inline_comment(comment, signoff=signoff)
 
@@ -578,6 +596,7 @@ class GitReviewAPI(ABC):
 # GitHub implementation
 # =============================================================================
 
+
 class GitHubReviewAPI(GitReviewAPI):
     """GitHub-specific implementation using PyGithub."""
 
@@ -595,9 +614,7 @@ class GitHubReviewAPI(GitReviewAPI):
         """
         super().__init__(url, config_path=config_path)
         if Github is None or Auth is None:
-            raise ImportError(
-                "PyGithub not installed. Run: python3 -m pip install PyGithub"
-            )
+            raise ImportError("PyGithub not installed. Run: python3 -m pip install PyGithub")
         self._parse_url()
         self._init_client()
 
@@ -673,13 +690,15 @@ class GitHubReviewAPI(GitReviewAPI):
         """Get list of changed files in the PR using PyGithub."""
         files: List[Dict] = []
         for f in self._pr.get_files():
-            files.append({
-                "path": f.filename,
-                "status": f.status,
-                "additions": f.additions,
-                "deletions": f.deletions,
-                "changes": f.changes,
-            })
+            files.append(
+                {
+                    "path": f.filename,
+                    "status": f.status,
+                    "additions": f.additions,
+                    "deletions": f.deletions,
+                    "changes": f.changes,
+                }
+            )
         return files
 
     def _fetch_resolved_thread_comment_ids(self) -> set:
@@ -709,8 +728,10 @@ class GitHubReviewAPI(GitReviewAPI):
 
         for _ in range(10):  # max 10 pages (1000 threads)
             variables = {
-                "owner": self.owner, "repo": self.repo_name,
-                "pr": self.pr_number, "cursor": cursor,
+                "owner": self.owner,
+                "repo": self.repo_name,
+                "pr": self.pr_number,
+                "cursor": cursor,
             }
             payload = json.dumps({"query": query, "variables": variables}).encode()
             req = urllib.request.Request(
@@ -729,8 +750,12 @@ class GitHubReviewAPI(GitReviewAPI):
             except Exception:
                 break
 
-            threads = (data.get("data", {}).get("repository", {})
-                       .get("pullRequest", {}).get("reviewThreads", {}))
+            threads = (
+                data.get("data", {})
+                .get("repository", {})
+                .get("pullRequest", {})
+                .get("reviewThreads", {})
+            )
             for node in threads.get("nodes", []):
                 if node.get("isResolved"):
                     for c in node.get("comments", {}).get("nodes", []):
@@ -769,16 +794,18 @@ class GitHubReviewAPI(GitReviewAPI):
             if is_resolved and not include_resolved:
                 continue
 
-            comments.append({
-                "id": c.id,
-                "path": c.path or "",
-                "line": c.line or c.original_line,
-                "body": c.body or "",
-                "author": author,
-                "resolved": is_resolved,
-                "created_at": c.created_at.isoformat() if c.created_at else "",
-                "url": c.html_url or "",
-            })
+            comments.append(
+                {
+                    "id": c.id,
+                    "path": c.path or "",
+                    "line": c.line or c.original_line,
+                    "body": c.body or "",
+                    "author": author,
+                    "resolved": is_resolved,
+                    "created_at": c.created_at.isoformat() if c.created_at else "",
+                    "url": c.html_url or "",
+                }
+            )
 
         return comments
 
@@ -792,12 +819,13 @@ class GitHubReviewAPI(GitReviewAPI):
                 existing.append(f"{path}:{line}")
         return existing
 
-    def post_inline_comment(self, comment: ReviewComment,
-                            signoff: str = "Claude Code docs review") -> Tuple[bool, str]:
+    def post_inline_comment(
+        self, comment: ReviewComment, signoff: str = "Claude Code docs review"
+    ) -> Tuple[bool, str]:
         """Post an inline comment on a specific line using PyGithub."""
         try:
             pr_info = self.get_pr_info()
-            body = f"{comment.message}\n\n\U0001F916 {signoff}"
+            body = f"{comment.message}\n\n\U0001f916 {signoff}"
             commit = self._repo.get_commit(pr_info["head_sha"])
             self._pr.create_review_comment(
                 body=body,
@@ -851,10 +879,12 @@ class GitHubReviewAPI(GitReviewAPI):
                     continue
 
                 if f.patch:
-                    diffs.append({
-                        "filename": filename,
-                        "diff": f.patch,
-                    })
+                    diffs.append(
+                        {
+                            "filename": filename,
+                            "diff": f.patch,
+                        }
+                    )
 
             return {
                 "git_type": "github",
@@ -877,6 +907,7 @@ class GitHubReviewAPI(GitReviewAPI):
 # =============================================================================
 # GitLab implementation
 # =============================================================================
+
 
 class GitLabReviewAPI(GitReviewAPI):
     """GitLab-specific implementation using python-gitlab."""
@@ -938,6 +969,7 @@ class GitLabReviewAPI(GitReviewAPI):
         # Get version info for SHAs via the MR versions API
         try:
             import urllib.request as _ur
+
             ver_url = (
                 f"{self.base_url}/api/v4/projects/"
                 f"{self.project_path.replace('/', '%2F')}"
@@ -1014,13 +1046,15 @@ class GitLabReviewAPI(GitReviewAPI):
             else:
                 status = "modified"
 
-            files.append({
-                "path": c.get("new_path", c.get("old_path", "")),
-                "status": status,
-                "additions": max(0, additions),
-                "deletions": max(0, deletions),
-                "changes": max(0, additions) + max(0, deletions),
-            })
+            files.append(
+                {
+                    "path": c.get("new_path", c.get("old_path", "")),
+                    "status": status,
+                    "additions": max(0, additions),
+                    "deletions": max(0, deletions),
+                    "changes": max(0, additions) + max(0, deletions),
+                }
+            )
 
         return files
 
@@ -1056,18 +1090,20 @@ class GitLabReviewAPI(GitReviewAPI):
                 path = position.get("new_path", "")
                 line = position.get("new_line")
 
-            comments.append({
-                "id": note.get("id"),
-                "discussion_id": discussion.id,
-                "path": path,
-                "line": line,
-                "body": note.get("body", ""),
-                "author": author,
-                "resolved": resolved,
-                "resolvable": resolvable,
-                "created_at": note.get("created_at", ""),
-                "url": note.get("web_url", ""),
-            })
+            comments.append(
+                {
+                    "id": note.get("id"),
+                    "discussion_id": discussion.id,
+                    "path": path,
+                    "line": line,
+                    "body": note.get("body", ""),
+                    "author": author,
+                    "resolved": resolved,
+                    "resolvable": resolvable,
+                    "created_at": note.get("created_at", ""),
+                    "url": note.get("web_url", ""),
+                }
+            )
 
         return comments
 
@@ -1086,12 +1122,13 @@ class GitLabReviewAPI(GitReviewAPI):
                         existing.append(f"{path}:{line}")
         return existing
 
-    def post_inline_comment(self, comment: ReviewComment,
-                            signoff: str = "Claude Code docs review") -> Tuple[bool, str]:
+    def post_inline_comment(
+        self, comment: ReviewComment, signoff: str = "Claude Code docs review"
+    ) -> Tuple[bool, str]:
         """Post an inline comment on a specific line using python-gitlab."""
         try:
             pr_info = self.get_pr_info()
-            body = f"{comment.message}\n\n\U0001F916 {signoff}"
+            body = f"{comment.message}\n\n\U0001f916 {signoff}"
 
             position = {
                 "base_sha": pr_info.get("base_sha", ""),
@@ -1151,10 +1188,12 @@ class GitLabReviewAPI(GitReviewAPI):
                     filtered_count += 1
                     continue
 
-                diffs.append({
-                    "filename": filename,
-                    "diff": file_data.get("diff", ""),
-                })
+                diffs.append(
+                    {
+                        "filename": filename,
+                        "diff": file_data.get("diff", ""),
+                    }
+                )
 
             return {
                 "git_type": "gitlab",
@@ -1178,6 +1217,7 @@ class GitLabReviewAPI(GitReviewAPI):
 # Helpers
 # =============================================================================
 
+
 def format_markdown(data: Dict) -> str:
     """
     Format PR/MR data as Markdown.
@@ -1196,8 +1236,7 @@ def format_markdown(data: Dict) -> str:
     output.append(f"# {data['title']}\n")
     output.append(f"**Source:** {data['url']}")
     git_type_label = (
-        "GitHub Pull Request" if data["git_type"] == "github"
-        else "GitLab Merge Request"
+        "GitHub Pull Request" if data["git_type"] == "github" else "GitLab Merge Request"
     )
     output.append(f"**Type:** {git_type_label}\n")
 
@@ -1241,7 +1280,7 @@ def load_comments_file(file_path: str) -> List[Dict]:
         try:
             comments = json.load(f)
         except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON in comments file: {e}")
+            raise ValueError(f"Invalid JSON in comments file: {e}") from e
 
     if not isinstance(comments, list):
         raise ValueError("Comments file must contain a JSON array")
@@ -1252,6 +1291,7 @@ def load_comments_file(file_path: str) -> List[Dict]:
 # =============================================================================
 # CLI subcommand handlers
 # =============================================================================
+
 
 def cmd_read(args) -> int:
     """Handle 'read' subcommand -- the original get_pr_data mode."""
@@ -1284,8 +1324,7 @@ def cmd_info(args) -> int:
             value = info.get(args.field)
             if value is None:
                 print(
-                    f"Error: unknown field '{args.field}'. "
-                    f"Available: {', '.join(info.keys())}",
+                    f"Error: unknown field '{args.field}'. Available: {', '.join(info.keys())}",
                     file=sys.stderr,
                 )
                 return 1
@@ -1320,6 +1359,7 @@ def cmd_files(args) -> int:
 
         if args.filter:
             import fnmatch
+
             files = [f for f in files if fnmatch.fnmatch(f["path"], args.filter)]
 
         if args.json:
@@ -1328,9 +1368,7 @@ def cmd_files(args) -> int:
             print(f"Changed files: {len(files)}")
             print()
             for f in files:
-                status_char = {"added": "A", "modified": "M", "deleted": "D"}.get(
-                    f["status"], "?"
-                )
+                status_char = {"added": "A", "modified": "M", "deleted": "D"}.get(f["status"], "?")
                 print(f"  {status_char} {f['path']} (+{f['additions']}/-{f['deletions']})")
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -1360,10 +1398,7 @@ def cmd_comments(args) -> int:
             print(f"Review comments: {len(comments)}")
             print()
             for c in comments:
-                location = (
-                    f"{c['path']}:{c['line']}" if c["path"] and c["line"]
-                    else "(general)"
-                )
+                location = f"{c['path']}:{c['line']}" if c["path"] and c["line"] else "(general)"
                 resolved_marker = " [RESOLVED]" if c.get("resolved") else ""
                 print(f"  @{c['author']} on {location}{resolved_marker}")
                 body = c["body"][:200] + "..." if len(c["body"]) > 200 else c["body"]
@@ -1519,7 +1554,9 @@ def cmd_detect(args) -> int:
     try:
         result = subprocess.run(
             ["git", "branch", "--show-current"],
-            capture_output=True, text=True, check=True,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         branch = result.stdout.strip()
         if not branch:
@@ -1528,7 +1565,9 @@ def cmd_detect(args) -> int:
 
         result = subprocess.run(
             ["git", "remote", "-v"],
-            capture_output=True, text=True, check=True,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         remotes: Dict[str, str] = {}
         for line in result.stdout.strip().split("\n"):
@@ -1543,21 +1582,27 @@ def cmd_detect(args) -> int:
         load_env_file()
 
         # Try GitHub first via gh CLI
-        for remote_name, remote_url in remotes.items():
+        for _remote_name, remote_url in remotes.items():
             if "github.com" in remote_url:
                 try:
                     result = subprocess.run(
                         ["gh", "pr", "view", "--json", "url", "--jq", ".url"],
-                        capture_output=True, text=True, check=True,
+                        capture_output=True,
+                        text=True,
+                        check=True,
                     )
                     pr_url = result.stdout.strip()
                     if pr_url:
                         if args.json:
-                            print(json.dumps({
-                                "url": pr_url,
-                                "platform": "github",
-                                "branch": branch,
-                            }))
+                            print(
+                                json.dumps(
+                                    {
+                                        "url": pr_url,
+                                        "platform": "github",
+                                        "branch": branch,
+                                    }
+                                )
+                            )
                         else:
                             print(pr_url)
                         return 0
@@ -1583,10 +1628,13 @@ def cmd_detect(args) -> int:
                 f"https://{host}/api/v4/projects/{project_encoded}"
                 f"/merge_requests?source_branch={branch}&state=opened"
             )
-            req = urllib.request.Request(url, headers={
-                "PRIVATE-TOKEN": gitlab_token,
-                "User-Agent": "git-pr-reader",
-            })
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "PRIVATE-TOKEN": gitlab_token,
+                    "User-Agent": "git-pr-reader",
+                },
+            )
 
             try:
                 with urllib.request.urlopen(req) as response:
@@ -1595,12 +1643,16 @@ def cmd_detect(args) -> int:
                         mr_url = mrs[0].get("web_url", "")
                         if mr_url:
                             if args.json:
-                                print(json.dumps({
-                                    "url": mr_url,
-                                    "platform": "gitlab",
-                                    "branch": branch,
-                                    "remote": remote_name,
-                                }))
+                                print(
+                                    json.dumps(
+                                        {
+                                            "url": mr_url,
+                                            "platform": "gitlab",
+                                            "branch": branch,
+                                            "remote": remote_name,
+                                        }
+                                    )
+                                )
                             else:
                                 print(mr_url)
                             return 0
@@ -1615,10 +1667,13 @@ def cmd_detect(args) -> int:
                 if host and project_path:
                     project_encoded = project_path.replace("/", "%2F")
                     lookup_url = f"https://{host}/api/v4/projects/{project_encoded}"
-                    req = urllib.request.Request(lookup_url, headers={
-                        "PRIVATE-TOKEN": gitlab_token,
-                        "User-Agent": "git-pr-reader",
-                    })
+                    req = urllib.request.Request(
+                        lookup_url,
+                        headers={
+                            "PRIVATE-TOKEN": gitlab_token,
+                            "User-Agent": "git-pr-reader",
+                        },
+                    )
 
                     try:
                         with urllib.request.urlopen(req) as response:
@@ -1629,22 +1684,29 @@ def cmd_detect(args) -> int:
                                     f"https://{host}/api/v4/projects/{project_id}"
                                     f"/merge_requests?source_branch={branch}&state=opened"
                                 )
-                                req2 = urllib.request.Request(mr_api_url, headers={
-                                    "PRIVATE-TOKEN": gitlab_token,
-                                    "User-Agent": "git-pr-reader",
-                                })
+                                req2 = urllib.request.Request(
+                                    mr_api_url,
+                                    headers={
+                                        "PRIVATE-TOKEN": gitlab_token,
+                                        "User-Agent": "git-pr-reader",
+                                    },
+                                )
                                 with urllib.request.urlopen(req2) as resp2:
                                     mrs = json.loads(resp2.read().decode())
                                     if mrs and isinstance(mrs, list) and len(mrs) > 0:
                                         mr_url = mrs[0].get("web_url", "")
                                         if mr_url:
                                             if args.json:
-                                                print(json.dumps({
-                                                    "url": mr_url,
-                                                    "platform": "gitlab",
-                                                    "branch": branch,
-                                                    "remote": "upstream",
-                                                }))
+                                                print(
+                                                    json.dumps(
+                                                        {
+                                                            "url": mr_url,
+                                                            "platform": "gitlab",
+                                                            "branch": branch,
+                                                            "remote": "upstream",
+                                                        }
+                                                    )
+                                                )
                                             else:
                                                 print(mr_url)
                                             return 0
@@ -1693,6 +1755,7 @@ def _parse_git_remote(remote_url: str) -> Tuple[Optional[str], Optional[str]]:
 # =============================================================================
 # CLI entry point
 # =============================================================================
+
 
 def main():
     """Main CLI entry point with subcommands."""
@@ -1744,15 +1807,19 @@ Examples:
         help="Read PR/MR data with diffs and optional file filtering",
     )
     read_parser.add_argument(
-        "--url", required=True,
+        "--url",
+        required=True,
         help="GitHub PR or GitLab MR URL",
     )
     read_parser.add_argument(
-        "--no-filter", action="store_true",
+        "--no-filter",
+        action="store_true",
         help="Disable file filtering (include all files)",
     )
     read_parser.add_argument(
-        "--format", choices=["json", "markdown"], default="json",
+        "--format",
+        choices=["json", "markdown"],
+        default="json",
         help="Output format (default: json)",
     )
     read_parser.add_argument(
@@ -1780,7 +1847,8 @@ Examples:
     )
     files_parser.add_argument("pr_url", help="GitHub PR or GitLab MR URL")
     files_parser.add_argument(
-        "--filter", metavar="PATTERN",
+        "--filter",
+        metavar="PATTERN",
         help='Filter files by glob pattern (e.g., "*.adoc")',
     )
     files_parser.add_argument("--json", action="store_true", help="Output as JSON")
@@ -1792,7 +1860,8 @@ Examples:
     )
     comments_parser.add_argument("pr_url", help="GitHub PR or GitLab MR URL")
     comments_parser.add_argument(
-        "--include-resolved", action="store_true",
+        "--include-resolved",
+        action="store_true",
         help="Include resolved comments",
     )
     comments_parser.add_argument("--json", action="store_true", help="Output as JSON")
@@ -1815,11 +1884,13 @@ Examples:
         help="Path to JSON file containing comments",
     )
     post_parser.add_argument(
-        "--dry-run", action="store_true",
+        "--dry-run",
+        action="store_true",
         help="Show what would be posted without actually posting",
     )
     post_parser.add_argument(
-        "--review-type", choices=["technical", "style"],
+        "--review-type",
+        choices=["technical", "style"],
         help="Review type for sign-off text (technical or style)",
     )
 
@@ -1829,11 +1900,13 @@ Examples:
         help="Extract line numbers from PR/MR diff",
     )
     extract_parser.add_argument(
-        "--dump", action="store_true",
+        "--dump",
+        action="store_true",
         help="Dump all added/modified lines with their file line numbers",
     )
     extract_parser.add_argument(
-        "--validate", action="store_true",
+        "--validate",
+        action="store_true",
         help="Validate a comments JSON file against the actual diff",
     )
     extract_parser.add_argument("pr_url", help="GitHub PR or GitLab MR URL")
@@ -1842,7 +1915,8 @@ Examples:
         help="File path (for find/dump) or comments JSON file (for validate)",
     )
     extract_parser.add_argument(
-        "pattern", nargs="?",
+        "pattern",
+        nargs="?",
         help="Pattern to search for (required in find mode)",
     )
 
@@ -1852,7 +1926,8 @@ Examples:
         help="Auto-detect PR/MR URL for the current branch",
     )
     detect_parser.add_argument(
-        "--json", action="store_true",
+        "--json",
+        action="store_true",
         help="Output as JSON with platform and branch info",
     )
 

@@ -20,19 +20,21 @@ import sys
 
 
 def parse_args():
-    p = argparse.ArgumentParser(
-        description="Resolve workflow step dependencies"
-    )
+    p = argparse.ArgumentParser(description="Resolve workflow step dependencies")
     p.add_argument(
-        "--yaml", required=True,
+        "--yaml",
+        required=True,
         help="Path to the workflow YAML file",
     )
     p.add_argument(
-        "--steps", required=True, nargs="+",
+        "--steps",
+        required=True,
+        nargs="+",
         help="Step names to run",
     )
     p.add_argument(
-        "--base-path", default=None,
+        "--base-path",
+        default=None,
         help="Base artifact path — used to check for existing step output",
     )
     return p.parse_args()
@@ -83,10 +85,7 @@ def parse_workflow_yaml(path):
             if key == "inputs":
                 match = re.match(r"\[(.*)\]", value)
                 if match:
-                    current["inputs"] = [
-                        s.strip() for s in match.group(1).split(",")
-                        if s.strip()
-                    ]
+                    current["inputs"] = [s.strip() for s in match.group(1).split(",") if s.strip()]
             elif key in ("skill", "description", "when"):
                 current[key] = value
             elif key == "name" and current.get("name") is None:
@@ -104,10 +103,7 @@ def validate_inputs(steps_list, step_map):
     for step in steps_list:
         for dep in step["inputs"]:
             if dep not in step_map:
-                errors.append(
-                    "Step '%s' references unknown input '%s'"
-                    % (step["name"], dep)
-                )
+                errors.append(f"Step '{step['name']}' references unknown input '{dep}'")
     return errors
 
 
@@ -141,9 +137,7 @@ def check_existing_artifacts(step_names, base_path):
     for name in step_names:
         step_dir = os.path.join(base_path, name)
         try:
-            result[name] = (
-                os.path.isdir(step_dir) and len(os.listdir(step_dir)) > 0
-            )
+            result[name] = os.path.isdir(step_dir) and len(os.listdir(step_dir)) > 0
         except OSError:
             result[name] = False
     return result
@@ -173,7 +167,7 @@ def main():
     if invalid:
         json.dump(
             {
-                "error": "Unknown step(s): %s" % ", ".join(invalid),
+                "error": f"Unknown step(s): {', '.join(invalid)}",
                 "valid_steps": valid_names,
             },
             sys.stdout,
@@ -204,9 +198,7 @@ def main():
             "requested": args.steps,
             "execution_plan": plan,
             "prereq_steps": [p["name"] for p in plan if p["is_prereq"]],
-            "steps_with_artifacts": [
-                n for n, exists in existing.items() if exists
-            ],
+            "steps_with_artifacts": [n for n, exists in existing.items() if exists],
         },
         sys.stdout,
         indent=2,

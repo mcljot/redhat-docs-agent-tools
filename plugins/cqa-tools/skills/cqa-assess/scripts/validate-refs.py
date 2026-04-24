@@ -34,9 +34,9 @@ DEFAULT_SCAN_DIRS = ["assemblies", "modules", "topics", "snippets", "titles"]
 
 # Regex patterns — broad to handle all Red Hat docs conventions
 ID_PATTERN = re.compile(r'\[id="(.+?)"\]')
-XREF_PATTERN = re.compile(r'xref:([^\[]+)\[')
-INCLUDE_PATTERN = re.compile(r'include::([^\[]+)\[')
-IMAGE_BLOCK_PATTERN = re.compile(r'image::([^\[]+)\[')
+XREF_PATTERN = re.compile(r"xref:([^\[]+)\[")
+INCLUDE_PATTERN = re.compile(r"include::([^\[]+)\[")
+IMAGE_BLOCK_PATTERN = re.compile(r"image::([^\[]+)\[")
 
 
 def find_imagesdir(docs_dir):
@@ -47,11 +47,9 @@ def find_imagesdir(docs_dir):
             if fname.endswith("attributes.adoc"):
                 fpath = os.path.join(common_dir, fname)
                 try:
-                    with open(fpath, "r", encoding="utf-8") as f:
+                    with open(fpath, encoding="utf-8") as f:
                         for line in f:
-                            m = re.match(
-                                r'^:imagesdir:\s+(.+)$', line.strip()
-                            )
+                            m = re.match(r"^:imagesdir:\s+(.+)$", line.strip())
                             if m:
                                 return m.group(1).strip()
                 except (OSError, UnicodeDecodeError):
@@ -81,7 +79,7 @@ def read_file_list(file_list_path, docs_dir):
     if file_list_path == "-":
         lines = sys.stdin.read().splitlines()
     else:
-        with open(file_list_path, "r") as f:
+        with open(file_list_path) as f:
             lines = f.read().splitlines()
     files = []
     for line in lines:
@@ -175,14 +173,13 @@ def check_xrefs(xrefs, ids, docs_dir):
                 # Try relative to docs_dir
                 resolved_file = (Path(docs_dir) / file_part).resolve()
             if not resolved_file.is_file():
-                broken.append((filepath, lineno, target,
-                               "referenced file not found"))
+                broken.append((filepath, lineno, target, "referenced file not found"))
                 continue
             # Check anchor exists as an ID (if anchor is provided)
             if anchor and anchor not in ids:
-                broken.append((filepath, lineno, target,
-                               "anchor '{}' not found in {}".format(
-                                   anchor, file_part)))
+                broken.append(
+                    (filepath, lineno, target, f"anchor '{anchor}' not found in {file_part}")
+                )
             continue
 
         # File-based xref without anchor: xref:file.adoc[...]
@@ -192,14 +189,12 @@ def check_xrefs(xrefs, ids, docs_dir):
             if not resolved_file.is_file():
                 resolved_file = (Path(docs_dir) / target).resolve()
             if not resolved_file.is_file():
-                broken.append((filepath, lineno, target,
-                               "referenced file not found"))
+                broken.append((filepath, lineno, target, "referenced file not found"))
             continue
 
         # Standard ID-based xref
         if target not in ids:
-            broken.append((filepath, lineno, target,
-                           "no matching [id] found"))
+            broken.append((filepath, lineno, target, "no matching [id] found"))
 
     return broken
 
@@ -273,8 +268,7 @@ def check_images(files, docs_dir, imagesdir):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Validate AsciiDoc cross-references, includes, "
-                    "and images."
+        description="Validate AsciiDoc cross-references, includes, and images."
     )
     parser.add_argument(
         "docs_dir",
@@ -290,14 +284,13 @@ def main():
         "--file-list",
         default=None,
         help="File with paths to check (one per line, relative to "
-             "docs_dir). Use '-' for stdin. Overrides --scan-dirs.",
+        "docs_dir). Use '-' for stdin. Overrides --scan-dirs.",
     )
     args = parser.parse_args()
 
     docs_dir = os.path.abspath(args.docs_dir)
     if not os.path.isdir(docs_dir):
-        print("Error: {} is not a directory".format(docs_dir),
-              file=sys.stderr)
+        print(f"Error: {docs_dir} is not a directory", file=sys.stderr)
         sys.exit(2)
 
     # Auto-discover imagesdir from attributes.adoc
@@ -308,10 +301,9 @@ def main():
     else:
         adoc_files = collect_adoc_files(docs_dir, args.scan_dirs)
 
-    print("Scanning {} AsciiDoc files in {} ...".format(
-        len(adoc_files), docs_dir))
+    print(f"Scanning {len(adoc_files)} AsciiDoc files in {docs_dir} ...")
     print("  Scan dirs: {}".format(", ".join(args.scan_dirs)))
-    print("  Images dir: {}".format(imagesdir))
+    print(f"  Images dir: {imagesdir}")
     print()
 
     total_errors = 0
@@ -322,11 +314,11 @@ def main():
     broken_xrefs = check_xrefs(xrefs, ids, docs_dir)
 
     if broken_xrefs:
-        print("BROKEN XREFS ({})".format(len(broken_xrefs)))
+        print(f"BROKEN XREFS ({len(broken_xrefs)})")
         print("-" * 60)
         for filepath, lineno, target, reason in sorted(broken_xrefs):
-            print("  {}:{}".format(rel(filepath, docs_dir), lineno))
-            print("    xref:{}[] — {}".format(target, reason))
+            print(f"  {rel(filepath, docs_dir)}:{lineno}")
+            print(f"    xref:{target}[] — {reason}")
         print()
     total_errors += len(broken_xrefs)
 
@@ -334,11 +326,11 @@ def main():
     missing_includes = check_includes(adoc_files, docs_dir)
 
     if missing_includes:
-        print("MISSING INCLUDES ({})".format(len(missing_includes)))
+        print(f"MISSING INCLUDES ({len(missing_includes)})")
         print("-" * 60)
         for filepath, lineno, inc_path in sorted(missing_includes):
-            print("  {}:{}".format(rel(filepath, docs_dir), lineno))
-            print("    include::{} — file not found".format(inc_path))
+            print(f"  {rel(filepath, docs_dir)}:{lineno}")
+            print(f"    include::{inc_path} — file not found")
         print()
     total_errors += len(missing_includes)
 
@@ -346,12 +338,11 @@ def main():
     missing_images = check_images(adoc_files, docs_dir, imagesdir)
 
     if missing_images:
-        print("MISSING IMAGES ({})".format(len(missing_images)))
+        print(f"MISSING IMAGES ({len(missing_images)})")
         print("-" * 60)
         for filepath, lineno, img_path in sorted(missing_images):
-            print("  {}:{}".format(rel(filepath, docs_dir), lineno))
-            print("    image::{} — file not found under {}/".format(
-                img_path, imagesdir))
+            print(f"  {rel(filepath, docs_dir)}:{lineno}")
+            print(f"    image::{img_path} — file not found under {imagesdir}/")
         print()
     total_errors += len(missing_images)
 
@@ -359,28 +350,28 @@ def main():
     duplicates = {k: v for k, v in ids.items() if len(v) > 1}
 
     if duplicates:
-        print("DUPLICATE IDS ({})".format(len(duplicates)))
+        print(f"DUPLICATE IDS ({len(duplicates)})")
         print("-" * 60)
         for id_val, locations in sorted(duplicates.items()):
-            print('  [id="{}"] declared in:'.format(id_val))
+            print(f'  [id="{id_val}"] declared in:')
             for filepath, lineno in locations:
-                print("    {}:{}".format(rel(filepath, docs_dir), lineno))
+                print(f"    {rel(filepath, docs_dir)}:{lineno}")
         print()
     total_errors += len(duplicates)
 
     # --- Summary ---
     print("=" * 60)
-    print("  Files scanned:      {}".format(len(adoc_files)))
-    print("  IDs declared:       {}".format(len(ids)))
-    print("  Xrefs checked:      {}".format(len(xrefs)))
-    print("  Broken xrefs:       {}".format(len(broken_xrefs)))
-    print("  Missing includes:   {}".format(len(missing_includes)))
-    print("  Missing images:     {}".format(len(missing_images)))
-    print("  Duplicate IDs:      {}".format(len(duplicates)))
+    print(f"  Files scanned:      {len(adoc_files)}")
+    print(f"  IDs declared:       {len(ids)}")
+    print(f"  Xrefs checked:      {len(xrefs)}")
+    print(f"  Broken xrefs:       {len(broken_xrefs)}")
+    print(f"  Missing includes:   {len(missing_includes)}")
+    print(f"  Missing images:     {len(missing_images)}")
+    print(f"  Duplicate IDs:      {len(duplicates)}")
     print("=" * 60)
 
     if total_errors > 0:
-        print("\n  FAILED — {} error(s) found\n".format(total_errors))
+        print(f"\n  FAILED — {total_errors} error(s) found\n")
         return 1
     else:
         print("\n  PASSED — all references valid\n")

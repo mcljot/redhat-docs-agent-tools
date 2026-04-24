@@ -73,28 +73,28 @@ def check_docinfo(title_dir, title_name):
         return False, False, None, docinfo_path
 
     try:
-        with open(docinfo_path, "r", encoding="utf-8") as f:
+        with open(docinfo_path, encoding="utf-8") as f:
             content = f.read()
-    except (UnicodeDecodeError, IOError):
+    except (OSError, UnicodeDecodeError):
         return True, False, None, docinfo_path
 
     # Look for copyright year patterns
     # Common patterns: <year>2024</year>, Copyright 2024, (c) 2024
-    year_match = re.search(r'<year>(\d{4})</year>', content)
+    year_match = re.search(r"<year>(\d{4})</year>", content)
     if year_match:
         return True, True, int(year_match.group(1)), docinfo_path
 
     # Year range with copyright context: Copyright 2020-2024 / © 2020–2024
     # Check ranges BEFORE single-year to avoid matching only the first year.
     year_match = re.search(
-        r'(?:Copyright|©|\(c\)|All rights reserved)[^\n]{0,80}?(\d{4})\s*[-\u2013]\s*(\d{4})',
+        r"(?:Copyright|©|\(c\)|All rights reserved)[^\n]{0,80}?(\d{4})\s*[-\u2013]\s*(\d{4})",
         content,
         re.IGNORECASE,
     )
     if year_match:
         return True, True, int(year_match.group(2)), docinfo_path
 
-    year_match = re.search(r'(?:Copyright|©|\(c\))\s*(\d{4})', content, re.IGNORECASE)
+    year_match = re.search(r"(?:Copyright|©|\(c\))\s*(\d{4})", content, re.IGNORECASE)
     if year_match:
         return True, True, int(year_match.group(1)), docinfo_path
 
@@ -102,9 +102,7 @@ def check_docinfo(title_dir, title_name):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Check copyright and legal notice compliance."
-    )
+    parser = argparse.ArgumentParser(description="Check copyright and legal notice compliance.")
     parser.add_argument(
         "docs_dir",
         help="Path to the documentation directory (or repository root)",
@@ -113,8 +111,8 @@ def main():
         "--repo-root",
         default=None,
         help="Repository root where LICENSE file should be found. "
-             "If not specified, auto-detects by walking up from docs_dir "
-             "looking for a .git directory. Falls back to docs_dir.",
+        "If not specified, auto-detects by walking up from docs_dir "
+        "looking for a .git directory. Falls back to docs_dir.",
     )
     args = parser.parse_args()
 
@@ -178,7 +176,9 @@ def main():
                 print(f"   {title_name}/: docinfo.xml found but no copyright year detected")
                 issues.append(f"No copyright year in {rel_path}")
             elif year < current_year:
-                print(f"   {title_name}/: docinfo.xml found, copyright year {year} (current: {current_year})")
+                print(
+                    f"   {title_name}/: docinfo.xml found, copyright year {year} (current: {current_year})"
+                )
                 # Outdated year is a warning, not a hard failure
                 # The year might be correct if the guide was last published that year
                 print(f"   NOTE: Copyright year may need updating to {current_year}")

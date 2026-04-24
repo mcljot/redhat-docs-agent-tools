@@ -1,0 +1,40 @@
+name: Sync .claude symlinks
+on:
+  push:
+    branches:
+      - acp
+  pull_request:
+    branches:
+      - acp
+
+jobs:
+  check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check symlinks are in sync
+        run: ./scripts/sync-claude-symlinks.sh --check
+
+  sync:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: acp
+
+      - name: Sync symlinks
+        run: ./scripts/sync-claude-symlinks.sh
+
+      - name: Commit if changed
+        run: |
+          test -z "$(git status --porcelain --untracked-files=all .claude/)" && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .claude/skills/ .claude/agents/ .claude/reference/
+          git commit -m "chore: sync .claude symlinks with plugin directories"
+          git push

@@ -3,6 +3,7 @@
 
 Usage: python3 extract-description.py <plan_file> <output_file> <public|private>
 """
+
 import re
 import sys
 from datetime import date

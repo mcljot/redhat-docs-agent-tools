@@ -25,13 +25,13 @@ import sys
 
 # Patterns that indicate TP/DP features
 TP_PATTERNS = [
-    re.compile(r'\bTechnology Preview\b', re.IGNORECASE),
-    re.compile(r'\bTech Preview\b', re.IGNORECASE),
+    re.compile(r"\bTechnology Preview\b", re.IGNORECASE),
+    re.compile(r"\bTech Preview\b", re.IGNORECASE),
 ]
 
 DP_PATTERNS = [
-    re.compile(r'\bDeveloper Preview\b', re.IGNORECASE),
-    re.compile(r'\bDev Preview\b', re.IGNORECASE),
+    re.compile(r"\bDeveloper Preview\b", re.IGNORECASE),
+    re.compile(r"\bDev Preview\b", re.IGNORECASE),
 ]
 
 # Expected snippet filenames
@@ -64,8 +64,8 @@ SKIP_DIRS = {"legacy-content-do-not-use"}
 # Contexts where TP/DP labels are acceptable without full disclaimer
 # (e.g., maturity tables with "Technology Preview" as cell value)
 TABLE_CONTEXT_PATTERNS = [
-    re.compile(r'^\|'),  # Table row
-    re.compile(r'^\.Supported'),  # Table caption
+    re.compile(r"^\|"),  # Table row
+    re.compile(r"^\.Supported"),  # Table caption
 ]
 
 
@@ -93,7 +93,7 @@ def read_file_list(file_list_path, docs_dir):
     if file_list_path == "-":
         lines = sys.stdin.read().splitlines()
     else:
-        with open(file_list_path, "r") as f:
+        with open(file_list_path) as f:
             lines = f.read().splitlines()
     files = []
     for line in lines:
@@ -142,7 +142,7 @@ def is_table_context(line):
 
 def is_inside_link_text(line, match_start, match_end):
     """Check if a match position falls inside link:...[text] brackets."""
-    for m in re.finditer(r'link:[^\[]*\[([^\]]*)\]', line):
+    for m in re.finditer(r"link:[^\[]*\[([^\]]*)\]", line):
         bracket_start = m.start(1)
         bracket_end = m.end(1)
         if match_start >= bracket_start and match_end <= bracket_end:
@@ -159,9 +159,9 @@ def check_snippet_exists(docs_dir, snippet_name):
 def check_snippet_content(snippet_path, required_phrases):
     """Verify a snippet contains the required disclaimer text."""
     try:
-        with open(snippet_path, "r", encoding="utf-8") as f:
+        with open(snippet_path, encoding="utf-8") as f:
             content = f.read()
-    except (UnicodeDecodeError, IOError):
+    except (OSError, UnicodeDecodeError):
         return False, ["Could not read file"]
 
     missing = []
@@ -181,14 +181,14 @@ def file_includes_snippet(filepath, snippet_name):
     does not count as including the disclaimer.
     """
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             content = f.read()
-    except (UnicodeDecodeError, IOError):
+    except (OSError, UnicodeDecodeError):
         return False
 
     # Check for an actual include:: directive referencing the snippet
     include_pattern = re.compile(
-        r'^include::.*' + re.escape(snippet_name) + r'\b',
+        r"^include::.*" + re.escape(snippet_name) + r"\b",
         re.MULTILINE,
     )
     return bool(include_pattern.search(content))
@@ -206,9 +206,9 @@ def find_tp_dp_mentions(filepath, rel_path):
     """
     findings = []
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             content = f.read()
-    except (UnicodeDecodeError, IOError):
+    except (OSError, UnicodeDecodeError):
         return findings
 
     lines = content.splitlines()
@@ -234,14 +234,16 @@ def find_tp_dp_mentions(filepath, rel_path):
                 cls = classification
                 if cls == "PROSE" and is_inside_link_text(line, m.start(), m.end()):
                     cls = "LINK_TEXT"
-                findings.append({
-                    "file": rel_path,
-                    "line_num": line_idx + 1,
-                    "line": line.rstrip(),
-                    "match": m.group(),
-                    "type": "TP",
-                    "classification": cls,
-                })
+                findings.append(
+                    {
+                        "file": rel_path,
+                        "line_num": line_idx + 1,
+                        "line": line.rstrip(),
+                        "match": m.group(),
+                        "type": "TP",
+                        "classification": cls,
+                    }
+                )
 
         # Check DP patterns
         for pattern in DP_PATTERNS:
@@ -249,14 +251,16 @@ def find_tp_dp_mentions(filepath, rel_path):
                 cls = classification
                 if cls == "PROSE" and is_inside_link_text(line, m.start(), m.end()):
                     cls = "LINK_TEXT"
-                findings.append({
-                    "file": rel_path,
-                    "line_num": line_idx + 1,
-                    "line": line.rstrip(),
-                    "match": m.group(),
-                    "type": "DP",
-                    "classification": cls,
-                })
+                findings.append(
+                    {
+                        "file": rel_path,
+                        "line_num": line_idx + 1,
+                        "line": line.rstrip(),
+                        "match": m.group(),
+                        "type": "DP",
+                        "classification": cls,
+                    }
+                )
 
     return findings
 
@@ -367,10 +371,10 @@ def main():
             has_snippet = file_includes_snippet(filepath, TP_SNIPPET)
             # Also check for inline [IMPORTANT] blocks with TP text
             try:
-                with open(filepath, "r", encoding="utf-8") as f:
+                with open(filepath, encoding="utf-8") as f:
                     content = f.read()
                 has_inline = "Technology Preview feature only" in content
-            except (UnicodeDecodeError, IOError):
+            except (OSError, UnicodeDecodeError):
                 has_inline = False
 
             if has_snippet:
@@ -394,10 +398,10 @@ def main():
             else:
                 has_snippet = False
             try:
-                with open(filepath, "r", encoding="utf-8") as f:
+                with open(filepath, encoding="utf-8") as f:
                     content = f.read()
                 has_inline = "Developer Preview" in content and "not supported" in content.lower()
-            except (UnicodeDecodeError, IOError):
+            except (OSError, UnicodeDecodeError):
                 has_inline = False
 
             if has_snippet:
@@ -438,7 +442,7 @@ def main():
     print(f"  Files scanned: {len(files)}")
 
     if issues:
-        print(f"\nIssues:")
+        print("\nIssues:")
         for issue in issues:
             print(f"  - {issue}")
         print(f"\nResult: FAIL ({len(issues)} issues)")

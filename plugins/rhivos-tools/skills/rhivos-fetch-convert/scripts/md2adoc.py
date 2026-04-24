@@ -78,9 +78,7 @@ def convert_admonitions(lines: list[str]) -> list[str]:
     }
 
     while i < len(lines):
-        match = re.match(
-            r'^(!{3}|\?{3})\s+([\w]+)(?:\s+"([^"]*)")?\s*$', lines[i]
-        )
+        match = re.match(r'^(!{3}|\?{3})\s+([\w]+)(?:\s+"([^"]*)")?\s*$', lines[i])
         if match:
             admon_type = match.group(2).lower()
             title = match.group(3)
@@ -88,9 +86,7 @@ def convert_admonitions(lines: list[str]) -> list[str]:
 
             inner = []
             i += 1
-            while i < len(lines) and (
-                lines[i].startswith("    ") or lines[i].strip() == ""
-            ):
+            while i < len(lines) and (lines[i].startswith("    ") or lines[i].strip() == ""):
                 if lines[i].strip() == "":
                     inner.append("")
                 else:
@@ -136,9 +132,7 @@ def convert_tabbed_content(lines: list[str]) -> list[str]:
             inner = []
 
             i += 1
-            while i < len(lines) and (
-                lines[i].startswith("    ") or lines[i].strip() == ""
-            ):
+            while i < len(lines) and (lines[i].startswith("    ") or lines[i].strip() == ""):
                 if lines[i].strip() == "":
                     inner.append("")
                 else:
@@ -237,17 +231,25 @@ def convert_snippets(lines: list[str], base_path: Path | None = None) -> list[st
         base_root = base_path.resolve()
         resolved = (base_path / file_ref).resolve()
         if not resolved.is_relative_to(base_root):
-            _emit_snippet(result, [
-                f"// WARNING: snippet path escapes base path: {file_ref}",
-                f"include::{file_ref}[]",
-            ], indent)
+            _emit_snippet(
+                result,
+                [
+                    f"// WARNING: snippet path escapes base path: {file_ref}",
+                    f"include::{file_ref}[]",
+                ],
+                indent,
+            )
             continue
 
         if not resolved.is_file():
-            _emit_snippet(result, [
-                f"// WARNING: snippet source not found: {file_ref}",
-                f"include::{file_ref}[]",
-            ], indent)
+            _emit_snippet(
+                result,
+                [
+                    f"// WARNING: snippet source not found: {file_ref}",
+                    f"include::{file_ref}[]",
+                ],
+                indent,
+            )
             continue
 
         content_lines = _read_snippet_lines(resolved, start, end)
@@ -280,10 +282,7 @@ def convert_figure_captions(lines: list[str]) -> list[str]:
         if img_match:
             alt = img_match.group(1)
             src = img_match.group(2)
-            if (
-                i + 1 < len(lines)
-                and lines[i + 1].strip() == "/// figure-caption"
-            ):
+            if i + 1 < len(lines) and lines[i + 1].strip() == "/// figure-caption":
                 caption_lines = []
                 i += 2
                 while i < len(lines) and lines[i].strip() != "///":
@@ -349,7 +348,7 @@ def convert_code_block_titles(lines: list[str]) -> list[str]:
             while i < len(lines) and not close_re.match(lines[i]):
                 line = lines[i]
                 if indent and line.startswith(indent):
-                    line = line[len(indent):]
+                    line = line[len(indent) :]
                 block.append(line)
                 i += 1
             block.append("----")

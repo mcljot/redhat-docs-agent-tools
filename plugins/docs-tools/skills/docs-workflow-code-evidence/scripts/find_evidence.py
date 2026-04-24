@@ -44,24 +44,22 @@ def _run_single(retrieve_evidence, repo, query, limit, filter_paths, reindex):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Retrieve code evidence from a repository"
-    )
+    parser = argparse.ArgumentParser(description="Retrieve code evidence from a repository")
     parser.add_argument("--repo", required=True, help="Path to the repository")
     parser.add_argument("--query", help="Natural language search query (single mode)")
     parser.add_argument(
         "--queries-file",
         help="Path to JSON file with batch queries (see docstring for schema)",
     )
-    parser.add_argument(
-        "--limit", type=int, default=5, help="Max results per query (default: 5)"
-    )
+    parser.add_argument("--limit", type=int, default=5, help="Max results per query (default: 5)")
     parser.add_argument(
         "--filter-paths",
         help="Comma-separated directory prefixes to scope search (single mode)",
     )
     parser.add_argument(
-        "--reindex", action="store_true", help="Force re-indexing (applied to first query only in batch mode)"
+        "--reindex",
+        action="store_true",
+        help="Force re-indexing (applied to first query only in batch mode)",
     )
     args = parser.parse_args()
 
@@ -104,8 +102,12 @@ def main():
     if args.query:
         filter_paths = _parse_filter_paths(args.filter_paths)
         result = _run_single(
-            retrieve_evidence, args.repo, args.query,
-            args.limit, filter_paths, args.reindex,
+            retrieve_evidence,
+            args.repo,
+            args.query,
+            args.limit,
+            filter_paths,
+            args.reindex,
         )
         json.dump(result, sys.stdout, indent=2, default=str)
         print()
@@ -122,8 +124,12 @@ def main():
         reindex = args.reindex and i == 0
 
         result = _run_single(
-            retrieve_evidence, args.repo, query,
-            limit, filter_paths, reindex,
+            retrieve_evidence,
+            args.repo,
+            query,
+            limit,
+            filter_paths,
+            reindex,
         )
         results.append({"query": query, "filter_paths": filter_paths, "result": result})
 

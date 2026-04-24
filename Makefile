@@ -1,4 +1,4 @@
-.PHONY: help serve build update clean
+.PHONY: help serve build update clean lint format-check
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -15,3 +15,9 @@ update: ## Regenerate plugin docs (PLUGINS.md, docs/plugins/*, docs/install/*)
 
 clean: ## Remove build artifacts
 	rm -rf site/ docs/plugins.md docs/plugins/ docs/install/
+
+lint: ## Run ruff linter on plugins
+	ruff check plugins/
+
+format-check: ## Check ruff formatting on plugins
+	ruff format --check plugins/

@@ -71,45 +71,107 @@ ENV_VAR_PATTERNS = {
 }
 
 ENV_VAR_FILE_EXTENSIONS = {
-    "python": ["*.py"], "go": ["*.go"], "javascript": ["*.js", "*.ts"],
-    "java": ["*.java"], "ruby": ["*.rb"], "rust": ["*.rs"],
+    "python": ["*.py"],
+    "go": ["*.go"],
+    "javascript": ["*.js", "*.ts"],
+    "java": ["*.java"],
+    "ruby": ["*.rb"],
+    "rust": ["*.rs"],
 }
 
 CLI_FRAMEWORK_PATTERNS = {
-    "argparse": {"pattern": re.compile(r"""add_argument\(['"]-{1,2}([a-zA-Z0-9_-]+)"""), "globs": ["**/*.py"]},
-    "click": {"pattern": re.compile(r"""@click\.(?:option|argument)\(['"]-{1,2}([a-zA-Z0-9_-]+)"""), "globs": ["**/*.py"]},
-    "cobra": {"pattern": re.compile(r"""Flags\(\)\.(?:String|Bool|Int|Duration)\w*\(['"]([a-zA-Z0-9_-]+)"""), "globs": ["**/*.go"]},
+    "argparse": {
+        "pattern": re.compile(r"""add_argument\(['"]-{1,2}([a-zA-Z0-9_-]+)"""),
+        "globs": ["**/*.py"],
+    },
+    "click": {
+        "pattern": re.compile(r"""@click\.(?:option|argument)\(['"]-{1,2}([a-zA-Z0-9_-]+)"""),
+        "globs": ["**/*.py"],
+    },
+    "cobra": {
+        "pattern": re.compile(
+            r"""Flags\(\)\.(?:String|Bool|Int|Duration)\w*\(['"]([a-zA-Z0-9_-]+)"""
+        ),
+        "globs": ["**/*.go"],
+    },
     "clap": {"pattern": re.compile(r"""Arg::new\(['"]([a-zA-Z0-9_-]+)"""), "globs": ["**/*.rs"]},
-    "commander": {"pattern": re.compile(r"""\.option\(['"]-{1,2}([a-zA-Z0-9_-]+)"""), "globs": ["**/*.js", "**/*.ts"]},
+    "commander": {
+        "pattern": re.compile(r"""\.option\(['"]-{1,2}([a-zA-Z0-9_-]+)"""),
+        "globs": ["**/*.js", "**/*.ts"],
+    },
 }
 
 API_ROUTE_PATTERNS = {
-    "flask": {"pattern": re.compile(r"""@\w+\.route\(['"]([^'"]+)['"](?:.*methods=\[['"](\w+))"""), "globs": ["**/*.py"]},
-    "fastapi": {"pattern": re.compile(r"""@\w+\.(get|post|put|patch|delete)\(['"]([^'"]+)['"]"""), "globs": ["**/*.py"]},
-    "express": {"pattern": re.compile(r"""(?:app|router)\.(get|post|put|patch|delete)\(['"]([^'"]+)['"]"""), "globs": ["**/*.js", "**/*.ts"]},
-    "go_net_http": {"pattern": re.compile(r"""(?:HandleFunc|Handle)\(['"]([^'"]+)['"]"""), "globs": ["**/*.go"]},
-    "gin": {"pattern": re.compile(r"""\w+\.(GET|POST|PUT|PATCH|DELETE)\(['"]([^'"]+)['"]"""), "globs": ["**/*.go"]},
-    "spring": {"pattern": re.compile(r"""@(Get|Post|Put|Patch|Delete)Mapping\(['"]([^'"]+)['"]"""), "globs": ["**/*.java"]},
+    "flask": {
+        "pattern": re.compile(r"""@\w+\.route\(['"]([^'"]+)['"](?:.*methods=\[['"](\w+))"""),
+        "globs": ["**/*.py"],
+    },
+    "fastapi": {
+        "pattern": re.compile(r"""@\w+\.(get|post|put|patch|delete)\(['"]([^'"]+)['"]"""),
+        "globs": ["**/*.py"],
+    },
+    "express": {
+        "pattern": re.compile(r"""(?:app|router)\.(get|post|put|patch|delete)\(['"]([^'"]+)['"]"""),
+        "globs": ["**/*.js", "**/*.ts"],
+    },
+    "go_net_http": {
+        "pattern": re.compile(r"""(?:HandleFunc|Handle)\(['"]([^'"]+)['"]"""),
+        "globs": ["**/*.go"],
+    },
+    "gin": {
+        "pattern": re.compile(r"""\w+\.(GET|POST|PUT|PATCH|DELETE)\(['"]([^'"]+)['"]"""),
+        "globs": ["**/*.go"],
+    },
+    "spring": {
+        "pattern": re.compile(r"""@(Get|Post|Put|Patch|Delete)Mapping\(['"]([^'"]+)['"]"""),
+        "globs": ["**/*.java"],
+    },
 }
 
 CONFIG_ACCESS_PATTERNS = {
-    "viper": {"pattern": re.compile(r"""viper\.(?:Get\w*)\(['"]([a-zA-Z0-9._-]+)['"]"""), "globs": ["**/*.go"]},
-    "python_config": {"pattern": re.compile(r"""config\.get\(['"]([a-zA-Z0-9._-]+)['"]"""), "globs": ["**/*.py"]},
-    "python_settings": {"pattern": re.compile(r"""settings\.([A-Z_][A-Z0-9_]*)"""), "globs": ["**/*.py"]},
+    "viper": {
+        "pattern": re.compile(r"""viper\.(?:Get\w*)\(['"]([a-zA-Z0-9._-]+)['"]"""),
+        "globs": ["**/*.go"],
+    },
+    "python_config": {
+        "pattern": re.compile(r"""config\.get\(['"]([a-zA-Z0-9._-]+)['"]"""),
+        "globs": ["**/*.py"],
+    },
+    "python_settings": {
+        "pattern": re.compile(r"""settings\.([A-Z_][A-Z0-9_]*)"""),
+        "globs": ["**/*.py"],
+    },
 }
 
 DATA_MODEL_PATTERNS = {
-    "sqlalchemy": {"pattern": re.compile(r"""class\s+(\w+)\(\s*(?:db\.Model|Base)\s*\)"""), "globs": ["**/*.py"]},
+    "sqlalchemy": {
+        "pattern": re.compile(r"""class\s+(\w+)\(\s*(?:db\.Model|Base)\s*\)"""),
+        "globs": ["**/*.py"],
+    },
     "django": {"pattern": re.compile(r"""class\s+(\w+)\(models\.Model\)"""), "globs": ["**/*.py"]},
     "go_struct": {"pattern": re.compile(r"""type\s+(\w+)\s+struct\s*\{"""), "globs": ["**/*.go"]},
 }
 
 # Directories to skip during discovery scans
-_SKIP_DIRS = frozenset({
-    ".git", ".venv", "venv", "env", "node_modules", "vendor", "__pycache__",
-    ".tox", ".mypy_cache", ".pytest_cache", ".eggs", "site-packages",
-    "dist", "build", ".bundle",
-})
+_SKIP_DIRS = frozenset(
+    {
+        ".git",
+        ".venv",
+        "venv",
+        "env",
+        "node_modules",
+        "vendor",
+        "__pycache__",
+        ".tox",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".eggs",
+        "site-packages",
+        "dist",
+        "build",
+        ".bundle",
+    }
+)
 
 # Regex patterns for AsciiDoc / Markdown parsing
 RE_SOURCE_BLOCK = re.compile(r"^\[source(?:,\s*([a-z0-9+\-_]+))?(?:,\s*(.+))?\]\s*$", re.I)
@@ -224,9 +286,11 @@ class Extractor:
                     in_code = True
                     code_delim = delim
                     block = {
-                        "file": fpath, "line": line_num,
+                        "file": fpath,
+                        "line": line_num,
                         "content_start_line": line_num + (2 if skip_next else 1),
-                        "language": lang, "content": [],
+                        "language": lang,
+                        "content": [],
                         "context": block_title or heading,
                     }
                     continue
@@ -241,9 +305,11 @@ class Extractor:
                     in_code = True
                     code_delim = delim
                     block = {
-                        "file": fpath, "line": line_num,
+                        "file": fpath,
+                        "line": line_num,
                         "content_start_line": line_num + (2 if skip_next else 1),
-                        "language": lang, "content": [],
+                        "language": lang,
+                        "content": [],
                         "context": block_title or heading,
                     }
                     continue
@@ -254,9 +320,11 @@ class Extractor:
                     in_code = True
                     code_delim = "```"
                     block = {
-                        "file": fpath, "line": line_num,
+                        "file": fpath,
+                        "line": line_num,
                         "content_start_line": line_num + 1,
-                        "language": lang, "content": [],
+                        "language": lang,
+                        "content": [],
                         "context": block_title or heading,
                     }
                     continue
@@ -265,9 +333,11 @@ class Extractor:
                     in_code = True
                     code_delim = line
                     block = {
-                        "file": fpath, "line": line_num,
+                        "file": fpath,
+                        "line": line_num,
                         "content_start_line": line_num + 1,
-                        "language": "text", "content": [],
+                        "language": "text",
+                        "content": [],
                         "context": block_title or heading,
                     }
                     continue
@@ -279,7 +349,12 @@ class Extractor:
                 elif code_delim and line == code_delim:
                     is_end = True
                 elif code_delim is None:
-                    if not line.strip() or RE_SOURCE_BLOCK.match(line) or RE_LISTING_BLOCK.match(line) or RE_HEADING_ADOC.match(line):
+                    if (
+                        not line.strip()
+                        or RE_SOURCE_BLOCK.match(line)
+                        or RE_LISTING_BLOCK.match(line)
+                        or RE_HEADING_ADOC.match(line)
+                    ):
                         is_end = True
 
                 if is_end and block is not None:
@@ -302,27 +377,38 @@ class Extractor:
             # Commands ($ command)
             m = RE_COMMAND_LINE.match(line)
             if m:
-                self.refs["commands"].append({
-                    "file": fpath, "line": line_num,
-                    "command": m.group(1).strip(),
-                    "context": block_title or heading,
-                })
+                self.refs["commands"].append(
+                    {
+                        "file": fpath,
+                        "line": line_num,
+                        "command": m.group(1).strip(),
+                        "context": block_title or heading,
+                    }
+                )
 
             # Inline code paths
             for m in RE_INLINE_CODE_PATH.finditer(line):
-                self.refs["file_paths"].append({
-                    "file": fpath, "line": line_num,
-                    "path": m.group(1), "context": heading,
-                })
+                self.refs["file_paths"].append(
+                    {
+                        "file": fpath,
+                        "line": line_num,
+                        "path": m.group(1),
+                        "context": heading,
+                    }
+                )
 
             # API endpoints
             m = RE_API_ENDPOINT.search(line)
             if m:
-                self.refs["apis"].append({
-                    "file": fpath, "line": line_num,
-                    "type": "endpoint", "name": m.group(1),
-                    "context": heading,
-                })
+                self.refs["apis"].append(
+                    {
+                        "file": fpath,
+                        "line": line_num,
+                        "type": "endpoint",
+                        "name": m.group(1),
+                        "context": heading,
+                    }
+                )
 
         # Handle unclosed block
         if in_code and block:
@@ -343,32 +429,46 @@ class Extractor:
             m = RE_COMMAND_LINE_CODE.match(cline.strip())
             if m:
                 prompt = "root" if cline.lstrip().startswith("#") else "user"
-                self.refs["commands"].append({
-                    "file": fpath, "line": content_start + offset,
-                    "command": m.group(1).strip(),
-                    "prompt_type": prompt, "context": ctx,
-                })
+                self.refs["commands"].append(
+                    {
+                        "file": fpath,
+                        "line": content_start + offset,
+                        "command": m.group(1).strip(),
+                        "prompt_type": prompt,
+                        "context": ctx,
+                    }
+                )
 
         # Function calls
         for m in RE_FUNCTION_CALL.finditer(content):
             name = m.group(1)
             if len(name) < 3 or name.lower() in SKIP_FUNCTIONS:
                 continue
-            hit_offset = content[:m.start()].count("\n")
-            self.refs["apis"].append({
-                "file": fpath, "line": content_start + hit_offset,
-                "type": "function", "name": name,
-                "language": lang, "context": ctx,
-            })
+            hit_offset = content[: m.start()].count("\n")
+            self.refs["apis"].append(
+                {
+                    "file": fpath,
+                    "line": content_start + hit_offset,
+                    "type": "function",
+                    "name": name,
+                    "language": lang,
+                    "context": ctx,
+                }
+            )
 
         # Class definitions
         for m in RE_CLASS_DEF.finditer(content):
-            hit_offset = content[:m.start()].count("\n")
-            self.refs["apis"].append({
-                "file": fpath, "line": content_start + hit_offset,
-                "type": "class", "name": m.group(1),
-                "language": lang, "context": ctx,
-            })
+            hit_offset = content[: m.start()].count("\n")
+            self.refs["apis"].append(
+                {
+                    "file": fpath,
+                    "line": content_start + hit_offset,
+                    "type": "class",
+                    "name": m.group(1),
+                    "language": lang,
+                    "context": ctx,
+                }
+            )
 
         # Config keys from YAML/JSON/TOML
         if lang.lower() in ("yaml", "yml", "json", "toml"):
@@ -378,18 +478,27 @@ class Extractor:
         keys = []
         fl = fmt.lower()
         if fl in ("yaml", "yml"):
-            keys = [m.group(1) for m in re.finditer(r"^\s*([a-zA-Z_][a-zA-Z0-9_-]*):", content, re.M)]
+            keys = [
+                m.group(1) for m in re.finditer(r"^\s*([a-zA-Z_][a-zA-Z0-9_-]*):", content, re.M)
+            ]
         elif fl == "json":
             keys = [m.group(1) for m in re.finditer(r'"([a-zA-Z_][a-zA-Z0-9_-]*)"\s*:', content)]
         elif fl == "toml":
-            keys = [m.group(1) for m in re.finditer(r"^([a-zA-Z_][a-zA-Z0-9_-]*)\s*=", content, re.M)]
+            keys = [
+                m.group(1) for m in re.finditer(r"^([a-zA-Z_][a-zA-Z0-9_-]*)\s*=", content, re.M)
+            ]
 
         keys = list(dict.fromkeys(keys))  # dedupe preserving order
         if keys:
-            self.refs["configs"].append({
-                "file": fpath, "line": line_num,
-                "format": fmt, "keys": keys, "context": ctx,
-            })
+            self.refs["configs"].append(
+                {
+                    "file": fpath,
+                    "line": line_num,
+                    "format": fmt,
+                    "keys": keys,
+                    "context": ctx,
+                }
+            )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -415,7 +524,10 @@ def git_log_search(term: str, repo_path: str, max_results: int = 5) -> list[str]
     try:
         result = subprocess.run(
             ["git", "log", "--all", "--oneline", f"--grep={term}", f"-{max_results}"],
-            capture_output=True, text=True, cwd=repo_path, timeout=30,
+            capture_output=True,
+            text=True,
+            cwd=repo_path,
+            timeout=30,
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip().splitlines()
@@ -442,9 +554,15 @@ def discover_cli_definitions(binary: str, repo_paths: list[str]) -> dict | None:
     for rp in repo_paths:
         repo = Path(rp)
         candidates = []
-        for pat in [f"{binary}.py", f"{binary}/**/*.py",
-                    f"cmd/{binary}/*.go", "cli.py", "main.py",
-                    "cli/*.py", "__main__.py"]:
+        for pat in [
+            f"{binary}.py",
+            f"{binary}/**/*.py",
+            f"cmd/{binary}/*.go",
+            "cli.py",
+            "main.py",
+            "cli/*.py",
+            "__main__.py",
+        ]:
             candidates.extend(repo.rglob(pat))
 
         for cand in candidates[:10]:
@@ -467,11 +585,20 @@ def discover_schemas(repo_paths: list[str]) -> list[dict]:
     """Find schema/config files in repos."""
     schemas = []
     schema_patterns = [
-        "*.schema.json", "schema.json", "config.schema.*",
-        "*-schema.yaml", "*-schema.yml",
-        "values.yaml", "default.yaml", "defaults.yaml",
-        "config.yaml", "config.yml", "config.json",
-        "example.yaml", "example.yml", "example.json",
+        "*.schema.json",
+        "schema.json",
+        "config.schema.*",
+        "*-schema.yaml",
+        "*-schema.yml",
+        "values.yaml",
+        "default.yaml",
+        "defaults.yaml",
+        "config.yaml",
+        "config.yml",
+        "config.json",
+        "example.yaml",
+        "example.yml",
+        "example.json",
     ]
     for rp in repo_paths:
         repo = Path(rp)
@@ -490,11 +617,13 @@ def discover_schemas(repo_paths: list[str]) -> list[dict]:
                             keys = re.findall(r"^([a-zA-Z_][a-zA-Z0-9_-]*)\s*=", content, re.M)
                         keys = list(dict.fromkeys(keys))
                         if keys:
-                            schemas.append({
-                                "file": str(match),
-                                "format": suffix.lstrip("."),
-                                "keys": keys,
-                            })
+                            schemas.append(
+                                {
+                                    "file": str(match),
+                                    "format": suffix.lstrip("."),
+                                    "keys": keys,
+                                }
+                            )
                     except Exception:
                         continue
     return schemas
@@ -576,7 +705,11 @@ def search_code_blocks(code_blocks: list[dict], repo_paths: list[str]) -> list[d
     results = []
     for block in code_blocks:
         content = block.get("content", "")
-        lines = [l.strip() for l in content.splitlines() if l.strip() and not l.strip().startswith("#")]
+        lines = [
+            ln.strip()
+            for ln in content.splitlines()
+            if ln.strip() and not ln.strip().startswith("#")
+        ]
         if not lines:
             results.append({**block, "found": False, "matches": []})
             continue
@@ -589,11 +722,25 @@ def search_code_blocks(code_blocks: list[dict], repo_paths: list[str]) -> list[d
         for rp in repo_paths:
             try:
                 result = subprocess.run(
-                    ["grep", "-rl", "--include=*.py", "--include=*.go", "--include=*.java",
-                     "--include=*.rb", "--include=*.js", "--include=*.ts",
-                     "--include=*.yaml", "--include=*.yml", "--include=*.json",
-                     "-F", first_line[:80], rp],
-                    capture_output=True, text=True, timeout=30,
+                    [
+                        "grep",
+                        "-rl",
+                        "--include=*.py",
+                        "--include=*.go",
+                        "--include=*.java",
+                        "--include=*.rb",
+                        "--include=*.js",
+                        "--include=*.ts",
+                        "--include=*.yaml",
+                        "--include=*.yml",
+                        "--include=*.json",
+                        "-F",
+                        first_line[:80],
+                        rp,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
                 )
                 if result.stdout.strip():
                     for f in result.stdout.strip().splitlines()[:5]:
@@ -602,16 +749,18 @@ def search_code_blocks(code_blocks: list[dict], repo_paths: list[str]) -> list[d
                 pass
 
         identifiers = set()
-        for l in lines:
-            identifiers.update(re.findall(r"\b([a-zA-Z_][a-zA-Z0-9_]{2,})\b", l))
+        for ln in lines:
+            identifiers.update(re.findall(r"\b([a-zA-Z_][a-zA-Z0-9_]{2,})\b", ln))
         identifiers -= SKIP_FUNCTIONS
 
-        results.append({
-            **block,
-            "found": len(matches) > 0,
-            "matches": matches,
-            "identifiers": sorted(identifiers)[:20],
-        })
+        results.append(
+            {
+                **block,
+                "found": len(matches) > 0,
+                "matches": matches,
+                "identifiers": sorted(identifiers)[:20],
+            }
+        )
 
     return results
 
@@ -630,18 +779,34 @@ def search_apis(apis: list[dict], repo_paths: list[str]) -> list[dict]:
             elif api_type == "endpoint":
                 patterns = [name]
             else:
-                patterns = [f"def {name}", f"func {name}", f"function {name}",
-                           f"fn {name}", f"void {name}"]
+                patterns = [
+                    f"def {name}",
+                    f"func {name}",
+                    f"function {name}",
+                    f"fn {name}",
+                    f"void {name}",
+                ]
 
             for pattern in patterns:
                 try:
                     result = subprocess.run(
-                        ["grep", "-rn", "--include=*.py", "--include=*.go",
-                         "--include=*.java", "--include=*.rb", "--include=*.js",
-                         "--include=*.ts", "--include=*.rs",
-                         "-F" if api_type == "endpoint" else "-E",
-                         pattern, rp],
-                        capture_output=True, text=True, timeout=30,
+                        [
+                            "grep",
+                            "-rn",
+                            "--include=*.py",
+                            "--include=*.go",
+                            "--include=*.java",
+                            "--include=*.rb",
+                            "--include=*.js",
+                            "--include=*.ts",
+                            "--include=*.rs",
+                            "-F" if api_type == "endpoint" else "-E",
+                            pattern,
+                            rp,
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
                     )
                     if result.stdout.strip():
                         for line in result.stdout.strip().splitlines()[:3]:
@@ -660,12 +825,14 @@ def search_apis(apis: list[dict], repo_paths: list[str]) -> list[dict]:
             for rp in repo_paths:
                 git_evidence.extend(git_log_search(name, rp))
 
-        results.append({
-            **api_ref,
-            "found": len(matches) > 0,
-            "matches": matches[:5],
-            "git_evidence": git_evidence,
-        })
+        results.append(
+            {
+                **api_ref,
+                "found": len(matches) > 0,
+                "matches": matches[:5],
+                "git_evidence": git_evidence,
+            }
+        )
 
     return results
 
@@ -740,12 +907,14 @@ def search_file_paths(file_paths: list[dict], repo_paths: list[str]) -> list[dic
             for rp in repo_paths:
                 git_evidence.extend(git_log_search(basename, rp, max_results=3))
 
-        results.append({
-            **fp_ref,
-            "found": len(matches) > 0,
-            "matches": matches[:5],
-            "git_evidence": git_evidence,
-        })
+        results.append(
+            {
+                **fp_ref,
+                "found": len(matches) > 0,
+                "matches": matches[:5],
+                "git_evidence": git_evidence,
+            }
+        )
 
     return results
 
@@ -771,7 +940,10 @@ def cmd_search(args):
     results = {
         "repos": repo_paths,
         "discovered_cli_definitions": discovered_cli_defs,
-        "discovered_schemas": [{"file": s["file"], "format": s["format"], "key_count": len(s["keys"])} for s in discovered_schemas],
+        "discovered_schemas": [
+            {"file": s["file"], "format": s["format"], "key_count": len(s["keys"])}
+            for s in discovered_schemas
+        ],
         "results": {
             "commands": cmd_results,
             "code_blocks": search_code_blocks(refs.get("code_blocks", []), repo_paths),
@@ -808,8 +980,15 @@ def detect_languages(repo_paths: list[str]) -> list[str]:
                     found.add(lang)
                     break
         # Fallback: check for source files directly
-        ext_to_lang = {".py": "python", ".go": "go", ".js": "javascript",
-                       ".ts": "typescript", ".rs": "rust", ".rb": "ruby", ".java": "java"}
+        ext_to_lang = {
+            ".py": "python",
+            ".go": "go",
+            ".js": "javascript",
+            ".ts": "typescript",
+            ".rs": "rust",
+            ".rb": "ruby",
+            ".java": "java",
+        }
         for ext, lang in ext_to_lang.items():
             if lang not in found:
                 for fpath in repo.rglob(f"*{ext}"):
@@ -845,12 +1024,14 @@ def discover_env_vars(repo_paths: list[str]) -> list[dict]:
                             if key in seen:
                                 continue
                             seen.add(key)
-                            results.append({
-                                "name": name,
-                                "source_file": str(fpath),
-                                "source_line": line_idx + 1,
-                                "access_pattern": lang,
-                            })
+                            results.append(
+                                {
+                                    "name": name,
+                                    "source_file": str(fpath),
+                                    "source_line": line_idx + 1,
+                                    "access_pattern": lang,
+                                }
+                            )
     return results
 
 
@@ -876,11 +1057,13 @@ def discover_all_cli_args(repo_paths: list[str]) -> list[dict]:
                         if key in seen:
                             continue
                         seen.add(key)
-                        results.append({
-                            "name": name,
-                            "source_file": str(fpath),
-                            "framework": framework,
-                        })
+                        results.append(
+                            {
+                                "name": name,
+                                "source_file": str(fpath),
+                                "framework": framework,
+                            }
+                        )
     return results
 
 
@@ -896,12 +1079,14 @@ def discover_config_keys(repo_paths: list[str]) -> list[dict]:
             k = (key, schema["file"])
             if k not in seen:
                 seen.add(k)
-                results.append({
-                    "key_path": key,
-                    "source_file": schema["file"],
-                    "format": schema["format"],
-                    "source": "schema_file",
-                })
+                results.append(
+                    {
+                        "key_path": key,
+                        "source_file": schema["file"],
+                        "format": schema["format"],
+                        "source": "schema_file",
+                    }
+                )
 
     # Code access patterns
     for rp in repo_paths:
@@ -921,12 +1106,14 @@ def discover_config_keys(repo_paths: list[str]) -> list[dict]:
                         k = (key_path, str(fpath))
                         if k not in seen:
                             seen.add(k)
-                            results.append({
-                                "key_path": key_path,
-                                "source_file": str(fpath),
-                                "format": framework,
-                                "source": "code_access",
-                            })
+                            results.append(
+                                {
+                                    "key_path": key_path,
+                                    "source_file": str(fpath),
+                                    "format": framework,
+                                    "source": "code_access",
+                                }
+                            )
     return results
 
 
@@ -965,13 +1152,15 @@ def discover_api_endpoints(repo_paths: list[str]) -> list[dict]:
                         if key in seen:
                             continue
                         seen.add(key)
-                        results.append({
-                            "method": method,
-                            "path": path,
-                            "source_file": str(fpath),
-                            "source_line": line_idx + 1,
-                            "framework": framework,
-                        })
+                        results.append(
+                            {
+                                "method": method,
+                                "path": path,
+                                "source_file": str(fpath),
+                                "source_line": line_idx + 1,
+                                "framework": framework,
+                            }
+                        )
     return results
 
 
@@ -997,11 +1186,13 @@ def discover_data_models(repo_paths: list[str]) -> list[dict]:
                         if key in seen:
                             continue
                         seen.add(key)
-                        results.append({
-                            "name": name,
-                            "source_file": str(fpath),
-                            "type": model_type,
-                        })
+                        results.append(
+                            {
+                                "name": name,
+                                "source_file": str(fpath),
+                                "type": model_type,
+                            }
+                        )
     return results
 
 
@@ -1072,7 +1263,7 @@ def cmd_discover(args):
 
     languages = detect_languages(repo_paths)
     if args.language:
-        languages = [l for l in args.language.split(",") if l in languages]
+        languages = [lang for lang in args.language.split(",") if lang in languages]
 
     inventory = {
         "env_vars": discover_env_vars(repo_paths),

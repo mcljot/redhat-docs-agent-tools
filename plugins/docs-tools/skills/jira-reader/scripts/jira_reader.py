@@ -13,13 +13,14 @@ Usage:
     python jira_reader.py --graph INFERENG-5233
 """
 
+import argparse
+import json
 import os
 import re
 import sys
-import json
-import argparse
-import urllib3
 from datetime import datetime
+
+import urllib3
 from ratelimit import limits, sleep_and_retry
 
 try:
@@ -48,16 +49,18 @@ class JiraReader:
         """Initialize JIRA connection with appropriate authentication."""
         load_env_file()
 
-        token = os.environ.get('JIRA_API_TOKEN') or os.environ.get('JIRA_AUTH_TOKEN')
+        token = os.environ.get("JIRA_API_TOKEN") or os.environ.get("JIRA_AUTH_TOKEN")
         if not token:
             raise ValueError("JIRA_API_TOKEN environment variable not set. Add it to ~/.env")
 
-        server = server or os.environ.get('JIRA_URL', 'https://redhat.atlassian.net')
+        server = server or os.environ.get("JIRA_URL", "https://redhat.atlassian.net")
 
-        if 'atlassian.net' in server:
-            email = os.environ.get('JIRA_EMAIL')
+        if "atlassian.net" in server:
+            email = os.environ.get("JIRA_EMAIL")
             if not email:
-                raise ValueError("JIRA_EMAIL environment variable not set. Required for Atlassian Cloud. Add it to ~/.env")
+                raise ValueError(
+                    "JIRA_EMAIL environment variable not set. Required for Atlassian Cloud. Add it to ~/.env"
+                )
             self.jira = JIRA(server=server, basic_auth=(email, token))
         else:
             self.jira = JIRA(server=server, token_auth=token)
@@ -91,29 +94,31 @@ class JiraReader:
 
         for comment in sorted_comments:
             # Get or create anonymous participant label
-            author_key = comment.author.key if hasattr(comment.author, 'key') else str(comment.author)
+            author_key = (
+                comment.author.key if hasattr(comment.author, "key") else str(comment.author)
+            )
             if author_key not in user_mapping:
                 participant_counter += 1
-                user_mapping[author_key] = f"Participant {chr(64 + participant_counter)}"  # A, B, C, etc.
+                user_mapping[author_key] = (
+                    f"Participant {chr(64 + participant_counter)}"  # A, B, C, etc.
+                )
 
             participant = user_mapping[author_key]
 
             # Format timestamp
             try:
-                timestamp = datetime.strptime(comment.created[:19], '%Y-%m-%dT%H:%M:%S')
-                formatted_time = timestamp.strftime('%Y-%m-%d %H:%M')
-            except:
-                formatted_time = comment.created[:16].replace('T', ' ')
+                timestamp = datetime.strptime(comment.created[:19], "%Y-%m-%dT%H:%M:%S")
+                formatted_time = timestamp.strftime("%Y-%m-%d %H:%M")
+            except (ValueError, TypeError):
+                formatted_time = comment.created[:16].replace("T", " ")
 
             # Clean comment body
             comment_body = comment.body.strip() if comment.body else ""
 
             if comment_body:
-                processed_comments.append({
-                    "participant": participant,
-                    "timestamp": formatted_time,
-                    "body": comment_body
-                })
+                processed_comments.append(
+                    {"participant": participant, "timestamp": formatted_time, "body": comment_body}
+                )
 
         return processed_comments
 
@@ -142,7 +147,7 @@ class JiraReader:
                 host = urllib3.util.parse_url(link.object.url).host
                 if host and host.startswith(prefix):
                     links_list.append(link.object.url)
-            except:
+            except Exception:
                 continue
 
         return links_list
@@ -203,20 +208,26 @@ class JiraReader:
             custom_fields = {}
 
             # Release Note Type (customfield_10785)
-            if hasattr(issue.fields, 'customfield_10785') and issue.fields.customfield_10785:
+            if hasattr(issue.fields, "customfield_10785") and issue.fields.customfield_10785:
                 release_note_type = issue.fields.customfield_10785.value
                 # Normalize "Feature" to "Enhancement"
-                release_note_type = "Enhancement" if release_note_type == "Feature" else release_note_type
-                custom_fields['release_note_type'] = release_note_type
+                release_note_type = (
+                    "Enhancement" if release_note_type == "Feature" else release_note_type
+                )
+                custom_fields["release_note_type"] = release_note_type
 
             # Fix Versions
             if issue.fields.fixVersions:
-                custom_fields['fix_versions'] = [v.name for v in issue.fields.fixVersions]
+                custom_fields["fix_versions"] = [v.name for v in issue.fields.fixVersions]
 
             # Extract assignee safely
             assignee = None
             if issue.fields.assignee:
-                assignee = issue.fields.assignee.displayName if hasattr(issue.fields.assignee, 'displayName') else str(issue.fields.assignee)
+                assignee = (
+                    issue.fields.assignee.displayName
+                    if hasattr(issue.fields.assignee, "displayName")
+                    else str(issue.fields.assignee)
+                )
 
             # Build response
             return {
@@ -233,14 +244,11 @@ class JiraReader:
                 "comments": comments_data,
                 "custom_fields": custom_fields,
                 "git_links": git_links,
-                "url": f"{self.server}/browse/{issue.key}"
+                "url": f"{self.server}/browse/{issue.key}",
             }
 
         except Exception as e:
-            return {
-                "error": f"Failed to fetch issue {jira_id}: {str(e)}",
-                "issue_key": jira_id
-            }
+            return {"error": f"Failed to fetch issue {jira_id}: {str(e)}", "issue_key": jira_id}
 
     @sleep_and_retry
     @limits(calls=2, period=5)
@@ -265,24 +273,34 @@ class JiraReader:
                 for issue in issues:
                     assignee = None
                     if issue.fields.assignee:
-                        assignee = issue.fields.assignee.displayName if hasattr(issue.fields.assignee, 'displayName') else str(issue.fields.assignee)
+                        assignee = (
+                            issue.fields.assignee.displayName
+                            if hasattr(issue.fields.assignee, "displayName")
+                            else str(issue.fields.assignee)
+                        )
 
                     # Extract fix versions
                     fix_versions = []
                     if issue.fields.fixVersions:
                         fix_versions = [v.name for v in issue.fields.fixVersions]
 
-                    summaries.append({
-                        "issue_key": issue.key,
-                        "issue_type": str(issue.fields.issuetype),
-                        "issue_category": self.categorize_issue_type(str(issue.fields.issuetype)),
-                        "priority": str(issue.fields.priority) if issue.fields.priority else "Undefined",
-                        "status": str(issue.fields.status),
-                        "assignee": assignee,
-                        "summary": issue.fields.summary,
-                        "fix_versions": fix_versions,
-                        "url": f"{self.server}/browse/{issue.key}"
-                    })
+                    summaries.append(
+                        {
+                            "issue_key": issue.key,
+                            "issue_type": str(issue.fields.issuetype),
+                            "issue_category": self.categorize_issue_type(
+                                str(issue.fields.issuetype)
+                            ),
+                            "priority": str(issue.fields.priority)
+                            if issue.fields.priority
+                            else "Undefined",
+                            "status": str(issue.fields.status),
+                            "assignee": assignee,
+                            "summary": issue.fields.summary,
+                            "fix_versions": fix_versions,
+                            "url": f"{self.server}/browse/{issue.key}",
+                        }
+                    )
                 return summaries
             else:
                 # Return issue keys for detailed fetching (SLOW but comprehensive)
@@ -318,7 +336,7 @@ class JiraReader:
             Tuple of (parent_key, source) where source describes how parent was found.
         """
         # Check standard parent field
-        if hasattr(issue.fields, 'parent') and issue.fields.parent:
+        if hasattr(issue.fields, "parent") and issue.fields.parent:
             return issue.fields.parent.key, "parent_field"
 
         # Check Parent Link custom field
@@ -327,7 +345,7 @@ class JiraReader:
             if parent_link:
                 if isinstance(parent_link, str):
                     return parent_link, "parent_link_custom_field"
-                elif hasattr(parent_link, 'key'):
+                elif hasattr(parent_link, "key"):
                     return parent_link.key, "parent_link_custom_field"
 
         return None, None
@@ -337,7 +355,9 @@ class JiraReader:
     def _fetch_issue_summary(self, jira_id):
         """Fetch basic summary fields for an issue."""
         try:
-            issue = self.jira.issue(jira_id, fields="summary,status,issuetype,description,priority,assignee")
+            issue = self.jira.issue(
+                jira_id, fields="summary,status,issuetype,description,priority,assignee"
+            )
             fields = issue.fields
             return {
                 "key": issue.key,
@@ -345,7 +365,9 @@ class JiraReader:
                 "status": str(fields.status) if fields.status else None,
                 "issuetype": str(fields.issuetype) if fields.issuetype else None,
                 "priority": str(fields.priority) if fields.priority else None,
-                "assignee": fields.assignee.displayName if fields.assignee and hasattr(fields.assignee, 'displayName') else None,
+                "assignee": fields.assignee.displayName
+                if fields.assignee and hasattr(fields.assignee, "displayName")
+                else None,
                 "description": fields.description or "",
             }
         except Exception as e:
@@ -378,14 +400,18 @@ class JiraReader:
                 if issue.key not in seen_keys:
                     seen_keys.add(issue.key)
                     f = issue.fields
-                    issues.append({
-                        "key": issue.key,
-                        "summary": f.summary,
-                        "status": str(f.status) if f.status else None,
-                        "issuetype": str(f.issuetype) if f.issuetype else None,
-                        "priority": str(f.priority) if f.priority else None,
-                        "assignee": f.assignee.displayName if f.assignee and hasattr(f.assignee, 'displayName') else None,
-                    })
+                    issues.append(
+                        {
+                            "key": issue.key,
+                            "summary": f.summary,
+                            "status": str(f.status) if f.status else None,
+                            "issuetype": str(f.issuetype) if f.issuetype else None,
+                            "priority": str(f.priority) if f.priority else None,
+                            "assignee": f.assignee.displayName
+                            if f.assignee and hasattr(f.assignee, "displayName")
+                            else None,
+                        }
+                    )
         except Exception as e:
             errors.append(f"Children query (parent field): {e}")
 
@@ -398,14 +424,18 @@ class JiraReader:
                     if issue.key not in seen_keys:
                         seen_keys.add(issue.key)
                         f = issue.fields
-                        issues.append({
-                            "key": issue.key,
-                            "summary": f.summary,
-                            "status": str(f.status) if f.status else None,
-                            "issuetype": str(f.issuetype) if f.issuetype else None,
-                            "priority": str(f.priority) if f.priority else None,
-                            "assignee": f.assignee.displayName if f.assignee and hasattr(f.assignee, 'displayName') else None,
-                        })
+                        issues.append(
+                            {
+                                "key": issue.key,
+                                "summary": f.summary,
+                                "status": str(f.status) if f.status else None,
+                                "issuetype": str(f.issuetype) if f.issuetype else None,
+                                "priority": str(f.priority) if f.priority else None,
+                                "assignee": f.assignee.displayName
+                                if f.assignee and hasattr(f.assignee, "displayName")
+                                else None,
+                            }
+                        )
             except Exception as e:
                 errors.append(f"Children query (Epic Link): {e}")
 
@@ -435,9 +465,9 @@ class JiraReader:
 
         active_statuses = 'Done, "In Progress", "In Review", "Code Review"'
         jql = (
-            f'{parent_clause} AND key != {ticket_key} '
-            f'AND status in ({active_statuses}) '
-            f'ORDER BY status DESC, updated DESC'
+            f"{parent_clause} AND key != {ticket_key} "
+            f"AND status in ({active_statuses}) "
+            f"ORDER BY status DESC, updated DESC"
         )
 
         try:
@@ -445,14 +475,16 @@ class JiraReader:
             issues = []
             for issue in results:
                 f = issue.fields
-                issues.append({
-                    "key": issue.key,
-                    "summary": f.summary,
-                    "status": str(f.status) if f.status else None,
-                    "issuetype": str(f.issuetype) if f.issuetype else None,
-                })
+                issues.append(
+                    {
+                        "key": issue.key,
+                        "summary": f.summary,
+                        "status": str(f.status) if f.status else None,
+                        "issuetype": str(f.issuetype) if f.issuetype else None,
+                    }
+                )
 
-            total = results.total if hasattr(results, 'total') else len(issues)
+            total = results.total if hasattr(results, "total") else len(issues)
             showing = len(issues)
             return {
                 "total": total,
@@ -470,29 +502,37 @@ class JiraReader:
 
         No additional API calls needed — data is embedded in the issuelinks field.
         """
-        raw_links = issue.fields.issuelinks if hasattr(issue.fields, 'issuelinks') else []
+        raw_links = issue.fields.issuelinks if hasattr(issue.fields, "issuelinks") else []
         links = []
 
         for link in raw_links:
             link_type = link.type
 
-            if hasattr(link, 'inwardIssue') and link.inwardIssue:
+            if hasattr(link, "inwardIssue") and link.inwardIssue:
                 linked_issue = link.inwardIssue
                 direction = link_type.inward
-            elif hasattr(link, 'outwardIssue') and link.outwardIssue:
+            elif hasattr(link, "outwardIssue") and link.outwardIssue:
                 linked_issue = link.outwardIssue
                 direction = link_type.outward
             else:
                 continue
 
-            links.append({
-                "key": linked_issue.key,
-                "direction": direction,
-                "link_type": link_type.name,
-                "summary": linked_issue.fields.summary if hasattr(linked_issue.fields, 'summary') else None,
-                "status": str(linked_issue.fields.status) if hasattr(linked_issue.fields, 'status') and linked_issue.fields.status else None,
-                "issuetype": str(linked_issue.fields.issuetype) if hasattr(linked_issue.fields, 'issuetype') and linked_issue.fields.issuetype else None,
-            })
+            links.append(
+                {
+                    "key": linked_issue.key,
+                    "direction": direction,
+                    "link_type": link_type.name,
+                    "summary": linked_issue.fields.summary
+                    if hasattr(linked_issue.fields, "summary")
+                    else None,
+                    "status": str(linked_issue.fields.status)
+                    if hasattr(linked_issue.fields, "status") and linked_issue.fields.status
+                    else None,
+                    "issuetype": str(linked_issue.fields.issuetype)
+                    if hasattr(linked_issue.fields, "issuetype") and linked_issue.fields.issuetype
+                    else None,
+                }
+            )
 
             if len(links) >= max_links:
                 break
@@ -536,8 +576,8 @@ class JiraReader:
 
         for item in remote_links:
             try:
-                link_url = item.object.url if hasattr(item.object, 'url') else ""
-                title = item.object.title if hasattr(item.object, 'title') else ""
+                link_url = item.object.url if hasattr(item.object, "url") else ""
+                title = item.object.title if hasattr(item.object, "title") else ""
                 link_type = self._classify_url(link_url)
                 links.append({"title": title, "url": link_url, "type": link_type})
                 if link_type == "pull_request":
@@ -595,7 +635,9 @@ class JiraReader:
         # Step 5: Fetch siblings (only if parent exists)
         siblings = {"total": 0, "showing": 0, "skipped": 0, "issues": []}
         if parent_key and parent_source:
-            siblings, errors = self._fetch_siblings(ticket_key, parent_key, parent_source, max_siblings)
+            siblings, errors = self._fetch_siblings(
+                ticket_key, parent_key, parent_source, max_siblings
+            )
             all_errors.extend(errors)
 
         # Step 6: Extract issue links (no extra API calls)
@@ -624,57 +666,52 @@ def main():
         description="Fetch and analyze JIRA issues from Red Hat Issue Tracker"
     )
     parser.add_argument(
-        '--issue',
-        action='append',
-        help='JIRA issue key (e.g., INFERENG-5233). Can be specified multiple times.'
+        "--issue",
+        action="append",
+        help="JIRA issue key (e.g., INFERENG-5233). Can be specified multiple times.",
+    )
+    parser.add_argument("--jql", help="JQL query to search for issues")
+    parser.add_argument(
+        "--graph",
+        help="Traverse the ticket graph for a JIRA issue key (parent, children, siblings, links)",
     )
     parser.add_argument(
-        '--jql',
-        help='JQL query to search for issues'
+        "--include-comments", action="store_true", help="Include anonymized comment threads"
     )
     parser.add_argument(
-        '--graph',
-        help='Traverse the ticket graph for a JIRA issue key (parent, children, siblings, links)'
+        "--git-links",
+        choices=["github", "gitlab", "all"],
+        default="all",
+        help="Filter Git links by type",
     )
     parser.add_argument(
-        '--include-comments',
-        action='store_true',
-        help='Include anonymized comment threads'
-    )
-    parser.add_argument(
-        '--git-links',
-        choices=['github', 'gitlab', 'all'],
-        default='all',
-        help='Filter Git links by type'
-    )
-    parser.add_argument(
-        '--max-results',
+        "--max-results",
         type=int,
         default=50,
-        help='Maximum number of results for JQL search (default: 50)'
+        help="Maximum number of results for JQL search (default: 50)",
     )
     parser.add_argument(
-        '--fetch-details',
-        action='store_true',
-        help='Fetch full details for each issue (slow). By default, JQL searches return fast summaries only.'
+        "--fetch-details",
+        action="store_true",
+        help="Fetch full details for each issue (slow). By default, JQL searches return fast summaries only.",
     )
     parser.add_argument(
-        '--max-children',
+        "--max-children",
         type=int,
         default=25,
-        help='Maximum children to fetch in graph mode (default: 25)'
+        help="Maximum children to fetch in graph mode (default: 25)",
     )
     parser.add_argument(
-        '--max-siblings',
+        "--max-siblings",
         type=int,
         default=25,
-        help='Maximum siblings to fetch in graph mode (default: 25)'
+        help="Maximum siblings to fetch in graph mode (default: 25)",
     )
     parser.add_argument(
-        '--max-links',
+        "--max-links",
         type=int,
         default=15,
-        help='Maximum issue links to extract in graph mode (default: 15)'
+        help="Maximum issue links to extract in graph mode (default: 15)",
     )
 
     args = parser.parse_args()
@@ -703,8 +740,10 @@ def main():
 
         # Handle JQL search
         if args.jql:
-            search_results = reader.search_issues(args.jql, args.max_results, fetch_details=args.fetch_details)
-            if isinstance(search_results, dict) and 'error' in search_results:
+            search_results = reader.search_issues(
+                args.jql, args.max_results, fetch_details=args.fetch_details
+            )
+            if isinstance(search_results, dict) and "error" in search_results:
                 print(json.dumps(search_results, indent=2))
                 sys.exit(1)
 
@@ -714,7 +753,7 @@ def main():
                     issue_data = reader.get_issue_data(
                         issue_key,
                         include_comments=args.include_comments,
-                        git_link_types=args.git_links
+                        git_link_types=args.git_links,
                     )
                     results.append(issue_data)
             else:
@@ -725,9 +764,7 @@ def main():
         elif args.issue:
             for issue_key in args.issue:
                 issue_data = reader.get_issue_data(
-                    issue_key,
-                    include_comments=args.include_comments,
-                    git_link_types=args.git_links
+                    issue_key, include_comments=args.include_comments, git_link_types=args.git_links
                 )
                 results.append(issue_data)
 

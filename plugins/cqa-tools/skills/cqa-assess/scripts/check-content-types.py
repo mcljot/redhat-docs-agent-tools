@@ -35,11 +35,17 @@ PREFIX_TO_TYPE = {
 
 # Block titles that are PROCEDURE-only
 PROCEDURE_ONLY_TITLES = {
-    ".Prerequisites", ".Prerequisite",
+    ".Prerequisites",
+    ".Prerequisite",
     ".Procedure",
-    ".Verification", ".Results", ".Result",
-    ".Troubleshooting", ".Troubleshooting steps", ".Troubleshooting step",
-    ".Next steps", ".Next step",
+    ".Verification",
+    ".Results",
+    ".Result",
+    ".Troubleshooting",
+    ".Troubleshooting steps",
+    ".Troubleshooting step",
+    ".Next steps",
+    ".Next step",
 }
 
 # Directories to scan (default; overridable via --scan-dirs)
@@ -73,7 +79,7 @@ def read_file_list(file_list_path, docs_dir):
     if file_list_path == "-":
         lines = sys.stdin.read().splitlines()
     else:
-        with open(file_list_path, "r") as f:
+        with open(file_list_path) as f:
             lines = f.read().splitlines()
     files = []
     for line in lines:
@@ -134,9 +140,9 @@ def check_file(filepath, rel_path, filename, skip_prefix_check=False):
     """
     issues = []
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             content = f.read()
-    except (UnicodeDecodeError, IOError):
+    except (OSError, UnicodeDecodeError):
         return issues
 
     lines = content.splitlines()
@@ -149,7 +155,7 @@ def check_file(filepath, rel_path, filename, skip_prefix_check=False):
             # Try to detect content type from :_mod-docs-content-type: attribute
             declared_type = None
             for line in lines:
-                m = re.match(r'^:_mod-docs-content-type:\s*(\S+)', line)
+                m = re.match(r"^:_mod-docs-content-type:\s*(\S+)", line)
                 if m:
                     declared_type = m.group(1).upper()
                     break
@@ -158,11 +164,13 @@ def check_file(filepath, rel_path, filename, skip_prefix_check=False):
                 return issues
             expected_type = declared_type
         else:
-            issues.append({
-                "file": rel_path,
-                "check": "PREFIX",
-                "message": f"No recognized prefix. Expected one of: {', '.join(PREFIX_TO_TYPE.keys())}",
-            })
+            issues.append(
+                {
+                    "file": rel_path,
+                    "check": "PREFIX",
+                    "message": f"No recognized prefix. Expected one of: {', '.join(PREFIX_TO_TYPE.keys())}",
+                }
+            )
             # Cannot do further checks without knowing expected type
             return issues
     else:
@@ -175,23 +183,27 @@ def check_file(filepath, rel_path, filename, skip_prefix_check=False):
     if prefix is not None:
         declared_type = None
         for line in lines:
-            m = re.match(r'^:_mod-docs-content-type:\s*(\S+)', line)
+            m = re.match(r"^:_mod-docs-content-type:\s*(\S+)", line)
             if m:
                 declared_type = m.group(1).upper()
                 break
 
         if declared_type is None:
-            issues.append({
-                "file": rel_path,
-                "check": "CONTENT_TYPE_MISSING",
-                "message": f"Missing :_mod-docs-content-type: attribute. Expected: {expected_type}",
-            })
+            issues.append(
+                {
+                    "file": rel_path,
+                    "check": "CONTENT_TYPE_MISSING",
+                    "message": f"Missing :_mod-docs-content-type: attribute. Expected: {expected_type}",
+                }
+            )
         elif declared_type != expected_type:
-            issues.append({
-                "file": rel_path,
-                "check": "CONTENT_TYPE_MISMATCH",
-                "message": f"Prefix '{prefix}' expects {expected_type} but declared {declared_type}",
-            })
+            issues.append(
+                {
+                    "file": rel_path,
+                    "check": "CONTENT_TYPE_MISMATCH",
+                    "message": f"Prefix '{prefix}' expects {expected_type} but declared {declared_type}",
+                }
+            )
 
     # Snippets have fewer requirements — skip remaining checks
     if expected_type == "SNIPPET":
@@ -204,11 +216,13 @@ def check_file(filepath, rel_path, filename, skip_prefix_check=False):
             has_abstract = True
             break
     if not has_abstract:
-        issues.append({
-            "file": rel_path,
-            "check": "ABSTRACT_MISSING",
-            "message": "Missing [role=\"_abstract\"] annotation",
-        })
+        issues.append(
+            {
+                "file": rel_path,
+                "check": "ABSTRACT_MISSING",
+                "message": 'Missing [role="_abstract"] annotation',
+            }
+        )
 
     # 4. Check for [id="..._{context}"]
     has_id = False
@@ -217,11 +231,13 @@ def check_file(filepath, rel_path, filename, skip_prefix_check=False):
             has_id = True
             break
     if not has_id:
-        issues.append({
-            "file": rel_path,
-            "check": "ID_MISSING",
-            "message": "Missing [id=\"..._{context}\"] anchor",
-        })
+        issues.append(
+            {
+                "file": rel_path,
+                "check": "ID_MISSING",
+                "message": 'Missing [id="..._{context}"] anchor',
+            }
+        )
 
     # 5. Check for procedure-only block titles in non-procedure files
     if expected_type != "PROCEDURE":
@@ -231,12 +247,14 @@ def check_file(filepath, rel_path, filename, skip_prefix_check=False):
             stripped = line.strip()
             for title in PROCEDURE_ONLY_TITLES:
                 if stripped == title:
-                    issues.append({
-                        "file": rel_path,
-                        "check": "INVALID_BLOCK_TITLE",
-                        "message": f"Line {i + 1}: '{title}' is only allowed in PROCEDURE files",
-                        "line_num": i + 1,
-                    })
+                    issues.append(
+                        {
+                            "file": rel_path,
+                            "check": "INVALID_BLOCK_TITLE",
+                            "message": f"Line {i + 1}: '{title}' is only allowed in PROCEDURE files",
+                            "line_num": i + 1,
+                        }
+                    )
 
     # 6. Check for == subsections in PROCEDURE files
     if expected_type == "PROCEDURE":
@@ -245,24 +263,26 @@ def check_file(filepath, rel_path, filename, skip_prefix_check=False):
                 continue
             stripped = line.strip()
             if stripped.startswith("== "):
-                issues.append({
-                    "file": rel_path,
-                    "check": "PROC_SUBSECTION",
-                    "message": f"Line {i + 1}: '== ' subsections are not allowed in PROCEDURE files",
-                    "line_num": i + 1,
-                })
+                issues.append(
+                    {
+                        "file": rel_path,
+                        "check": "PROC_SUBSECTION",
+                        "message": f"Line {i + 1}: '== ' subsections are not allowed in PROCEDURE files",
+                        "line_num": i + 1,
+                    }
+                )
 
     # 7. Check that .Procedure has ordered list items (not unordered)
     if expected_type == "PROCEDURE":
         in_procedure = False
-        found_procedure = False
+        _found_procedure = False
         for i, line in enumerate(lines):
             if i in code_lines:
                 continue
             stripped = line.strip()
             if stripped == ".Procedure":
                 in_procedure = True
-                found_procedure = True
+                _found_procedure = True
                 continue
             if in_procedure:
                 # Skip blank lines and continuations
@@ -276,12 +296,14 @@ def check_file(filepath, rel_path, filename, skip_prefix_check=False):
                     # Could be a role annotation or attribute — skip those
                     if stripped.startswith("[") or stripped.startswith(":"):
                         continue
-                    issues.append({
-                        "file": rel_path,
-                        "check": "PROC_NOT_ORDERED",
-                        "message": f"Line {i + 1}: Content after .Procedure should use ordered list ('. ')",
-                        "line_num": i + 1,
-                    })
+                    issues.append(
+                        {
+                            "file": rel_path,
+                            "check": "PROC_NOT_ORDERED",
+                            "message": f"Line {i + 1}: Content after .Procedure should use ordered list ('. ')",
+                            "line_num": i + 1,
+                        }
+                    )
                 in_procedure = False  # Only check first content line
 
     return issues
@@ -307,7 +329,7 @@ def main():
         action="store_true",
         default=False,
         help="Skip filename prefix check. Detect content type from "
-             ":_mod-docs-content-type: attribute instead.",
+        ":_mod-docs-content-type: attribute instead.",
     )
     parser.add_argument(
         "--file-list",
@@ -336,8 +358,9 @@ def main():
         files = collect_adoc_files(docs_dir, scan_dirs=args.scan_dirs)
     all_issues = []
     for filepath, rel_path, filename in files:
-        all_issues.extend(check_file(filepath, rel_path, filename,
-                                     skip_prefix_check=args.no_prefix_check))
+        all_issues.extend(
+            check_file(filepath, rel_path, filename, skip_prefix_check=args.no_prefix_check)
+        )
 
     # Group by check type
     by_check = {}
@@ -349,8 +372,8 @@ def main():
         ("PREFIX", "Filename prefix issues"),
         ("CONTENT_TYPE_MISSING", "Missing :_mod-docs-content-type:"),
         ("CONTENT_TYPE_MISMATCH", "Content type mismatches (prefix vs declared)"),
-        ("ABSTRACT_MISSING", "Missing [role=\"_abstract\"]"),
-        ("ID_MISSING", "Missing [id=\"..._{context}\"]"),
+        ("ABSTRACT_MISSING", 'Missing [role="_abstract"]'),
+        ("ID_MISSING", 'Missing [id="..._{context}"]'),
         ("INVALID_BLOCK_TITLE", "Procedure-only block titles in wrong file type"),
         ("PROC_SUBSECTION", "== subsections in PROCEDURE files"),
         ("PROC_NOT_ORDERED", "Non-ordered list after .Procedure"),

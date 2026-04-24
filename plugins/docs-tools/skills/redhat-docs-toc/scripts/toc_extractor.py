@@ -9,21 +9,31 @@ Usage:
     python toc_extractor.py --url "https://docs.redhat.com/en/documentation/..."
 """
 
-import sys
-import json
 import argparse
+import json
+import sys
 from urllib.parse import urljoin, urlparse
 
 try:
     import requests
 except ImportError:
-    print(json.dumps({"error": "requests package not installed. Run: python3 -m pip install requests"}))
+    print(
+        json.dumps(
+            {"error": "requests package not installed. Run: python3 -m pip install requests"}
+        )
+    )
     sys.exit(1)
 
 try:
     from bs4 import BeautifulSoup
 except ImportError:
-    print(json.dumps({"error": "beautifulsoup4 package not installed. Run: python3 -m pip install beautifulsoup4"}))
+    print(
+        json.dumps(
+            {
+                "error": "beautifulsoup4 package not installed. Run: python3 -m pip install beautifulsoup4"
+            }
+        )
+    )
     sys.exit(1)
 
 
@@ -46,12 +56,12 @@ class RedHatDocsTOCExtractor:
         """Download HTML content from URL."""
         try:
             headers = {
-                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
             }
             response = requests.get(self.url, headers=headers, timeout=30)
             response.raise_for_status()
             self.html_content = response.text
-            self.soup = BeautifulSoup(self.html_content, 'html.parser')
+            self.soup = BeautifulSoup(self.html_content, "html.parser")
             return True
         except requests.RequestException as e:
             return {"error": f"Failed to download URL: {str(e)}"}
@@ -67,38 +77,38 @@ class RedHatDocsTOCExtractor:
             return []
 
         # Find the TOC navigation element
-        toc = self.soup.find('nav', {'id': 'toc', 'class': 'table-of-contents'})
+        toc = self.soup.find("nav", {"id": "toc", "class": "table-of-contents"})
 
         if not toc:
             # Try alternative TOC selector
-            toc = self.soup.find('nav', {'class': 'table-of-contents'})
+            toc = self.soup.find("nav", {"class": "table-of-contents"})
 
         if not toc:
             return {"error": "Table of contents navigation element not found"}
 
         # Extract all href attributes from links in the TOC
         urls = set()
-        for link in toc.find_all('a', href=True):
-            href = link['href']
+        for link in toc.find_all("a", href=True):
+            href = link["href"]
 
             # Skip empty hrefs or javascript links
-            if not href or href.startswith('javascript:'):
+            if not href or href.startswith("javascript:"):
                 continue
 
             # Skip anchor-only links (section references within same page)
-            if href.startswith('#'):
+            if href.startswith("#"):
                 continue
 
             # Remove fragments (anchor links) to get the base article URL
-            if '#' in href:
-                href = href.split('#')[0]
+            if "#" in href:
+                href = href.split("#")[0]
 
             # Convert relative URLs to absolute
-            if not href.startswith('http'):
+            if not href.startswith("http"):
                 href = urljoin(self.base_url, href)
 
             # Skip index pages (we want actual articles)
-            if href.endswith('/index') or href.endswith('/index/'):
+            if href.endswith("/index") or href.endswith("/index/"):
                 continue
 
             urls.add(href)
@@ -112,20 +122,10 @@ def main():
     parser = argparse.ArgumentParser(
         description="Extract article URLs from Red Hat documentation table of contents"
     )
+    parser.add_argument("--url", required=True, help="Red Hat docs URL to extract TOC from")
+    parser.add_argument("--output", help="Output file path (default: stdout)")
     parser.add_argument(
-        '--url',
-        required=True,
-        help='Red Hat docs URL to extract TOC from'
-    )
-    parser.add_argument(
-        '--output',
-        help='Output file path (default: stdout)'
-    )
-    parser.add_argument(
-        '--format',
-        choices=['json', 'list'],
-        default='json',
-        help='Output format (default: json)'
+        "--format", choices=["json", "list"], default="json", help="Output format (default: json)"
     )
 
     args = parser.parse_args()
@@ -135,39 +135,40 @@ def main():
         extractor = RedHatDocsTOCExtractor(args.url)
         result = extractor.download()
 
-        if isinstance(result, dict) and 'error' in result:
+        if isinstance(result, dict) and "error" in result:
             print(json.dumps(result, indent=2))
             sys.exit(1)
 
         # Extract TOC URLs
         urls = extractor.extract_toc_urls()
 
-        if isinstance(urls, dict) and 'error' in urls:
+        if isinstance(urls, dict) and "error" in urls:
             print(json.dumps(urls, indent=2))
             sys.exit(1)
 
         # Format output
-        if args.format == 'json':
-            output_data = {
-                "source_url": args.url,
-                "article_count": len(urls),
-                "articles": urls
-            }
+        if args.format == "json":
+            output_data = {"source_url": args.url, "article_count": len(urls), "articles": urls}
             output = json.dumps(output_data, indent=2)
         else:  # list format
-            output = '\n'.join(urls)
+            output = "\n".join(urls)
 
         # Write output
         if args.output:
-            with open(args.output, 'w', encoding='utf-8') as f:
+            with open(args.output, "w", encoding="utf-8") as f:
                 f.write(output)
-            print(json.dumps({
-                "success": True,
-                "message": f"Extracted {len(urls)} article URLs and saved to {args.output}",
-                "source_url": args.url,
-                "article_count": len(urls),
-                "file": args.output
-            }, indent=2))
+            print(
+                json.dumps(
+                    {
+                        "success": True,
+                        "message": f"Extracted {len(urls)} article URLs and saved to {args.output}",
+                        "source_url": args.url,
+                        "article_count": len(urls),
+                        "file": args.output,
+                    },
+                    indent=2,
+                )
+            )
         else:
             # Print to stdout
             print(output)

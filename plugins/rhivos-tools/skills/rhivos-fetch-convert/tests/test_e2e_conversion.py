@@ -349,6 +349,6 @@ class TestNoMkDocsSyntaxRemains:
         assert "--8<--" not in content
         assert '=== "' not in content
         assert "/// figure-caption" not in content
-        assert re.search(r'```\w+\s+title=', content) is None
-        assert re.search(r'\]\([^)]+\.md\)', content) is None
+        assert re.search(r"```\w+\s+title=", content) is None
+        assert re.search(r"\]\([^)]+\.md\)", content) is None
         assert "```{=asciidoc}" not in content

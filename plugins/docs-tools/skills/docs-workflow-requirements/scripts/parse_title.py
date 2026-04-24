@@ -21,9 +21,7 @@ def extract_title(path):
             stripped = line.strip()
             if stripped.startswith("# ") and not stripped.startswith("## "):
                 heading = stripped.lstrip("#").strip()
-                heading = re.sub(
-                    r"^\[?[A-Z][A-Z0-9]+-\d+\]?\s*[:\-]?\s*", "", heading
-                )
+                heading = re.sub(r"^\[?[A-Z][A-Z0-9]+-\d+\]?\s*[:\-]?\s*", "", heading)
                 return heading[:80] if heading else None
     return None
 

@@ -37,12 +37,8 @@ import sys
 from pathlib import Path
 
 # PR/MR URL patterns
-GITHUB_PR_RE = re.compile(
-    r"https?://github\.com/([^/]+/[^/]+)/pull/(\d+)"
-)
-GITLAB_MR_RE = re.compile(
-    r"https?://gitlab\.[^/]+/(.+?)/-/merge_requests/(\d+)"
-)
+GITHUB_PR_RE = re.compile(r"https?://github\.com/([^/]+/[^/]+)/pull/(\d+)")
+GITLAB_MR_RE = re.compile(r"https?://gitlab\.[^/]+/(.+?)/-/merge_requests/(\d+)")
 
 
 def _is_remote_url(value):
@@ -184,17 +180,29 @@ def _resolve_pr_info(pr_url):
         repo_slug = match.group(1)
         repo_url = f"https://github.com/{repo_slug}.git"
     else:
-        repo_url = _run_gh([
-            "pr", "view", pr_url,
-            "--json", "url",
-            "--jq", '.url | split("/pull/")[0] + ".git"',
-        ])
+        repo_url = _run_gh(
+            [
+                "pr",
+                "view",
+                pr_url,
+                "--json",
+                "url",
+                "--jq",
+                '.url | split("/pull/")[0] + ".git"',
+            ]
+        )
 
-    pr_branch = _run_gh([
-        "pr", "view", pr_url,
-        "--json", "headRefName",
-        "--jq", ".headRefName",
-    ])
+    pr_branch = _run_gh(
+        [
+            "pr",
+            "view",
+            pr_url,
+            "--json",
+            "headRefName",
+            "--jq",
+            ".headRefName",
+        ]
+    )
     return repo_url, pr_branch
 
 
@@ -218,9 +226,17 @@ def _resolve_mr_info(mr_url):
     prev_host = os.environ.get("GITLAB_HOST")
     os.environ["GITLAB_HOST"] = f"https://{hostname}"
     try:
-        mr_json = _run_glab([
-            "mr", "view", mr_number, "-R", project_path, "--output", "json",
-        ])
+        mr_json = _run_glab(
+            [
+                "mr",
+                "view",
+                mr_number,
+                "-R",
+                project_path,
+                "--output",
+                "json",
+            ]
+        )
     finally:
         if prev_host is None:
             os.environ.pop("GITLAB_HOST", None)
@@ -249,21 +265,25 @@ def _scan_requirements_for_prs(base_path):
         repo_slug = match.group(1)
         pr_num = match.group(2)
         url = match.group(0)
-        repos.setdefault(repo_slug, []).append({
-            "url": url,
-            "number": int(pr_num),
-            "type": "github",
-        })
+        repos.setdefault(repo_slug, []).append(
+            {
+                "url": url,
+                "number": int(pr_num),
+                "type": "github",
+            }
+        )
 
     for match in GITLAB_MR_RE.finditer(content):
         repo_slug = match.group(1)
         mr_num = match.group(2)
         url = match.group(0)
-        repos.setdefault(repo_slug, []).append({
-            "url": url,
-            "number": int(mr_num),
-            "type": "gitlab",
-        })
+        repos.setdefault(repo_slug, []).append(
+            {
+                "url": url,
+                "number": int(mr_num),
+                "type": "gitlab",
+            }
+        )
 
     return repos
 
@@ -316,7 +336,9 @@ def _verify_existing_clone(clone_dir, ref=None, expected_repo_url=None):
 
     if expected_repo_url:
         origin = _run_git(
-            ["remote", "get-url", "origin"], cwd=str(clone_dir), check=False,
+            ["remote", "get-url", "origin"],
+            cwd=str(clone_dir),
+            check=False,
         )
         if origin.returncode != 0:
             return False
@@ -326,21 +348,28 @@ def _verify_existing_clone(clone_dir, ref=None, expected_repo_url=None):
     if ref:
         current = _run_git(
             ["rev-parse", "--abbrev-ref", "HEAD"],
-            cwd=str(clone_dir), check=False,
+            cwd=str(clone_dir),
+            check=False,
         )
         current_branch = current.stdout.strip()
         if current_branch != ref:
             fetch = _run_git(
-                ["fetch", "origin", ref], cwd=str(clone_dir), check=False,
+                ["fetch", "origin", ref],
+                cwd=str(clone_dir),
+                check=False,
             )
             if fetch.returncode != 0:
                 return False
             checkout = _run_git(
-                ["checkout", ref], cwd=str(clone_dir), check=False,
+                ["checkout", ref],
+                cwd=str(clone_dir),
+                check=False,
             )
             if checkout.returncode != 0:
                 fallback = _run_git(
-                    ["checkout", "FETCH_HEAD"], cwd=str(clone_dir), check=False,
+                    ["checkout", "FETCH_HEAD"],
+                    cwd=str(clone_dir),
+                    check=False,
                 )
                 if fallback.returncode != 0:
                     return False
@@ -379,7 +408,7 @@ def _resolve_multiple_prs(pr_urls, base_path):
     if not repo_groups:
         return {
             "status": "error",
-            "message": f"Cannot resolve repo from any of the provided PRs.",
+            "message": "Cannot resolve repo from any of the provided PRs.",
         }
 
     resolved_repos = []
@@ -405,11 +434,13 @@ def _resolve_multiple_prs(pr_urls, base_path):
                 errors.append(f"Could not clone {repo_url}.")
                 continue
 
-        resolved_repos.append({
-            "repo_path": str(repo_clone_dir),
-            "repo_url": repo_url,
-            "ref": ref,
-        })
+        resolved_repos.append(
+            {
+                "repo_path": str(repo_clone_dir),
+                "repo_url": repo_url,
+                "ref": ref,
+            }
+        )
 
     if not resolved_repos:
         return {
@@ -420,8 +451,9 @@ def _resolve_multiple_prs(pr_urls, base_path):
     primary = resolved_repos[0]
     _write_source_yaml(base_path, primary["repo_url"], primary["ref"])
 
-    discovered = {_normalize_git_url(info["repo_url"]): len(info["urls"])
-                  for info in repo_groups.values()}
+    discovered = {
+        _normalize_git_url(info["repo_url"]): len(info["urls"]) for info in repo_groups.values()
+    }
 
     result = _success(
         primary["repo_path"],
@@ -479,7 +511,10 @@ def resolve(args):
             # Clone or verify
             if clone_dir.exists():
                 if not _verify_existing_clone(clone_dir, ref, expected_repo_url=repo_value):
-                    return {"status": "error", "message": f"Existing clone at {clone_dir} is invalid or points to a different repo."}
+                    return {
+                        "status": "error",
+                        "message": f"Existing clone at {clone_dir} is invalid or points to a different repo.",
+                    }
             else:
                 if not _clone_repo(repo_value, clone_dir, ref):
                     return {
@@ -493,7 +528,10 @@ def resolve(args):
             # Local path
             local = Path(repo_value)
             if not local.exists() or not local.is_dir():
-                return {"status": "error", "message": f"Source repo path does not exist: {repo_value}"}
+                return {
+                    "status": "error",
+                    "message": f"Source repo path does not exist: {repo_value}",
+                }
             return _success(local, ref=ref, scope=scope)
 
     # --- Priority 2: source.yaml ---
@@ -514,7 +552,10 @@ def resolve(args):
         if _is_remote_url(repo_value):
             if clone_dir.exists():
                 if not _verify_existing_clone(clone_dir, ref, expected_repo_url=repo_value):
-                    return {"status": "error", "message": f"Existing clone at {clone_dir} is invalid or points to a different repo."}
+                    return {
+                        "status": "error",
+                        "message": f"Existing clone at {clone_dir} is invalid or points to a different repo.",
+                    }
             else:
                 if not _clone_repo(repo_value, clone_dir, ref):
                     return {
@@ -525,7 +566,10 @@ def resolve(args):
         else:
             local = Path(repo_value)
             if not local.exists() or not local.is_dir():
-                return {"status": "error", "message": f"Source repo path does not exist: {repo_value}"}
+                return {
+                    "status": "error",
+                    "message": f"Source repo path does not exist: {repo_value}",
+                }
             return _success(local, repo_url=repo_value, ref=ref, scope=scope)
 
     # --- Priority 3: PR-derived (--pr without --repo) ---
@@ -552,7 +596,8 @@ def main():
         description="Resolve and clone/verify a source code repository"
     )
     parser.add_argument(
-        "--base-path", required=True,
+        "--base-path",
+        required=True,
         help="Base output path (e.g., .claude/docs/proj-123)",
     )
     parser.add_argument(
@@ -560,11 +605,13 @@ def main():
         help="Source repo URL or local path",
     )
     parser.add_argument(
-        "--pr", action="append",
+        "--pr",
+        action="append",
         help="PR/MR URL (repeatable)",
     )
     parser.add_argument(
-        "--scan-requirements", action="store_true",
+        "--scan-requirements",
+        action="store_true",
         help="Scan requirements.md for PR URLs (post-requirements discovery)",
     )
     args = parser.parse_args()
