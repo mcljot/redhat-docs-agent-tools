@@ -118,7 +118,35 @@ make serve
 
 If you can run evals, test your skill or command using the eval runner described in [Evaluating skills](docs/contribute/evaluating-skills.md).
 
-### 5. Submit a pull request
+### 5. Lint Python files
+
+All Python files under `plugins/` are checked by [Ruff](https://docs.astral.sh/ruff/) in CI. Install the pinned version to match what CI runs:
+
+```bash
+python3 -m pip install ruff==0.15.11
+```
+
+Run both the linter and the formatter before committing:
+
+```bash
+ruff check plugins/
+ruff format --check plugins/
+```
+
+To auto-fix lint violations and reformat in place:
+
+```bash
+ruff check --fix plugins/
+ruff format plugins/
+```
+
+Configuration lives in `pyproject.toml` at the repo root — no extra config files are needed. The rule set includes pycodestyle errors and warnings (`E`, `W`), pyflakes (`F`), import sorting (`I`), flake8-bandit security checks (`S`), flake8-bugbear (`B`), and pyupgrade (`UP`).
+
+If a security rule flags intentional code (for example, a `subprocess.run` call with a known-safe command), suppress it with an inline `# noqa: SXXX` comment rather than removing the check globally.
+
+**Editor integration (optional):** VS Code and JetBrains both offer Ruff extensions that lint and format on save using the same `pyproject.toml` config.
+
+### 6. Submit a pull request
 
 - Write a clear PR title and description.
 - Reference the issue you opened.
