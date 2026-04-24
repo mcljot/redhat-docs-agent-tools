@@ -1,0 +1,53 @@
+workflow:
+  name: commit-driven
+  description: >-
+    Documentation workflow driven by commit/PR/MR analysis. Analyzes code
+    changes for documentation impact, then runs the standard pipeline.
+
+  # All step outputs go to: .claude/docs/<ticket>/<step-name>/
+  # commit-analysis writes to requirements/ for planning step compatibility.
+  steps:
+    - name: commit-analysis
+      skill: docs-tools:docs-workflow-commit-analysis
+      description: Analyze commit/PR for documentation impact
+
+    - name: planning
+      skill: docs-tools:docs-workflow-planning
+      description: Create documentation plan
+      inputs: [commit-analysis]
+
+    - name: code-evidence
+      skill: docs-tools:docs-workflow-code-evidence
+      description: Retrieve code evidence from source repository
+      when: has_source_repo
+      inputs: [planning]
+
+    - name: prepare-branch
+      skill: docs-tools:docs-workflow-prepare-branch
+      description: Create a fresh branch from latest upstream default branch
+      inputs: [planning]
+
+    - name: writing
+      skill: docs-tools:docs-workflow-writing
+      description: Write documentation
+      inputs: [planning, prepare-branch, code-evidence]
+
+    - name: technical-review
+      skill: docs-tools:docs-workflow-tech-review
+      description: Technical accuracy review
+      inputs: [writing]
+
+    - name: style-review
+      skill: docs-tools:docs-workflow-style-review
+      description: Style guide compliance review
+      inputs: [writing, technical-review]
+
+    - name: commit
+      skill: docs-tools:docs-workflow-commit
+      description: Commit and push documentation changes
+      inputs: [writing, style-review, technical-review]
+
+    - name: create-mr
+      skill: docs-tools:docs-workflow-create-mr
+      description: Create merge request or pull request
+      inputs: [commit]

@@ -2,7 +2,7 @@
 name: docs-orchestrator
 description: Documentation workflow orchestrator. Reads the step list from .claude/docs-workflow.yaml (or the plugin default). Runs steps sequentially, manages progress state, handles iteration and confirmation gates. Claude is the orchestrator — the YAML is a step list, not a workflow engine.
 
-argument-hint: <ticket> [--workflow <name>] [--pr <url>]... [--source-code-repo <url-or-path>] [--mkdocs] [--draft] [--docs-repo-path <path>] [--create-jira <PROJECT>]
+argument-hint: [<ticket>] [--commit <url>] [--workflow <name>] [--pr <url>]... [--source-code-repo <url-or-path>] [--mkdocs] [--draft] [--docs-repo-path <path>] [--create-jira <PROJECT>]
 
 allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, AskUserQuestion
 ---
@@ -27,7 +27,8 @@ bash ${CLAUDE_SKILL_DIR}/scripts/setup-hooks.sh
 
 When displaying available options to the user (e.g., on skill load or when asking for flags), reproduce the descriptions below **verbatim** — do not summarize or paraphrase them.
 
-- `$1` — JIRA ticket ID (required). If missing, STOP and ask the user.
+- `$1` — JIRA ticket ID or identifier (required unless `--commit` is provided). If both `$1` and `--commit` are absent, STOP and ask the user.
+- `--commit <url>` — URL to a commit, PR, or MR. When provided, `$1` is optional — an identifier is auto-derived from the URL (e.g., `repo-pr-42`). Automatically selects the commit-driven workflow (`defaults/commit-driven-workflow.yaml`). If `$1` is also provided, it is used as the identifier and `--commit` supplies the URL to the commit-analysis step. Cannot be combined with `--workflow` (the commit-driven workflow is always used)
 - `--workflow <name>` — Use `.claude/docs-<name>.yaml` instead of `docs-workflow.yaml`. Allows running alternative pipelines (e.g., writing-only, review-only). Falls back to the plugin default at `skills/docs-orchestrator/defaults/docs-workflow.yaml` if no project-level YAML exists
 - `--pr <url>` — PR/MR URLs (repeatable, accumulated into a list). Accepts GitHub PRs (`gh` CLI) and GitLab MRs (`glab` CLI). Used both as requirements input (agent reads diffs/descriptions) and for source repo resolution (repo URL and branch derived from the first PR/MR). When multiple PRs from different repos are provided, all repos are resolved and treated equally as source material
 - `--mkdocs` — Use Material for MkDocs format instead of AsciiDoc. Propagates to the writing step (generates `.md` with MkDocs front matter) and style-review step (applies Markdown-appropriate rules). Sets `options.format` to `"mkdocs"` in the progress file
@@ -35,6 +36,14 @@ When displaying available options to the user (e.g., on skill load or when askin
 - `--docs-repo-path <path>` — Target documentation repository for UPDATE-IN-PLACE mode. The docs-writer explores this directory for framework detection (Antora, MkDocs, Docusaurus, etc.) and writes files there instead of the current working directory. Propagates to `prepare-branch`, `writing`, `commit`, and `create-mr` steps (mapped to their internal `--repo-path` flag). **Precedence**: if both `--docs-repo-path` and `--draft` are passed, `--docs-repo-path` wins — log a warning and ignore `--draft`
 - `--source-code-repo <url-or-path>` — Source code repository for code evidence and requirements enrichment. Accepts remote URLs (https://, git@, ssh:// — shallow-cloned to `.claude/docs/<ticket>/code-repo/`) or local paths (used directly). Passed to requirements, code-evidence, and writing steps (mapped to their internal `--repo` flag). Without `--pr`, the entire repo is the subject matter; with `--pr`, the PR branch is checked out so code-evidence reflects the PR's state. Takes highest priority in source resolution, overriding `source.yaml` and PR-derived URLs
 - `--create-jira <PROJECT>` — Create a linked JIRA ticket in the specified project after the planning step completes. Activates the `create-jira` workflow step (guarded by `when: create_jira_project`). Requires `JIRA_API_TOKEN` to be set
+
+### Identifier derivation (commit-driven)
+
+When `--commit` is provided and `$1` is absent, derive the identifier from the URL:
+- GitHub PR `https://github.com/org/repo/pull/42` → `repo-pr-42`
+- GitLab MR `https://gitlab.com/org/repo/-/merge_requests/5` → `repo-mr-5`
+- Commit SHA → first 8 characters
+- Branch name → used as-is
 
 ### Examples
 
@@ -64,6 +73,16 @@ When displaying available options to the user (e.g., on skill load or when askin
 
 # Custom workflow YAML
 /docs-orchestrator PROJ-123 --workflow quick
+
+# Commit-driven — analyze a PR and generate documentation
+/docs-orchestrator --commit https://github.com/org/repo/pull/42
+
+# Commit-driven with JIRA context
+/docs-orchestrator PROJ-123 --commit https://github.com/org/repo/pull/42
+
+# Commit-driven with explicit source repo for code evidence
+/docs-orchestrator --commit https://github.com/org/repo/pull/42 \
+  --source-code-repo /path/to/repo
 ```
 
 ## Resolve source repository
@@ -83,11 +102,13 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/resolve_source.py \
   [--pr <url>]...
 ```
 
+**Commit-driven source resolution**: When `--commit` is a PR/MR URL and no `--source-code-repo` is provided, pass the `--commit` URL to `resolve_source.py` as a `--pr` argument. This derives the source repo from the PR/MR so that `has_source_repo` is true and code-evidence can run. For local commits/branches (not PR/MR URLs), source resolution requires `--source-code-repo` or `--repo` to be provided explicitly.
+
 The script checks sources in priority order:
 
 1. **CLI `--source-code-repo` flag** — clone or verify the path
 2. **Per-ticket `source.yaml`** — read and apply existing config
-3. **PR-derived** — resolve repo URL and branch from `--pr` via `gh pr view` or `glab mr view`
+3. **PR-derived** — resolve repo URL and branch from `--pr` (or `--commit` PR/MR URL) via `gh pr view` or `glab mr view`
 4. **No source** — exit code 2, defer resolution until after requirements
 
 The script outputs JSON to stdout:
@@ -137,6 +158,7 @@ All fields except `repo` are optional. If `scope` is omitted, the entire reposit
 
 ### 1. Determine the YAML file
 
+- If `--commit` was provided → use `skills/docs-orchestrator/defaults/commit-driven-workflow.yaml` (ignores `--workflow` if both present)
 - If `--workflow <name>` was specified → `.claude/docs-<name>.yaml`
 - Otherwise → `.claude/docs-workflow.yaml`
 - If neither exists → use the plugin default at `skills/docs-orchestrator/defaults/docs-workflow.yaml`
@@ -341,6 +363,7 @@ Build the args string for the step skill. The orchestrator maps its user-facing 
 1. **Always**: `<ticket> --base-path <base_path>` — the ticket ID and the **absolute** base output path
 2. **If source repo is resolved**: `--repo <repo_path>` — passed to steps that can use it
 3. **From orchestrator context**: Step-specific args from parsed CLI flags:
+   - `commit-analysis`: `--commit <url> [--repo <repo_path>] [--base-branch <branch>]` — if `$1` matches JIRA pattern `[A-Z]+-[0-9]+`, also pass `--ticket <$1>`
    - `requirements`: `[--pr <url>]... [--repo <repo_path>]`
    - `prepare-branch`: `[--draft] [--repo-path <path>]`
    - `code-evidence`: `--repo <repo_path> [--scope-include <globs>] [--scope-exclude <globs>] [--reindex]` — scope globs come from `source.yaml` or `options.source.scope` in the progress file
@@ -364,11 +387,11 @@ Skill: <step.skill>, args: "<constructed args>"
 2. Read the step's `step-result.json` sidecar if it exists in the output folder. Log a warning if it is missing (the step still counts as completed — sidecars are expected but not required for backward compatibility)
 3. Update the step's status to `"completed"` with the output folder path in the progress file
 4. Update the progress file's `updated_at` timestamp
-5. **If the just-completed step is `requirements` AND `options.source` is `null`** → run [Post-requirements source resolution](#post-requirements-source-resolution) before continuing to the next step. This may change `deferred` steps to `pending` or `skipped`
+5. **If the just-completed step is `requirements` or `commit-analysis` AND `options.source` is `null`** → run [Post-requirements source resolution](#post-requirements-source-resolution) before continuing to the next step. This may change `deferred` steps to `pending` or `skipped`
 
 ## Post-requirements source resolution
 
-This section triggers **only** when the `requirements` step completes AND `options.source` is still `null` (i.e., no source was resolved pre-flight).
+This section triggers **only** when the `requirements` or `commit-analysis` step completes AND `options.source` is still `null` (i.e., no source was resolved pre-flight).
 
 ### 1. Run the script with `--scan-requirements`
 

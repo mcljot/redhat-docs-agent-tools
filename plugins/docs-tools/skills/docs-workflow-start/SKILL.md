@@ -1,7 +1,7 @@
 ---
 name: docs-workflow-start
 description: Interactive entry point for the docs workflow. When invoked with no CLI switches, uses AskUserQuestion to gather configuration. Supports full workflow, individual steps with auto-resolved prerequisites, and resuming previous runs. When switches are provided, passes through directly to docs-orchestrator.
-argument-hint: "[<ticket>] [--workflow <name>] [--pr <url>]... [--source-code-repo <url-or-path>] [--mkdocs] [--draft] [--docs-repo-path <path>] [--create-jira <PROJECT>]"
+argument-hint: "[<ticket>] [--commit <url>] [--workflow <name>] [--pr <url>]... [--source-code-repo <url-or-path>] [--mkdocs] [--draft] [--docs-repo-path <path>] [--create-jira <PROJECT>]"
 allowed-tools: Read, Write, Glob, Grep, Bash, Skill, AskUserQuestion
 ---
 
@@ -42,7 +42,7 @@ If no ticket ID was provided in args, ask the user conversationally:
 
 > What is the JIRA ticket ID? (e.g., PROJ-123)
 
-The ticket ID is required. After obtaining it, proceed to step 2.
+The ticket ID is required for standard and specific-step workflows. For the commit-driven path (selected in step 2), the ticket ID is optional — proceed to step 2 even if not provided. After obtaining it (or skipping), proceed to step 2.
 
 ### Step 2: Action selection — call AskUserQuestion
 
@@ -53,6 +53,7 @@ You MUST call the AskUserQuestion tool now with 1 question. Do not skip this.
 | Option | Description |
 |--------|-------------|
 | Run full workflow (Recommended) | Run the complete docs pipeline from requirements through to MR creation |
+| Analyze a commit/PR for documentation impact | Analyze code changes and generate documentation (commit-driven workflow) |
 | Run specific step(s) | Run one or more individual workflow steps with prerequisites included automatically |
 | Resume existing workflow | Continue a previously started workflow for this ticket |
 
@@ -60,6 +61,7 @@ Wait for the user's answer before proceeding.
 
 - If **"Resume existing workflow"**: skip steps 3–4 and go directly to step 5 (resume path).
 - If **"Run full workflow"**: proceed to step 3A.
+- If **"Analyze a commit/PR for documentation impact"**: proceed to step 3C.
 - If **"Run specific step(s)"**: proceed to step 3B.
 
 ### Step 3A: Full workflow configuration — call AskUserQuestion
@@ -124,9 +126,40 @@ After receiving the answer, determine which configuration questions are relevant
 
 If any questions are relevant, call AskUserQuestion with those questions (same text and options as step 3A). If no questions are relevant, proceed to step 4.
 
+### Step 3C: Commit-driven configuration — call AskUserQuestion
+
+You MUST call the AskUserQuestion tool now. Do not skip this.
+
+**Q1: What is the commit, PR, or MR URL?**
+
+This is a free-text input. Ask via AskUserQuestion (textInput): "Enter the commit, PR, or MR URL:"
+
+This is the only required input. After receiving the URL, ask the remaining questions together in a single AskUserQuestion call:
+
+**Q2: Do you have a related JIRA ticket?**
+
+| Option | Description |
+|--------|-------------|
+| No (Recommended) | Derive context from the commit/PR only |
+| Yes | Provide a JIRA ticket for additional context |
+
+**Q3: What output format should the documentation use?** (same as Step 3A/Q1)
+
+**Q4: Where should the documentation be written?** (same as Step 3A/Q3)
+
+Wait for all answers before proceeding.
+
+If the user selected "Yes" for JIRA ticket, collect it as a follow-up in step 4. Source code repo is NOT asked — it is derived from the commit/PR URL automatically.
+
 ### Step 4: Free-text follow-ups
 
 Based on answers from step 3, collect any needed free-text inputs. Use AskUserQuestion with `textInput: true` for each value, so the user has a clear input prompt. Only ask questions that apply:
+
+**If "Yes" was selected for JIRA ticket (commit-driven path)**:
+
+Ask via AskUserQuestion (textInput): "Enter the JIRA ticket ID (e.g., PROJ-123):"
+
+Maps to `$1` (positional arg before flags).
 
 **If "Yes — I have a PR URL" was selected**:
 
@@ -175,6 +208,8 @@ Build the args string from collected answers:
 
 | Answer | CLI flag |
 |--------|----------|
+| Commit/PR URL (commit-driven path) | `--commit <url>` |
+| JIRA ticket (commit-driven path) | `$1` (positional arg before flags) |
 | Material for MkDocs | `--mkdocs` |
 | PR URL(s) | `--pr <url>` (repeat for each URL) |
 | Repo URL or path | `--source-code-repo <url-or-path>` |

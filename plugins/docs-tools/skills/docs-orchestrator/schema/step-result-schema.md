@@ -299,6 +299,28 @@ When an existing linked ticket is found:
 | `skipped` | boolean | Whether JIRA creation was skipped | Orchestrator |
 | `skip_reason` | string\|null | Reason when skipped (e.g., `"existing_link"`) | Orchestrator |
 
+### commit-analysis
+
+```json
+{
+  "schema_version": 1,
+  "step": "commit-analysis",
+  "ticket": "repo-pr-42",
+  "completed_at": "2026-04-24T10:00:00Z",
+  "title": "Add user preferences API",
+  "impact_grade": "HIGH",
+  "files_analyzed": 15,
+  "doc_impact_categories": ["new_feature", "api_change"]
+}
+```
+
+| Field | Type | Description | Consumed by |
+|---|---|---|---|
+| `title` | string | First heading from requirements.md (max 80 chars, ticket prefix stripped) | `create_mr.sh` — PR/MR title |
+| `impact_grade` | string | `"HIGH"`, `"MEDIUM"`, `"LOW"`, or `"NONE"` | Orchestrator (informational) |
+| `files_analyzed` | integer | Number of files in the analyzed commit/PR | Informational (orchestrator summary) |
+| `doc_impact_categories` | string[] | Categories of documentation impact (e.g., `"new_feature"`, `"api_change"`, `"config_change"`, `"breaking_change"`) | Informational |
+
 ## Backward compatibility
 
 Downstream consumers use a sidecar-first pattern: read from `step-result.json` when present, fall back to parsing the markdown output when absent. This ensures in-flight workflows from before sidecar adoption continue to work.
