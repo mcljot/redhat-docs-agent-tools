@@ -1,6 +1,6 @@
 ---
 name: docs-workflow-code-evidence
-description: Retrieve code evidence from a source repository to ground documentation in actual implementation. Indexes using AST chunking and hybrid search, then retrieves relevant code snippets for each topic in the documentation plan. Uses two-pass retrieval — source-scoped for API accuracy, unfiltered for README/narrative context. Supports glob-based scope filtering for whole-repo or subdirectory-scoped documentation. Repo must be available (cloned by orchestrator or provided via --repo). Requires uv for automatic code-finder dependency management.
+description: Retrieve code evidence from a source repository to ground documentation in actual implementation. Indexes using AST chunking and hybrid search, then retrieves relevant code snippets for each topic in the documentation plan. Uses two-pass retrieval — source-scoped for API accuracy, unfiltered for README/narrative context. Supports glob-based scope filtering for whole-repo or subdirectory-scoped documentation. Repo must be available (cloned by orchestrator or provided via --repo).
 argument-hint: <ticket> --base-path <path> --repo <path> [--scope-include <globs>] [--scope-exclude <globs>] [--reindex] [--limit N]
 allowed-tools: Read, Write, Glob, Grep, Bash
 dependencies:
@@ -18,8 +18,9 @@ The writer typically works from the **documentation repository**, not the code r
 
 ## Prerequisites
 
-- **code-finder** Python package. Install once with `python3 -m pip install code-finder`, or let the skill auto-install via `uv run --with code-finder` (requires **uv**: `brew install uv` on macOS, or see https://docs.astral.sh/uv/getting-started/installation/)
-- The wrapper script `scripts/find_evidence.py` calls the code-finder Python API directly (no CLI entry point required)
+- **code-finder** Python package: `python3 -m pip install code-finder`
+
+This installs the `code-finder-evidence` CLI used by this step.
 
 ## Arguments
 
@@ -64,7 +65,7 @@ mkdir -p "$OUTPUT_DIR"
 Validate:
 - Verify `--repo` was provided. If not, STOP with error: "code-evidence requires --repo. The orchestrator should provide the repo path."
 - Verify `$PLAN_FILE` exists. If not, STOP with error: "Planning step must complete before code-evidence."
-- Verify the wrapper script exists at `scripts/find_evidence.py` (relative to this skill directory). If not, STOP with error: "find_evidence.py script not found."
+- Verify `code-finder-evidence` is available: `which code-finder-evidence`. If not, STOP with error: "code-finder is not installed. Run: python3 -m pip install code-finder"
 
 ### 2. Validate repo path
 
@@ -106,71 +107,44 @@ Additionally, derive 1-2 **pattern-level queries** that ask how the codebase imp
 
 ### 5. Run two-pass evidence retrieval for each topic
 
-For each search query, run code-finder's evidence retrieval **twice** to capture both accurate source code and narrative context. Use **batch mode** to run all queries in a single process invocation — this pays the import and index-load cost once instead of per-query.
+For each search query, run `code-finder-evidence` **twice** to capture both accurate source code and narrative context. The index is built on the first invocation and cached — subsequent calls reuse it with negligible overhead.
 
-#### 5a. Build the queries file
+#### 5a. Pass 1 — Source-scoped
 
-Create a JSON file at `${OUTPUT_DIR}/queries.json` containing all queries for both passes. Each entry specifies the query text, result limit, and optional filter paths:
-
-```json
-[
-  {"query": "auth middleware implementation", "limit": 5, "filter_paths": ["src/controllers"]},
-  {"query": "auth middleware implementation", "limit": 5},
-  {"query": "reconciler builder pattern",    "limit": 5, "filter_paths": ["src/controllers"]},
-  {"query": "reconciler builder pattern",    "limit": 5}
-]
-```
-
-For each search query derived from the plan, add **two entries**:
-
-1. **Source-scoped** (Pass 1) — with `filter_paths` set to the source directories detected in step 3. Returns function signatures, class definitions, and implementation details.
-2. **Unfiltered** (Pass 2) — without `filter_paths`. Picks up READMEs, documentation, examples, and configuration files that provide narrative context.
-
-#### 5b. Run batch retrieval
-
-First, check if code-finder is already installed:
+For each query, run with `--filter-paths` set to the source directories detected in step 3:
 
 ```bash
-python3 -c "import claude_context" 2>/dev/null && echo "INSTALLED" || echo "NOT_INSTALLED"
-```
-
-If **INSTALLED**, run directly (avoids re-downloading ~1GB of ML dependencies):
-
-```bash
-python3 scripts/find_evidence.py \
+code-finder-evidence \
   --repo "$REPO_PATH" \
-  --queries-file "${OUTPUT_DIR}/queries.json" \
+  --query "<QUERY>" \
+  --limit <LIMIT> \
+  --filter-paths "<SOURCE_DIRS>"
+```
+
+Add `--reindex` only on the **first** invocation if the flag was provided. All subsequent queries reuse the freshly built index.
+
+This pass returns function signatures, class definitions, and implementation details.
+
+#### 5b. Pass 2 — Unfiltered
+
+For each query, run without `--filter-paths`:
+
+```bash
+code-finder-evidence \
+  --repo "$REPO_PATH" \
+  --query "<QUERY>" \
   --limit <LIMIT>
 ```
 
-If **NOT_INSTALLED**, fall back to uv:
-
-```bash
-uv run --with code-finder python3 scripts/find_evidence.py \
-  --repo "$REPO_PATH" \
-  --queries-file "${OUTPUT_DIR}/queries.json" \
-  --limit <LIMIT>
-```
-
-If `--reindex` is specified, add `--reindex` — it is applied to the first query only; subsequent queries reuse the freshly built index.
-
-The script outputs a JSON array of results, one per query entry:
-
-```json
-[
-  {"query": "auth middleware implementation", "filter_paths": ["src/controllers"], "result": { ... }},
-  {"query": "auth middleware implementation", "filter_paths": null, "result": { ... }},
-  ...
-]
-```
+This pass picks up READMEs, documentation, examples, and configuration files that provide narrative context.
 
 #### 5c. Post-retrieval processing
 
-Parse the batch output. For each pair of results (source-scoped + unfiltered) corresponding to the same search query, assign them to `source_results` and `context_results` respectively.
+For each pair of results (source-scoped + unfiltered) corresponding to the same search query, assign them to `source_results` and `context_results` respectively.
 
 **Post-retrieval exclude filtering**: If `--scope-exclude` patterns were provided, filter both source and context results after retrieval. Remove any result whose `file_path` matches an exclude glob (e.g., `**/vendor/**`, `**/*_test.go`). This is necessary because code-finder does not support exclude globs natively.
 
-**Note on indexing**: The index is built once on the first query and cached at `{repo}/.vibe2doc/index.db`. All queries in the batch reuse the same cached index.
+**Note on indexing**: The index is built once on the first invocation and cached at `{repo}/.vibe2doc/index.db`. All subsequent invocations reuse the same cached index.
 
 Collect all results into a combined evidence structure:
 
@@ -277,7 +251,7 @@ The **technical review step** can use it to verify claims:
 - The index is deterministic — same code produces the same index
 - Evidence retrieval uses hybrid search: BM25 for exact keyword matches + vector search for semantic similarity
 - Default index exclusions skip `archive/`, `vendor/`, `node_modules/`, `docs/generated/`, `.vibe2doc/`, and other non-source directories
-- The two-pass approach adds negligible overhead (~30-200ms per query) since both passes reuse the same cached index
+- The two-pass approach adds negligible overhead since both passes reuse the same cached index
 - `--scope-include` narrows the Pass 1 filter paths but does not affect indexing — the entire repo is indexed, and scope is applied at query time
 - `--scope-exclude` is applied as post-retrieval filtering since code-finder does not support exclude globs natively. Results matching exclude patterns are removed from both pass outputs before writing to evidence.json
 - The repo clone is managed by the orchestrator (see the "Resolve source repository" section in the orchestrator skill). This step does not clone or manage repos — it receives a path via `--repo`

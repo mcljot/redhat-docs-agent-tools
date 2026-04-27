@@ -16,17 +16,23 @@ Uses hybrid search: BM25 for exact keyword matches + vector embeddings for seman
 
 ## Prerequisites
 
-- **code-finder** Python package. Install once with `python3 -m pip install code-finder`, or let the skill auto-install via `uv run --with code-finder` (requires **uv**: `brew install uv` on macOS, or see https://docs.astral.sh/uv/getting-started/installation/)
-- The wrapper script at `${CLAUDE_PLUGIN_ROOT}/skills/docs-workflow-code-evidence/scripts/find_evidence.py` calls the code-finder Python API directly (no CLI entry point required)
+- **code-finder** Python package: `python3 -m pip install code-finder`
+
+This installs three CLI entry points:
+
+| Command | Purpose |
+|---|---|
+| `code-finder-evidence` | Search for code snippets matching a natural language query |
+| `code-finder-api-surface` | Extract API surface (functions, classes, methods) from source files |
+| `code-finder-review` | Review a draft document by checking claims against source code |
 
 ## Arguments
 
 - `--repo <path>` — Path to the repository to search (required)
-- `--query "<query>"` — Natural language search query (single query mode)
-- `--queries-file <path>` — Path to a JSON file with batch queries (use instead of `--query` for multiple searches in one invocation). Schema: `[{"query": "...", "limit": N, "filter_paths": ["dir1", "dir2"]}, ...]`
-- `--filter-paths <dirs>` — Comma-separated directory prefixes to scope results (e.g., `src/auth,src/config`). Single query mode only. Resolved relative to the repo root.
-- `--limit <N>` — Max results to return (default: 5). In batch mode, acts as default limit per query (overridden by per-entry `limit`).
-- `--reindex` — Force re-indexing even if a cached index exists (in batch mode, applied to first query only)
+- `--query "<query>"` — Natural language search query (required)
+- `--filter-paths <dirs>` — Comma-separated directory prefixes to scope results (e.g., `src/auth,src/config`). Resolved relative to the repo root.
+- `--limit <N>` — Max results to return (default: 10)
+- `--reindex` — Force re-indexing even if a cached index exists
 
 ## Execution
 
@@ -36,31 +42,12 @@ Extract `--repo`, `--query`, and optional flags from the args string.
 
 Validate:
 - Verify the repo path exists. If not, STOP with error: "Repo path does not exist: <path>"
-- Verify the wrapper script exists. If not, STOP with error: "find_evidence.py script not found."
+- Verify `code-finder-evidence` is available: `which code-finder-evidence`. If not, STOP with error: "code-finder is not installed. Run: python3 -m pip install code-finder"
 
 ### 2. Run evidence retrieval
 
-First, check if code-finder is already installed:
-
 ```bash
-python3 -c "import claude_context" 2>/dev/null && echo "INSTALLED" || echo "NOT_INSTALLED"
-```
-
-Use the appropriate command based on the result. If **INSTALLED**, run directly (avoids re-downloading ~1GB of ML dependencies). If **NOT_INSTALLED**, prefix with `uv run --with code-finder`.
-
-**Direct (code-finder installed):**
-
-```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/docs-workflow-code-evidence/scripts/find_evidence.py \
-  --repo "<REPO_PATH>" \
-  --query "<QUERY>" \
-  --limit <LIMIT>
-```
-
-**Fallback (via uv):**
-
-```bash
-uv run --with code-finder python3 ${CLAUDE_PLUGIN_ROOT}/skills/docs-workflow-code-evidence/scripts/find_evidence.py \
+code-finder-evidence \
   --repo "<REPO_PATH>" \
   --query "<QUERY>" \
   --limit <LIMIT>

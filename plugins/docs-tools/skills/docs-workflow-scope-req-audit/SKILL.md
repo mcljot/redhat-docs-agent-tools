@@ -1,6 +1,6 @@
 ---
 name: docs-workflow-scope-req-audit
-description: Classify JIRA requirements by code evidence status before planning. Queries the code-finder index once per requirement to determine if each is grounded (implemented), partial, or absent in the codebase. Prevents hallucinated documentation for unimplemented features and surfaces gaps for implemented ones. Conditional on has_source_repo. Reuses find_evidence.py from the code-evidence step.
+description: Classify JIRA requirements by code evidence status before planning. Queries the code-finder index once per requirement to determine if each is grounded (implemented), partial, or absent in the codebase. Prevents hallucinated documentation for unimplemented features and surfaces gaps for implemented ones. Conditional on has_source_repo.
 argument-hint: <ticket> --base-path <path> --repo <path> [--grounded-threshold <float>] [--absent-threshold <float>]
 allowed-tools: Read, Write, Glob, Grep, Bash
 ---
@@ -15,8 +15,7 @@ This is a tool-only step (no agent dispatch). Claude executes the steps directly
 
 ## Prerequisites
 
-- **code-finder** Python package. Install once with `python3 -m pip install code-finder`, or let the step auto-install via `uv run --with code-finder` (requires **uv**: `brew install uv` on macOS, or see https://docs.astral.sh/uv/getting-started/installation/)
-- The `find_evidence.py` wrapper script from the code-evidence step at `plugins/docs-tools/skills/docs-workflow-code-evidence/scripts/find_evidence.py`
+- **code-finder** Python package: `python3 -m pip install code-finder`
 
 ## Arguments
 
@@ -54,7 +53,6 @@ REQUIREMENTS_FILE="${BASE_PATH}/requirements/requirements.md"
 OUTPUT_DIR="${BASE_PATH}/scope-req-audit"
 EVIDENCE_STATUS_FILE="${OUTPUT_DIR}/evidence-status.json"
 SUMMARY_FILE="${OUTPUT_DIR}/summary.md"
-QUERIES_FILE="${OUTPUT_DIR}/queries.json"
 mkdir -p "$OUTPUT_DIR"
 ```
 
@@ -70,21 +68,7 @@ Validate:
 - Verify `$REQUIREMENTS_FILE` exists. If not, STOP with error: "Requirements step must complete before scope-req-audit."
 - Verify the repo path exists and is a directory. If not, STOP with error: "Repo path does not exist: `<path>`."
 
-Locate the `find_evidence.py` script from the code-evidence skill.
-
-Claude Code:
-
-```bash
-FIND_EVIDENCE_SCRIPT="${CLAUDE_PLUGIN_ROOT}/skills/docs-workflow-code-evidence/scripts/find_evidence.py"
-```
-
-Cursor (paths are relative to the repository root):
-
-```bash
-FIND_EVIDENCE_SCRIPT="plugins/docs-tools/skills/docs-workflow-code-evidence/scripts/find_evidence.py"
-```
-
-Verify the script exists. If not, STOP with error: "find_evidence.py not found at expected path."
+Verify `code-finder-evidence` is available: `which code-finder-evidence`. If not, STOP with error: "code-finder is not installed. Run: python3 -m pip install code-finder"
 
 ### 2. Discover related repos
 
@@ -140,70 +124,38 @@ Examples:
 - REQ "Kueue workload scheduling integration" → query "Kueue queue integration workload scheduling"
 - REQ "Audit logging for evaluation jobs" → query "audit logging implementation evaluation jobs"
 
-Write the queries to `$QUERIES_FILE` as a JSON array:
-
-```json
-[
-  {"query": "CA bundle configuration implementation", "limit": 5},
-  {"query": "Python SDK client library implementation", "limit": 5}
-]
-```
-
-Then run batch retrieval using `find_evidence.py`. First, check if code-finder is already installed:
+Then run `code-finder-evidence` for each requirement query. The index is built on the first invocation and cached at `{repo}/.vibe2doc/index.db` — subsequent calls reuse it with negligible overhead.
 
 ```bash
-python3 -c "import claude_context.skills.evidence_retrieval" 2>/dev/null && echo "INSTALLED" || echo "NOT_INSTALLED"
-```
-
-If **INSTALLED**, run directly:
-
-```bash
-python3 "$FIND_EVIDENCE_SCRIPT" \
+code-finder-evidence \
   --repo "$REPO_PATH" \
-  --queries-file "$QUERIES_FILE" \
+  --query "<QUERY>" \
   --limit 5
 ```
 
-If **NOT_INSTALLED**, fall back to uv:
-
-```bash
-uv run --with code-finder python3 "$FIND_EVIDENCE_SCRIPT" \
-  --repo "$REPO_PATH" \
-  --queries-file "$QUERIES_FILE" \
-  --limit 5
-```
-
-The script outputs a JSON array of results to stdout. Capture this output.
-
-This creates the code-finder index on the first query. The index is cached at `{repo}/.vibe2doc/index.db` and will be reused by the later code-evidence step.
+Capture the JSON output from each invocation. The index created here will be reused by the later code-evidence step.
 
 ### 5. Classify results
 
-Parse the batch retrieval output. For each requirement's query results, classify based on the top-N results:
-
-The batch retrieval output is a JSON array. Each entry has the structure:
+Parse the retrieval output for each requirement's query. Each `code-finder-evidence` invocation outputs a JSON object:
 
 ```json
 {
   "query": "...",
-  "filter_paths": null,
-  "result": {
-    "query": "...",
-    "repo_path": "...",
-    "result_count": 5,
-    "results": [
-      {
-        "rank": 1,
-        "file_path": "...",
-        "scores": {"vector": 0.37, "bm25": 17.1, "combined": 0.78},
-        ...
-      }
-    ]
-  }
+  "repo_path": "...",
+  "result_count": 5,
+  "results": [
+    {
+      "rank": 1,
+      "file_path": "...",
+      "scores": {"vector": 0.37, "bm25": 17.1, "combined": 0.78},
+      ...
+    }
+  ]
 }
 ```
 
-Results are under `result.results` (not `result.chunks`). Scores are under each result's `scores.combined` (not `combined_score`).
+Results are under the `results` array. Scores are under each result's `scores.combined`.
 
 Classify based on the top-N results:
 
