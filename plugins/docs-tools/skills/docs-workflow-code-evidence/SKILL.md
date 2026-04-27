@@ -109,7 +109,25 @@ Additionally, derive 1-2 **pattern-level queries** that ask how the codebase imp
 
 For each search query, run `code-finder-evidence` **twice** to capture both accurate source code and narrative context. The index is built on the first invocation and cached — subsequent calls reuse it with negligible overhead.
 
-#### 5a. Pass 1 — Source-scoped
+#### 5a. Build the queries file
+
+Write the extracted queries to `${OUTPUT_DIR}/queries.json` as a record of what was searched. Each entry specifies the query text, result limit, and optional filter paths:
+
+```json
+[
+  {"query": "auth middleware implementation", "limit": 5, "filter_paths": ["src/controllers"]},
+  {"query": "auth middleware implementation", "limit": 5},
+  {"query": "reconciler builder pattern",    "limit": 5, "filter_paths": ["src/controllers"]},
+  {"query": "reconciler builder pattern",    "limit": 5}
+]
+```
+
+For each search query derived from the plan, add **two entries**:
+
+1. **Source-scoped** (Pass 1) — with `filter_paths` set to the source directories detected in step 3. Returns function signatures, class definitions, and implementation details.
+2. **Unfiltered** (Pass 2) — without `filter_paths`. Picks up READMEs, documentation, examples, and configuration files that provide narrative context.
+
+#### 5c. Pass 1 — Source-scoped
 
 For each query, run with `--filter-paths` set to the source directories detected in step 3:
 
@@ -125,7 +143,7 @@ Add `--reindex` only on the **first** invocation if the flag was provided. All s
 
 This pass returns function signatures, class definitions, and implementation details.
 
-#### 5b. Pass 2 — Unfiltered
+#### 5d. Pass 2 — Unfiltered
 
 For each query, run without `--filter-paths`:
 
@@ -138,7 +156,7 @@ code-finder-evidence \
 
 This pass picks up READMEs, documentation, examples, and configuration files that provide narrative context.
 
-#### 5c. Post-retrieval processing
+#### 5e. Post-retrieval processing
 
 For each pair of results (source-scoped + unfiltered) corresponding to the same search query, assign them to `source_results` and `context_results` respectively.
 

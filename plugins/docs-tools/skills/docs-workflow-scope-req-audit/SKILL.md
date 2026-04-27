@@ -53,6 +53,7 @@ REQUIREMENTS_FILE="${BASE_PATH}/requirements/requirements.md"
 OUTPUT_DIR="${BASE_PATH}/scope-req-audit"
 EVIDENCE_STATUS_FILE="${OUTPUT_DIR}/evidence-status.json"
 SUMMARY_FILE="${OUTPUT_DIR}/summary.md"
+QUERIES_FILE="${OUTPUT_DIR}/queries.json"
 mkdir -p "$OUTPUT_DIR"
 ```
 
@@ -123,6 +124,15 @@ Examples:
 - REQ "Python SDK for notebook-based workflows" → query "Python SDK client library implementation"
 - REQ "Kueue workload scheduling integration" → query "Kueue queue integration workload scheduling"
 - REQ "Audit logging for evaluation jobs" → query "audit logging implementation evaluation jobs"
+
+Write the queries to `$QUERIES_FILE` as a JSON array:
+
+```json
+[
+  {"query": "CA bundle configuration implementation", "limit": 5},
+  {"query": "Python SDK client library implementation", "limit": 5}
+]
+```
 
 Then run `code-finder-evidence` for each requirement query. The index is built on the first invocation and cached at `{repo}/.vibe2doc/index.db` — subsequent calls reuse it with negligible overhead.
 
