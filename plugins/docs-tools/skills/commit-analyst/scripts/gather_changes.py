@@ -180,7 +180,38 @@ def _build_pr_metadata(ref, info):
     return metadata
 
 
-# ---- Extraction: GitLab (REST API, unauthenticated) ----
+# ---- Extraction: GitLab MR (via git-pr-reader) ----
+
+def extract_gitlab_mr(ref):
+    """Extract files, diff, and metadata from a GitLab MR URL via git-pr-reader."""
+    if not GIT_PR_READER.exists():
+        _err(f"git_pr_reader.py not found at {GIT_PR_READER}")
+
+    reader = str(GIT_PR_READER)
+
+    info_raw = _run(["python3", reader, "info", ref, "--json"])
+    info = json.loads(info_raw) if info_raw else {}
+
+    files_raw = _run(["python3", reader, "files", ref, "--json"])
+    raw_files = json.loads(files_raw) if files_raw else []
+
+    files = [
+        {
+            "path": f.get("path", ""),
+            "status": f.get("status", "modified"),
+            "added": f.get("additions", 0),
+            "removed": f.get("deletions", 0),
+        }
+        for f in raw_files
+    ]
+
+    diff_text = (_run(["python3", reader, "diff", ref]) or "").strip()
+
+    metadata = _build_pr_metadata(ref, info)
+    return files, diff_text, metadata
+
+
+# ---- Extraction: GitLab commit URL (REST API) ----
 
 def _gitlab_api_get(host, endpoint):
     """GET a GitLab REST API endpoint. Returns parsed JSON or None."""
@@ -226,35 +257,6 @@ def _parse_gitlab_diffs(diff_data):
         diff_lines.append(patch)
 
     return files, "\n".join(diff_lines)
-
-
-def extract_gitlab_mr(ref):
-    """Extract files, diff, and metadata from a GitLab MR URL."""
-    m = GITLAB_MR_RE.match(ref)
-    host, project_path, mr_iid = m.group(1), m.group(2), m.group(3)
-    encoded = quote(project_path, safe="")
-
-    mr_info = _gitlab_api_get(host, f"/projects/{encoded}/merge_requests/{mr_iid}")
-    mr_changes = _gitlab_api_get(host, f"/projects/{encoded}/merge_requests/{mr_iid}/changes")
-
-    diff_data = mr_changes.get("changes", []) if mr_changes else []
-    files, diff_text = _parse_gitlab_diffs(diff_data)
-
-    metadata = {
-        "title": (mr_info or {}).get("title", ""),
-        "description": (mr_info or {}).get("description", ""),
-        "labels": (mr_info or {}).get("labels", []),
-        "linked_issues": [],
-        "milestone": None,
-    }
-    ms = (mr_info or {}).get("milestone")
-    if ms:
-        metadata["milestone"] = ms.get("title")
-
-    text = f"{metadata['title']} {metadata['description']}"
-    metadata["linked_issues"] = sorted(set(JIRA_KEY_RE.findall(text)))
-
-    return files, diff_text, metadata
 
 
 def extract_gitlab_commit(ref):
