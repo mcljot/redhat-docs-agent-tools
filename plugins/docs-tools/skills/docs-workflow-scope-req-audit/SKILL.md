@@ -134,7 +134,7 @@ Write the queries to `$QUERIES_FILE` as a JSON array:
 ]
 ```
 
-Then run `code-finder-evidence` for each requirement query. The index is built on the first invocation and cached at `{repo}/.vibe2doc/index.db` — subsequent calls reuse it with negligible overhead.
+Then run `code-finder-evidence` for each query in `$QUERIES_FILE`. The index is built on the first invocation and cached at `{repo}/.vibe2doc/index.db` — subsequent calls reuse it with negligible overhead.
 
 ```bash
 code-finder-evidence \
@@ -143,29 +143,44 @@ code-finder-evidence \
   --limit 5
 ```
 
-Capture the JSON output from each invocation. The index created here will be reused by the later code-evidence step.
+Each invocation outputs a JSON object. Collect the results into an array, one per query entry:
+
+```json
+[
+  {"query": "CA bundle configuration implementation", "filter_paths": null, "result": { ... }},
+  {"query": "Python SDK client library implementation", "filter_paths": null, "result": { ... }}
+]
+```
+
+This creates the code-finder index on the first query. The index is cached and will be reused by the later code-evidence step.
 
 ### 5. Classify results
 
-Parse the retrieval output for each requirement's query. Each `code-finder-evidence` invocation outputs a JSON object:
+Parse the collected output. For each requirement's query results, classify based on the top-N results:
+
+Each entry has the structure:
 
 ```json
 {
   "query": "...",
-  "repo_path": "...",
-  "result_count": 5,
-  "results": [
-    {
-      "rank": 1,
-      "file_path": "...",
-      "scores": {"vector": 0.37, "bm25": 17.1, "combined": 0.78},
-      ...
-    }
-  ]
+  "filter_paths": null,
+  "result": {
+    "query": "...",
+    "repo_path": "...",
+    "result_count": 5,
+    "results": [
+      {
+        "rank": 1,
+        "file_path": "...",
+        "scores": {"vector": 0.37, "bm25": 17.1, "combined": 0.78},
+        ...
+      }
+    ]
+  }
 }
 ```
 
-Results are under the `results` array. Scores are under each result's `scores.combined`.
+Results are under `result.results` (not `result.chunks`). Scores are under each result's `scores.combined` (not `combined_score`).
 
 Classify based on the top-N results:
 

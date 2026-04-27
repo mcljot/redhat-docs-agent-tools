@@ -107,11 +107,11 @@ Additionally, derive 1-2 **pattern-level queries** that ask how the codebase imp
 
 ### 5. Run two-pass evidence retrieval for each topic
 
-For each search query, run `code-finder-evidence` **twice** to capture both accurate source code and narrative context. The index is built on the first invocation and cached — subsequent calls reuse it with negligible overhead.
+For each search query, run code-finder's evidence retrieval **twice** to capture both accurate source code and narrative context. Use the queries file to drive all retrievals — this keeps a record of what was searched and ensures consistent structure.
 
 #### 5a. Build the queries file
 
-Write the extracted queries to `${OUTPUT_DIR}/queries.json` as a record of what was searched. Each entry specifies the query text, result limit, and optional filter paths:
+Create a JSON file at `${OUTPUT_DIR}/queries.json` containing all queries for both passes. Each entry specifies the query text, result limit, and optional filter paths:
 
 ```json
 [
@@ -127,38 +127,35 @@ For each search query derived from the plan, add **two entries**:
 1. **Source-scoped** (Pass 1) — with `filter_paths` set to the source directories detected in step 3. Returns function signatures, class definitions, and implementation details.
 2. **Unfiltered** (Pass 2) — without `filter_paths`. Picks up READMEs, documentation, examples, and configuration files that provide narrative context.
 
-#### 5c. Pass 1 — Source-scoped
+#### 5b. Run retrieval
 
-For each query, run with `--filter-paths` set to the source directories detected in step 3:
+Iterate through each entry in `${OUTPUT_DIR}/queries.json` and run `code-finder-evidence` once per entry:
 
 ```bash
 code-finder-evidence \
   --repo "$REPO_PATH" \
   --query "<QUERY>" \
   --limit <LIMIT> \
-  --filter-paths "<SOURCE_DIRS>"
+  --filter-paths "<FILTER_PATHS>"
 ```
 
-Add `--reindex` only on the **first** invocation if the flag was provided. All subsequent queries reuse the freshly built index.
+Omit `--filter-paths` for unfiltered entries (Pass 2).
 
-This pass returns function signatures, class definitions, and implementation details.
+If `--reindex` is specified, add `--reindex` to the **first** invocation only; subsequent queries reuse the freshly built index.
 
-#### 5d. Pass 2 — Unfiltered
+Each invocation outputs a JSON object. Collect the results into an array, one per query entry:
 
-For each query, run without `--filter-paths`:
-
-```bash
-code-finder-evidence \
-  --repo "$REPO_PATH" \
-  --query "<QUERY>" \
-  --limit <LIMIT>
+```json
+[
+  {"query": "auth middleware implementation", "filter_paths": ["src/controllers"], "result": { ... }},
+  {"query": "auth middleware implementation", "filter_paths": null, "result": { ... }},
+  ...
+]
 ```
 
-This pass picks up READMEs, documentation, examples, and configuration files that provide narrative context.
+#### 5c. Post-retrieval processing
 
-#### 5e. Post-retrieval processing
-
-For each pair of results (source-scoped + unfiltered) corresponding to the same search query, assign them to `source_results` and `context_results` respectively.
+Parse the collected output. For each pair of results (source-scoped + unfiltered) corresponding to the same search query, assign them to `source_results` and `context_results` respectively.
 
 **Post-retrieval exclude filtering**: If `--scope-exclude` patterns were provided, filter both source and context results after retrieval. Remove any result whose `file_path` matches an exclude glob (e.g., `**/vendor/**`, `**/*_test.go`). This is necessary because code-finder does not support exclude globs natively.
 
