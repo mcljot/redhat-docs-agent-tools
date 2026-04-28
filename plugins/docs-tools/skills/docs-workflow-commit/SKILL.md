@@ -22,10 +22,10 @@ Step skill for the docs-orchestrator pipeline. Commits documentation files liste
 ## Input
 
 ```text
-<base-path>/writing/_index.md
+<base-path>/writing/step-result.json
 ```
 
-The writing manifest listing all files written or modified.
+The writing step's sidecar, containing the `files` array of absolute paths.
 
 ## Output
 
@@ -41,7 +41,7 @@ The writing manifest listing all files written or modified.
 Run the commit script, passing through all arguments:
 
 ```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/commit.sh <ticket> --base-path <base-path> [--repo-path <path>] [--draft]
+python3 ${CLAUDE_SKILL_DIR}/scripts/commit.py <ticket> --base-path <base-path> [--repo-path <path>] [--draft]
 ```
 
 The script handles:
@@ -49,7 +49,7 @@ The script handles:
 1. **Draft mode check** — writes a skip record and exits if `--draft` is set
 2. **Context resolution** — determines repo path, branch, platform, and remote URL from `--repo-path` argument or current working directory git context
 3. **Safety checks** — refuses to push to `main`/`master`
-4. **Manifest reading** — extracts file paths from `<base-path>/writing/_index.md`
+4. **Manifest reading** — extracts file paths from `<base-path>/writing/step-result.json`
 5. **Commit** — stages manifest-listed files and commits with a descriptive message
 6. **Push** — pushes the feature branch to origin (uses `--force-with-lease` for pipeline-generated branches)
 7. **Output** — writes `commit-info.json` with commit metadata and `step-result.json` sidecar
