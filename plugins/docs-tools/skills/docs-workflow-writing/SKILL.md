@@ -237,16 +237,17 @@ In fix mode, the skill does not create new modules or restructure content.
 >
 > **For sections with status `matched`:**
 >
-> 1. Read the existing AsciiDoc module at `module_path`
-> 2. Replace the body content with the `content` from the manifest, converting markdown syntax to AsciiDoc syntax using the rules above
-> 3. Preserve the following elements from the original module — do NOT remove or modify them:
+> 1. Check `module_path` — if it starts with `upstream/`, **skip this section entirely**. Upstream modules are maintained by an upstream project and must never be modified during import.
+> 2. Read the existing AsciiDoc module at `module_path`
+> 3. Replace the body content with the `content` from the manifest, converting markdown syntax to AsciiDoc syntax using the rules above
+> 4. Preserve the following elements from the original module — do NOT remove or modify them:
 >    - `:_mod-docs-content-type:` attribute
 >    - `[id="..._{context}"]` anchor
 >    - `[role="_abstract"]` tag
 >    - Any `ifdef::` / `ifndef::` / `ifeval::` conditionals
 >    - Any `:context:` attribute assignments
->    - Any `include::` directives that reference other modules (keep them if the included content is not covered by the new markdown)
-> 4. Write the updated module back to the same path
+>    - Any `include::` directives — do NOT add, remove, or modify include directives. Assembly wiring is handled by a separate post-processing step.
+> 5. Write the updated module back to the same path
 >
 > **For sections with status `new`:**
 >
@@ -254,10 +255,10 @@ In fix mode, the skill does not create new modules or restructure content.
 >    - Numbered steps or "Prerequisites" → PROCEDURE
 >    - Tables, lists of specs, API fields → REFERENCE
 >    - Everything else → CONCEPT
-> 2. Create a new AsciiDoc module following the repo's existing file naming conventions (e.g., `modules/<content-type-prefix>-<kebab-title>.adoc`)
+> 2. Create a new AsciiDoc module in `modules/` following the repo's existing file naming conventions (e.g., `modules/<kebab-title>.adoc`). Never create files under `upstream/`.
 > 3. Include the standard module scaffolding: content type attribute, ID anchor, title, and abstract tag
 > 4. Convert the `content` from markdown to AsciiDoc syntax using the rules above — do NOT rewrite the prose
-> 5. Add an `include::` statement for the new module in the appropriate assembly file
+> 5. Do NOT add `include::` directives to assembly files — assembly wiring is handled by a separate post-processing step
 >
 > **Skip sections with status `skipped` or `preamble`.** Do not process them.
 >
@@ -267,7 +268,30 @@ In fix mode, the skill does not create new modules or restructure content.
 
 ---
 
-### 3. Verify output
+### 3. Post-processing: Wire assemblies (import mode only)
+
+**Only run this step when `mode == "import"` AND `repo_path` is not null.**
+
+After the writing agent finishes, run the assembly wiring script to add `include::` directives deterministically:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/docs-workflow-import-markdown/scripts/wire_assemblies.py \
+  --manifest <INPUT_FILE> --repo-path <REPO_PATH>
+```
+
+The script reads the match manifest, parses original assembly files to learn which sections were previously inlined vs included, and rebuilds each assembly preserving the same structure. It also creates new assemblies and updates `master.adoc` when needed.
+
+The script emits JSON on stdout with:
+- `assemblies_updated`: list of assembly files modified
+- `assemblies_created`: list of new assembly files created
+- `master_updated`: path to master.adoc if updated
+- `missing_modules`: include targets where the module file does not exist on disk — report these to the user
+
+If `missing_modules` is non-empty, warn the user:
+
+> The following modules are referenced by include directives but do not exist on disk. They may need to be created manually: `<list>`
+
+### 4. Verify output
 
 If `verify_output` is `true` in the script's JSON output, check that `output_file` exists.
 
