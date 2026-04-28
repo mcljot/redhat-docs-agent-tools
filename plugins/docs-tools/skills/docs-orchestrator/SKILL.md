@@ -461,7 +461,7 @@ The technical review step runs in a loop until confidence is acceptable or three
 ## Commit confirmation gate
 
 Before running the `commit` step, **ask the user to confirm** before committing. Show:
-  - The target branch name — from `steps.prepare-branch.result.branch` in the progress file. If prepare-branch was skipped, show the current branch name (from `git branch --show-current`)
+  - The target branch name — from `steps.prepare-branch.result.branch` (NOT `based_on`) in the progress file. `based_on` is the upstream ref the branch was created from — never display it as the push target. If prepare-branch was skipped, show the current branch name (from `git branch --show-current`)
   - The repository being committed to (current directory or `--docs-repo-path`)
   - The number of files — from `steps.writing.result.files` array length in the progress file. If unavailable, count files in the writing output folder
 
