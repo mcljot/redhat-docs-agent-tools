@@ -104,6 +104,15 @@ else
   EVIDENCE_FILE=""
 fi
 
+# --- Check for requirements file ---
+REQUIREMENTS_FILE="${BASE_PATH}/requirements/requirements.md"
+if [[ -f "$REQUIREMENTS_FILE" ]]; then
+  HAS_REQUIREMENTS=true
+else
+  HAS_REQUIREMENTS=false
+  REQUIREMENTS_FILE=""
+fi
+
 # --- Determine mode ---
 MODE=""
 if [[ -n "$FIX_FROM" ]]; then
@@ -147,27 +156,31 @@ fi
 
 # --- Emit JSON ---
 jq -n \
-  --arg mode          "$MODE" \
-  --arg ticket        "$TICKET" \
-  --arg format        "$FORMAT" \
-  --arg input_file    "$INPUT_FILE" \
-  --arg evidence_file "$EVIDENCE_FILE" \
-  --argjson has_evidence "$HAS_EVIDENCE" \
-  --arg output_dir    "$OUTPUT_DIR" \
-  --arg output_file   "$OUTPUT_FILE" \
-  --arg repo_path     "$REPO_PATH" \
-  --arg fix_from      "$FIX_FROM" \
-  --argjson verify    "$VERIFY" \
+  --arg mode               "$MODE" \
+  --arg ticket             "$TICKET" \
+  --arg format             "$FORMAT" \
+  --arg input_file         "$INPUT_FILE" \
+  --arg evidence_file      "$EVIDENCE_FILE" \
+  --argjson has_evidence   "$HAS_EVIDENCE" \
+  --arg requirements_file  "$REQUIREMENTS_FILE" \
+  --argjson has_requirements "$HAS_REQUIREMENTS" \
+  --arg output_dir         "$OUTPUT_DIR" \
+  --arg output_file        "$OUTPUT_FILE" \
+  --arg repo_path          "$REPO_PATH" \
+  --arg fix_from           "$FIX_FROM" \
+  --argjson verify         "$VERIFY" \
   '{
-    mode:           $mode,
-    ticket:         $ticket,
-    format:         $format,
-    input_file:     $input_file,
-    evidence_file:  (if $evidence_file == "" then null else $evidence_file end),
-    has_evidence:   $has_evidence,
-    output_dir:     $output_dir,
-    output_file:    $output_file,
-    repo_path:      (if $repo_path == "" then null else $repo_path end),
-    fix_from:       (if $fix_from == "" then null else $fix_from end),
-    verify_output:  $verify
+    mode:               $mode,
+    ticket:             $ticket,
+    format:             $format,
+    input_file:         $input_file,
+    evidence_file:      (if $evidence_file == "" then null else $evidence_file end),
+    has_evidence:       $has_evidence,
+    requirements_file:  (if $requirements_file == "" then null else $requirements_file end),
+    has_requirements:   $has_requirements,
+    output_dir:         $output_dir,
+    output_file:        $output_file,
+    repo_path:          (if $repo_path == "" then null else $repo_path end),
+    fix_from:           (if $fix_from == "" then null else $fix_from end),
+    verify_output:      $verify
   }'

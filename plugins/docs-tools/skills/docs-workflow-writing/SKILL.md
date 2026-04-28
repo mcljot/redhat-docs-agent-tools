@@ -23,17 +23,19 @@ Pass through the full args string. The script emits JSON on stdout:
 
 ```json
 {
-  "mode":          "update-in-place | draft | fix",
-  "ticket":        "PROJ-123",
-  "format":        "adoc | mkdocs",
-  "input_file":    "<base-path>/planning/plan.md",
-  "evidence_file": "<base-path>/code-evidence/evidence.json | null",
-  "has_evidence":  true | false,
-  "output_dir":    "<base-path>/writing",
-  "output_file":   "<base-path>/writing/_index.md",
-  "repo_path":     "<path> | null",
-  "fix_from":      "<path> | null",
-  "verify_output": true | false
+  "mode":               "update-in-place | draft | fix",
+  "ticket":             "PROJ-123",
+  "format":             "adoc | mkdocs",
+  "input_file":         "<base-path>/planning/plan.md",
+  "evidence_file":      "<base-path>/code-evidence/evidence.json | null",
+  "has_evidence":       true | false,
+  "requirements_file":  "<base-path>/requirements/requirements.md | null",
+  "has_requirements":   true | false,
+  "output_dir":         "<base-path>/writing",
+  "output_file":        "<base-path>/writing/_index.md",
+  "repo_path":          "<path> | null",
+  "fix_from":           "<path> | null",
+  "verify_output":      true | false
 }
 ```
 
@@ -62,6 +64,8 @@ Select the prompt based on `mode` and `format` from the JSON output. In every pr
 > Read the plan from: `<INPUT_FILE>`
 >
 > **[Include only if HAS_EVIDENCE=true]** Code evidence is available at `<EVIDENCE_FILE>`. Read it and use the `source_results` for accurate function signatures, parameter types, and code examples. Use `context_results` for narrative context, installation steps, and architectural patterns. Prefer evidence over assumptions — if the evidence contradicts the plan, follow the evidence.
+>
+> **[Include only if HAS_REQUIREMENTS=true]** Requirements analysis is available at `<REQUIREMENTS_FILE>`. Read it and identify any linked engineering source documents (GitHub/GitLab URLs, engineering specs, SME-authored procedures) in the "Sources consulted" and per-requirement "References" sections. Fetch and read these documents using WebFetch, then use them to verify technical accuracy of the documentation you write — particularly for procedures, configuration parameters, YAML examples, and prerequisites. If the engineering source contradicts the plan, follow the engineering source.
 >
 > **IMPORTANT**: Write COMPLETE .adoc files, not summaries or outlines.
 >
@@ -94,6 +98,8 @@ Select the prompt based on `mode` and `format` from the JSON output. In every pr
 >
 > **[Include only if HAS_EVIDENCE=true]** Code evidence is available at `<EVIDENCE_FILE>`. Read it and use the `source_results` for accurate function signatures, parameter types, and code examples. Use `context_results` for narrative context, installation steps, and architectural patterns. Prefer evidence over assumptions — if the evidence contradicts the plan, follow the evidence.
 >
+> **[Include only if HAS_REQUIREMENTS=true]** Requirements analysis is available at `<REQUIREMENTS_FILE>`. Read it and identify any linked engineering source documents (GitHub/GitLab URLs, engineering specs, SME-authored procedures) in the "Sources consulted" and per-requirement "References" sections. Fetch and read these documents using WebFetch, then use them to verify technical accuracy of the documentation you write — particularly for procedures, configuration parameters, YAML examples, and prerequisites. If the engineering source contradicts the plan, follow the engineering source.
+>
 > **IMPORTANT**: Write COMPLETE .md files with YAML frontmatter (title, description). Use Material for MkDocs conventions: admonitions, content tabs, code blocks with titles, heading hierarchy starting at `# h1`.
 >
 > **Placement mode: UPDATE-IN-PLACE**
@@ -124,6 +130,8 @@ Select the prompt based on `mode` and `format` from the JSON output. In every pr
 > Read the plan from: `<INPUT_FILE>`
 >
 > **[Include only if HAS_EVIDENCE=true]** Code evidence is available at `<EVIDENCE_FILE>`. Read it and use the `source_results` for accurate function signatures, parameter types, and code examples. Use `context_results` for narrative context, installation steps, and architectural patterns. Prefer evidence over assumptions — if the evidence contradicts the plan, follow the evidence.
+>
+> **[Include only if HAS_REQUIREMENTS=true]** Requirements analysis is available at `<REQUIREMENTS_FILE>`. Read it and identify any linked engineering source documents (GitHub/GitLab URLs, engineering specs, SME-authored procedures) in the "Sources consulted" and per-requirement "References" sections. Fetch and read these documents using WebFetch, then use them to verify technical accuracy of the documentation you write — particularly for procedures, configuration parameters, YAML examples, and prerequisites. If the engineering source contradicts the plan, follow the engineering source.
 >
 > **IMPORTANT**: Write COMPLETE .adoc files, not summaries or outlines.
 >
@@ -159,6 +167,8 @@ Select the prompt based on `mode` and `format` from the JSON output. In every pr
 > Read the plan from: `<INPUT_FILE>`
 >
 > **[Include only if HAS_EVIDENCE=true]** Code evidence is available at `<EVIDENCE_FILE>`. Read it and use the `source_results` for accurate function signatures, parameter types, and code examples. Use `context_results` for narrative context, installation steps, and architectural patterns. Prefer evidence over assumptions — if the evidence contradicts the plan, follow the evidence.
+>
+> **[Include only if HAS_REQUIREMENTS=true]** Requirements analysis is available at `<REQUIREMENTS_FILE>`. Read it and identify any linked engineering source documents (GitHub/GitLab URLs, engineering specs, SME-authored procedures) in the "Sources consulted" and per-requirement "References" sections. Fetch and read these documents using WebFetch, then use them to verify technical accuracy of the documentation you write — particularly for procedures, configuration parameters, YAML examples, and prerequisites. If the engineering source contradicts the plan, follow the engineering source.
 >
 > **IMPORTANT**: Write COMPLETE .md files with YAML frontmatter (title, description). Use Material for MkDocs conventions: admonitions, content tabs, code blocks with titles, heading hierarchy starting at `# h1`.
 >
