@@ -104,7 +104,13 @@ def extract_id_from_heading(heading):
     # Strip the last _<word> segment to get the ID stem
     stem = re.sub(r"_[^_]+$", "", fragment)
 
-    clean = strip_numbering(link_text)
+    # Include any text after the link as part of the heading
+    after_link = heading[m.end():].strip()
+    if after_link:
+        title = f"{link_text} {after_link}"
+    else:
+        title = link_text
+    clean = strip_numbering(title)
     return fragment, stem, clean
 
 
