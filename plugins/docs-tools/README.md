@@ -103,13 +103,13 @@ Local standalone skills use short names (e.g., `my-review-skill`), while plugin 
 Use the `when` field to make steps run only when a CLI flag is passed:
 
 ```yaml
-- name: create-jira
-  skill: docs-workflow-create-jira
-  when: create_jira_project
-  inputs: [planning]
+- name: create-merge-request
+  skill: docs-tools:docs-workflow-create-merge-request
+  when: create_merge_request
+  inputs: [writing, style-review, technical-review]
 ```
 
-This step only runs when `--create-jira <PROJECT>` is passed to the orchestrator.
+This step only runs when `--create-merge-request` is passed to the orchestrator.
 
 ### Multiple workflow variants
 
@@ -122,6 +122,16 @@ Use `--workflow <name>` to maintain different workflows for different purposes:
 # Uses .claude/docs-full.yaml
 /docs-orchestrator PROJ-123 --workflow full
 ```
+
+### Merge request creation
+
+The default workflow includes a **create-merge-request** step that is off by default. Pass `--create-merge-request` to activate it. When enabled, the step creates a feature branch (if needed), commits the written files, pushes to the remote, and opens a merge request (GitLab) or pull request (GitHub).
+
+```bash
+/docs-orchestrator PROJ-123 --create-merge-request
+```
+
+Without the flag, the workflow ends at style-review and leaves the files as uncommitted changes in the repo, so you can create your own branch and MR manually.
 
 ### Code-evidence workflow
 
@@ -139,12 +149,10 @@ The workflow runs the following steps in order:
 2. **scope-req-audit** — query the code-finder index to classify each requirement as grounded, partial, or absent
 3. **planning** — create the documentation plan, scoping modules based on evidence status
 4. **code-evidence** — retrieve code snippets (function signatures, class definitions, configuration) for each plan topic
-5. **prepare-branch** — create a branch in the documentation repository
-6. **writing** — write documentation grounded in the retrieved code evidence
-7. **technical-review** — verify technical accuracy against the source code
-8. **style-review** — check style guide compliance
-9. **commit** — commit and push changes
-10. **create-mr** — open a merge request or pull request
+5. **writing** — write documentation grounded in the retrieved code evidence
+6. **technical-review** — verify technical accuracy against the source code
+7. **style-review** — check style guide compliance
+8. **create-merge-request** _(optional, pass `--create-merge-request` to enable)_ — create a branch (if needed), commit, push, and open a merge request or pull request
 
 Compared to the default workflow, the code-evidence variant produces documentation with fewer technical review issues because the writer has actual function signatures and implementation details to work from, rather than generating from the JIRA description alone.
 
@@ -211,7 +219,7 @@ To write files directly into your repo (update-in-place mode), run as follows:
 /docs-orchestrator PROJ-123
 ```
 
-In update-in-place mode, the orchestrator detects your repo's documentation framework (Antora, ccutil, etc.), creates a branch, writes files to the correct locations, and can commit and open a merge request.
+In update-in-place mode, the orchestrator detects your repo's documentation framework (Antora, ccutil, etc.) and writes files to the correct locations as uncommitted changes. To also create a branch, commit, push, and open a merge request, add `--create-merge-request`.
 
 ### Grounding documentation in source code
 

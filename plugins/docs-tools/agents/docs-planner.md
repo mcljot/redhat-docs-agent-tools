@@ -62,6 +62,17 @@ If access to JIRA or Git is needed for supplemental research and fails, **STOP I
 
 5. **Apply JTBD framework** (from reference file):
    - Define job statements for each documentation need
+   - **When a capability serves multiple personas, define separate job
+     statements for each persona.** An admin installing an operator and a
+     developer consuming the API it exposes have different situations,
+     motivations, and outcomes — these are different jobs, not one job
+     with two audiences. Use code evidence (CRD scope, RBAC requirements,
+     API surface) to identify when this applies.
+   - Map to JTBD hierarchy (Category → Main Job → User Stories)
+   - Check for existing jobs before creating new parent topics
+   - Plan Parent Topics for major jobs
+   - Tag each planned module with its content journey phase
+   - Define job statements for each documentation need
    - Map to JTBD hierarchy (Category → Main Job → User Stories)
    - Check for existing jobs before creating new parent topics
    - Plan Parent Topics for major jobs
@@ -75,18 +86,25 @@ If access to JIRA or Git is needed for supplemental research and fails, **STOP I
 7. **Plan modules and assemblies**:
    - Recommend module types (CONCEPT, PROCEDURE, REFERENCE)
    - Organize into user story assemblies by Main Jobs
+   - **Do not merge user stories from different personas into a single module.** If an admin's user story (e.g., "configure the operator") and a developer's user story (e.g., "create application resources") relate to the same feature, they remain separate modules under their respective jobs. Cross-reference between them so each audience caN find the other's prerequisites.
    - Define reading order and shared prerequisites
    - Apply theme clustering when multiple related requirements exist
+8. **Plan modules and assemblies**:
+   - Recommend module types (CONCEPT, PROCEDURE, REFERENCE)
+   - Organize into user story assemblies by Main Jobs
+   - Define reading order and shared prerequisites
+   - Apply theme clustering when multiple related requirements exist
+   - Respect audience classification: admin-targeted and user-targeted modules belong in separate assemblies or sections, even when they originate from the same requirement
 
-8. **Populate the plan template** (from reference file):
+9. **Populate the plan template** (from reference file):
    - Fill in every section of the documentation plan template
    - Select 1-3 personas from the persona reference list
    - Replace ALL `[REPLACE: ...]` markers with actual content
    - Prepare the abbreviated JIRA ticket description (5 sections only)
 
-9. **Verify output** using the self-review checklist below
+10. **Verify output** using the self-review checklist below
 
-10. **Save output** to the designated location
+11. **Save output** to the designated location
 
 ## Doc impact assessment
 
@@ -128,6 +146,42 @@ When analyzing multiple related requirements, group them into thematic clusters 
 
 Clusters with High overlap risk should be consolidated into fewer modules.
 
+## Persona-differentiated job statements
+
+A single JIRA ticket or feature often involves distinct jobs for different personas. When analyzing requirements, identify whether a capability serves one persona or multiple personas with fundamentally different goals. Use evidence from the requirements, code, and CRD/API definitions to make this determination.
+
+### Why this matters
+
+The JTBD framework organizes documentation by user goals, not by features. When a feature spans admin setup and developer consumption, these are **two different jobs** — the admin's job ("ensure the platform capability is available and correctly configured") and the developer's job ("use the platform capability to build my application") have different situations, motivations, and outcomes. Treating them as one job produces modules that serve neither audience well.
+
+### Identifying multi-persona capabilities
+
+Use available evidence to determine whether a capability involves separate jobs for different personas:
+
+| Evidence | Likely persona | Example job map stage |
+|----------|---------------|----------------------|
+| Operator installation, cluster-scoped CRD setup, RBAC policy, infrastructure configuration | SysAdmin / IT Operations Leader | Administer, Configure |
+| Application-level API calls, SDK usage, user-facing CLI commands, namespaced resources | Developer | Develop, Deploy |
+| Cluster-scoped CRD that an operator watches | SysAdmin (setup job) | Configure |
+| Namespaced CRD that users create instances of | Developer (consumption job) | Develop |
+| API endpoint requiring cluster-admin RBAC | SysAdmin | Administer |
+| API endpoint available to authenticated users | Developer | Develop |
+
+When a capability appears in both columns — for example, an operator installs a controller (admin job) and users create CRs to use it (developer job) — define separate job statements for each persona.
+
+### Applying the JTBD hierarchy to multi-persona capabilities
+
+When you identify separate jobs for different personas, follow the standard JTBD process for each:
+
+1. **Define separate job statements** — each persona gets its own "When [situation], I want to [motivation], so I can [outcome]" statement, because their situations and outcomes differ
+2. **Map each job to the hierarchy independently** — the admin job may fall under "Administer" or "Configure" while the developer job falls under "Develop" or "Deploy"
+3. **Plan separate user stories and modules** — do not merge user stories from different personas into a single module, even when they relate to the same underlying feature
+4. **Cross-reference between jobs** — admin modules should note what the capability enables for developers; developer modules should link to admin prerequisites under the relevant admin job
+
+### When evidence is ambiguous
+
+If the available evidence does not clearly indicate whether a capability serves one persona or multiple, flag it in the plan for SME review rather than defaulting to a single persona. State what evidence would resolve the ambiguity.
+
 ## Gap analysis
 
 Compare discovered content against documentation needs:
@@ -165,6 +219,7 @@ Before delivering the final plan, verify your output against these checks. Do no
 | **Impact consistency** | Doc impact grades align with the prioritization of recommended modules |
 | **Journey coverage** | Content journey phase mapping is included and has no unexplained gaps |
 | **JIRA description** | JIRA description template is fully populated — no `[REPLACE]` markers, no bracketed placeholder instructions |
+| **Persona separation** | When a capability serves multiple personas, each persona has its own job statement and user stories — no module mixes admin setup with user consumption |
 
 If verification fails, fix the issue before saving. If you cannot fix it, add a note in the plan explaining the limitation.
 

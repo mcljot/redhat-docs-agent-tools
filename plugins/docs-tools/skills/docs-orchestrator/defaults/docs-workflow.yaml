@@ -1,6 +1,6 @@
 workflow:
   name: docs-workflow
-  description: Multi-stage documentation workflow for a JIRA ticket. Requirements analysis, planning, writing, technical review, style review, and optionally JIRA creation.
+  description: Multi-stage documentation workflow for a JIRA ticket. Requirements analysis, planning, writing, technical review, and style review.
 
   # All step outputs go to: .claude/docs/<ticket>/<step-name>/
   # Each step reads its inputs from upstream step folders by convention.
@@ -14,15 +14,10 @@ workflow:
       description: Create documentation plan
       inputs: [requirements]
 
-    - name: prepare-branch
-      skill: docs-workflow-prepare-branch
-      description: Create a fresh branch from latest upstream default branch
-      inputs: [planning]
-
     - name: writing
       skill: docs-workflow-writing
       description: Write documentation
-      inputs: [planning, prepare-branch]
+      inputs: [planning]
 
     - name: technical-review
       skill: docs-workflow-tech-review
@@ -34,18 +29,9 @@ workflow:
       description: Style guide compliance review
       inputs: [writing, technical-review]
 
-    - name: commit
-      skill: docs-workflow-commit
-      description: Commit and push documentation changes
+    - name: create-merge-request
+      skill: docs-tools:docs-workflow-create-merge-request
+      description: Commit, push, and create merge request or pull request
+      when: create_merge_request
       inputs: [writing, style-review, technical-review]
 
-    - name: create-mr
-      skill: docs-workflow-create-mr
-      description: Create merge request or pull request
-      inputs: [commit]
-
-    - name: create-jira
-      skill: docs-workflow-create-jira
-      description: Create linked JIRA ticket
-      when: create_jira_project
-      inputs: [planning]
