@@ -333,7 +333,7 @@ A top-level array listing steps in canonical order. This field exists so the Sto
 
 The active workflow marker tells the Stop hook which workflow (if any) is currently running in this session. Without the marker, the hook allows Claude to stop freely.
 
-**Location**: `.claude/docs/.active-workflow`
+**Location**: `.agent_workspace/.active-workflow`
 
 ### When to write the marker
 
@@ -345,7 +345,7 @@ Write the marker file using the Write tool at the same time as creating or updat
 {
   "ticket": "<TICKET>",
   "workflow_type": "<workflow.name from YAML>",
-  "progress_file": ".claude/docs/<ticket-lower>/workflow/<workflow-type>_<ticket-lower>.json"
+  "progress_file": ".agent_workspace/<ticket-lower>/workflow/<workflow-type>_<ticket-lower>.json"
 }
 ```
 
@@ -353,7 +353,7 @@ The `progress_file` path must be relative to the project root (matching the path
 
 ### When to delete the marker
 
-Delete `.claude/docs/.active-workflow` when:
+Delete `.agent_workspace/.active-workflow` when:
 
 1. The workflow completes — immediately after setting the progress file's `status` to `"completed"` in the [Completion](#completion) section
 2. The workflow fails terminally — after setting `status` to `"failed"` (e.g., planning step produces 0 modules and user chooses to stop)
@@ -448,7 +448,7 @@ After each step completes, apply the rules below. When rules reference sidecar f
 
 **planning**
 - Log: `"Planning completed: N modules"`
-- If `module_count` is 0, **warn**: `"Planning produced 0 modules — the plan may be empty. Review plan.md before continuing."` Ask the user whether to proceed or stop. If the user chooses to stop: mark the planning step as `failed` in the progress file, set the workflow status to `"failed"`, delete the active workflow marker (`.claude/docs/.active-workflow`), log `"Planning stopped by user after 0 modules — workflow cancelled."`, and halt without running subsequent steps
+- If `module_count` is 0, **warn**: `"Planning produced 0 modules — the plan may be empty. Review plan.md before continuing."` Ask the user whether to proceed or stop. If the user chooses to stop: mark the planning step as `failed` in the progress file, set the workflow status to `"failed"`, delete the active workflow marker (`.agent_workspace/.active-workflow`), log `"Planning stopped by user after 0 modules — workflow cancelled."`, and halt without running subsequent steps
 
 **code-evidence**
 - Log: `"Code evidence retrieved: N topics, N snippets"`
@@ -527,7 +527,7 @@ If the user declines, mark the `create-merge-request` step as `skipped` (with `s
 After all steps complete (or are skipped):
 
 1. Update the progress file: `status → "completed"`
-2. Delete the active workflow marker: remove `.claude/docs/.active-workflow`
+2. Delete the active workflow marker: remove `.agent_workspace/.active-workflow`
 3. Display a summary:
    - List all output folders with paths
    - Note any warnings (tech review didn't reach `HIGH`, planning had 0 modules, code-evidence had 0 snippets, etc.)
