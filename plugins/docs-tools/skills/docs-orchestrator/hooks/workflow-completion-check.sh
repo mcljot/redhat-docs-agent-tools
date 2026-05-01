@@ -1,8 +1,10 @@
 #!/bin/bash
 # workflow-completion-check.sh
 #
-# Stop hook: blocks Claude from stopping while a workflow is still running.
-# Checks each progress file for incomplete steps.
+# Stop hook: blocks Claude from stopping while the ACTIVE workflow
+# is still running. Only checks the workflow identified by the
+# .active-workflow marker — stale workflows from other sessions
+# are ignored.
 #
 # Exit codes:
 #   0 = allow stop
@@ -19,64 +21,83 @@ if ! cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null; then
   exit 2
 fi
 
-# Look for progress files
-shopt -s nullglob
-PROGRESS_FILES=(.claude/docs/*/workflow/*.json)
-shopt -u nullglob
-if [ ${#PROGRESS_FILES[@]} -eq 0 ]; then
+MARKER=".claude/docs/.active-workflow"
+
+# No marker → no active workflow → allow stop
+if [ ! -f "$MARKER" ]; then
   exit 0
 fi
 
-for pfile in "${PROGRESS_FILES[@]}"; do
-  WORKFLOW_STATUS=$(jq -r '.status' "$pfile" 2>/dev/null)
+# Read the marker — fail closed on parse errors
+PROGRESS_FILE=$(jq -r '.progress_file // empty' "$MARKER" 2>/dev/null)
+JQ_RC_PF=$?
+TICKET=$(jq -r '.ticket // empty' "$MARKER" 2>/dev/null)
+JQ_RC_TK=$?
 
-  # Skip workflows that aren't running
-  if [ "$WORKFLOW_STATUS" != "in_progress" ]; then
-    continue
-  fi
+if [ "$JQ_RC_PF" -ne 0 ] || [ "$JQ_RC_TK" -ne 0 ]; then
+  echo "Failed to parse $MARKER; refusing to stop (fail closed)." >&2
+  exit 2
+fi
 
-  TICKET=$(jq -r '.ticket' "$pfile")
-  WORKFLOW_TYPE=$(jq -r '.workflow_type' "$pfile")
+# Marker parsed successfully but fields are empty → stale marker → clean up
+if [ -z "$PROGRESS_FILE" ] || [ -z "$TICKET" ]; then
+  rm -f "$MARKER"
+  exit 0
+fi
 
-  # Anti-loop guard: per-workflow counter prevents infinite blocking.
-  COUNTER_FILE="${pfile}.stop_count"
-  if [ -f "$COUNTER_FILE" ]; then
-    COUNT=$(cat "$COUNTER_FILE")
-  else
-    COUNT=0
-  fi
-  if [ "$COUNT" -ge 5 ]; then
-    rm -f "$COUNTER_FILE"
-    continue
-  fi
+# Progress file doesn't exist → stale marker → clean up and allow stop
+if [ ! -f "$PROGRESS_FILE" ]; then
+  rm -f "$MARKER"
+  exit 0
+fi
 
-  # Get step order from the progress file
-  mapfile -t STEP_ORDER < <(jq -r '.step_order[]' "$pfile" 2>/dev/null)
+# Check the workflow status — only block for in_progress workflows
+WORKFLOW_STATUS=$(jq -r '.status' "$PROGRESS_FILE" 2>/dev/null)
 
-  if [ ${#STEP_ORDER[@]} -eq 0 ]; then
-    # Fall back to alphabetical key order
-    mapfile -t STEP_ORDER < <(jq -r '.steps | keys[]' "$pfile" 2>/dev/null)
-  fi
+if [ "$WORKFLOW_STATUS" != "in_progress" ]; then
+  rm -f "$MARKER"
+  exit 0
+fi
 
-  # Find the first incomplete step
-  NEXT_STEP=""
-  for step in "${STEP_ORDER[@]}"; do
-    STEP_STATUS=$(jq -r --arg s "$step" '.steps[$s].status // "missing"' "$pfile")
-    case "$STEP_STATUS" in
-      completed|skipped|deferred) continue ;;
-      *) NEXT_STEP="$step"; break ;;
-    esac
-  done
+WORKFLOW_TYPE=$(jq -r '.workflow_type' "$PROGRESS_FILE" 2>/dev/null)
 
-  if [ -n "$NEXT_STEP" ]; then
-    echo "$((COUNT + 1))" > "$COUNTER_FILE"
-    echo "Documentation workflow '$WORKFLOW_TYPE' for $TICKET is not complete. Next step: $NEXT_STEP. Continue the workflow." >&2
-    exit 2
-  fi
-
-  # All steps done — clean up counter
+# Anti-loop guard: per-workflow counter prevents infinite blocking
+COUNTER_FILE="${PROGRESS_FILE}.stop_count"
+if [ -f "$COUNTER_FILE" ]; then
+  COUNT=$(cat "$COUNTER_FILE")
+else
+  COUNT=0
+fi
+if [ "$COUNT" -ge 5 ]; then
   rm -f "$COUNTER_FILE"
+  rm -f "$MARKER"
+  exit 0
+fi
+
+# Get step order from the progress file
+mapfile -t STEP_ORDER < <(jq -r '.step_order[]' "$PROGRESS_FILE" 2>/dev/null)
+
+if [ ${#STEP_ORDER[@]} -eq 0 ]; then
+  mapfile -t STEP_ORDER < <(jq -r '.steps | keys[]' "$PROGRESS_FILE" 2>/dev/null)
+fi
+
+# Find the first incomplete step
+NEXT_STEP=""
+for step in "${STEP_ORDER[@]}"; do
+  STEP_STATUS=$(jq -r --arg s "$step" '.steps[$s].status // "missing"' "$PROGRESS_FILE")
+  case "$STEP_STATUS" in
+    completed|skipped|deferred) continue ;;
+    *) NEXT_STEP="$step"; break ;;
+  esac
 done
 
-# No incomplete workflows found — allow stop
+if [ -n "$NEXT_STEP" ]; then
+  echo "$((COUNT + 1))" > "$COUNTER_FILE"
+  echo "Documentation workflow '$WORKFLOW_TYPE' for $TICKET is not complete. Next step: $NEXT_STEP. Continue the workflow." >&2
+  exit 2
+fi
+
+# All steps done — clean up and allow stop
+rm -f "$COUNTER_FILE"
+rm -f "$MARKER"
 exit 0

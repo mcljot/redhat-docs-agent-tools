@@ -275,7 +275,7 @@ Every step that produces markdown output also writes a `step-result.json` sideca
 
 ## Progress file
 
-Claude writes the progress file directly using the Write tool. Create it after parsing arguments, before step 1. Update it after each step.
+Claude writes the progress file directly using the Write tool. Create it after parsing arguments, before step 1. Update it after each step. Also write the active workflow marker at the same time (see [Active workflow marker](#active-workflow-marker)).
 
 **Location**: `.claude/docs/<ticket>/workflow/<workflow-type>_<ticket>.json`
 
@@ -329,6 +329,47 @@ The `result` field stores selected sidecar data after each step completes. This 
 
 A top-level array listing steps in canonical order. This field exists so the Stop hook can determine step ordering without a hardcoded bash array. It **must** always be written by the orchestrator and kept in sync with the YAML step list.
 
+## Active workflow marker
+
+The active workflow marker tells the Stop hook which workflow (if any) is currently running in this session. Without the marker, the hook allows Claude to stop freely.
+
+**Location**: `.claude/docs/.active-workflow`
+
+### When to write the marker
+
+Write the marker file using the Write tool at the same time as creating or updating the progress file to `"in_progress"` — after parsing arguments, before step 1. If resuming an existing workflow, overwrite any existing marker.
+
+### Schema
+
+```json
+{
+  "ticket": "<TICKET>",
+  "workflow_type": "<workflow.name from YAML>",
+  "progress_file": ".claude/docs/<ticket-lower>/workflow/<workflow-type>_<ticket-lower>.json"
+}
+```
+
+The `progress_file` path must be relative to the project root (matching the path the hook uses to locate the file).
+
+### When to delete the marker
+
+Delete `.claude/docs/.active-workflow` when:
+
+1. The workflow completes — immediately after setting the progress file's `status` to `"completed"` in the [Completion](#completion) section
+2. The workflow fails terminally — after setting `status` to `"failed"` (e.g., planning step produces 0 modules and user chooses to stop)
+
+Do **not** delete the marker between steps. The marker must persist for the entire duration of the workflow so the Stop hook can block premature stops.
+
+### Overwriting on resume or new workflow
+
+If the user starts a new workflow (different ticket or different workflow type) or resumes an existing one, overwrite the marker with the new workflow's information. There is only ever one active workflow at a time. The previous marker is implicitly superseded.
+
+### Edge cases
+
+- **No marker exists**: The Stop hook allows Claude to stop. This is the correct default for sessions that don't involve a workflow.
+- **Marker points to a missing progress file**: The Stop hook cleans up the stale marker and allows stop.
+- **Marker exists but workflow status is `"completed"` or `"failed"`**: The Stop hook cleans up the marker and allows stop.
+
 ## Check for existing work
 
 Before starting, check for a progress file at `.claude/docs/<ticket>/workflow/<workflow-type>_<ticket>.json`.
@@ -342,7 +383,9 @@ Before starting, check for a progress file at `.claude/docs/<ticket>/workflow/<w
 5. Tell the user: "Found existing work for `<ticket>`. Resuming from `<step>`."
 6. If the user provided additional flags on resume (e.g., `--create-jira`), update the progress file options accordingly
 
-**If no progress file exists**, start from step 1 and create a new progress file.
+**If no progress file exists**, start from step 1, create a new progress file, and write the active workflow marker.
+
+In both cases (new or resume), write the [active workflow marker](#active-workflow-marker) with the current ticket and workflow type. This ensures the Stop hook tracks only this workflow.
 
 ## Running workflow steps
 
@@ -405,7 +448,7 @@ After each step completes, apply the rules below. When rules reference sidecar f
 
 **planning**
 - Log: `"Planning completed: N modules"`
-- If `module_count` is 0, **warn**: `"Planning produced 0 modules — the plan may be empty. Review plan.md before continuing."` Ask the user whether to proceed or stop. If the user chooses to stop: mark the planning step as `failed` in the progress file, set the workflow status to `"failed"`, log `"Planning stopped by user after 0 modules — workflow cancelled."`, and halt without running subsequent steps
+- If `module_count` is 0, **warn**: `"Planning produced 0 modules — the plan may be empty. Review plan.md before continuing."` Ask the user whether to proceed or stop. If the user chooses to stop: mark the planning step as `failed` in the progress file, set the workflow status to `"failed"`, delete the active workflow marker (`.claude/docs/.active-workflow`), log `"Planning stopped by user after 0 modules — workflow cancelled."`, and halt without running subsequent steps
 
 **code-evidence**
 - Log: `"Code evidence retrieved: N topics, N snippets"`
@@ -484,7 +527,8 @@ If the user declines, mark the `create-merge-request` step as `skipped` (with `s
 After all steps complete (or are skipped):
 
 1. Update the progress file: `status → "completed"`
-2. Display a summary:
+2. Delete the active workflow marker: remove `.claude/docs/.active-workflow`
+3. Display a summary:
    - List all output folders with paths
    - Note any warnings (tech review didn't reach `HIGH`, planning had 0 modules, code-evidence had 0 snippets, etc.)
    - Show MR/PR URL from `steps.create-merge-request.result.url` if present
