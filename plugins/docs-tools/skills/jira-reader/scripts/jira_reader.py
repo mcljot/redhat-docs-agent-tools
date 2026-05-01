@@ -6,11 +6,14 @@ This script provides read-only access to JIRA issues on Red Hat Issue Tracker.
 It fetches issue details, comments, custom fields, related Git links, and
 traverses the ticket graph (parent, children, siblings, issue links, web links).
 
+Uses Atlassian REST API v3. Description and comment fields are returned in
+Atlassian Document Format (ADF) and automatically converted to plain text.
+
 Usage:
-    python jira_reader.py --issue INFERENG-5233
-    python jira_reader.py --issue INFERENG-5233 --include-comments
-    python jira_reader.py --jql "project=INFERENG AND fixVersion='3.4'"
-    python jira_reader.py --graph INFERENG-5233
+    python3 ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py --issue INFERENG-5233
+    python3 ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py --issue INFERENG-5233 --include-comments
+    python3 ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py --jql "project=INFERENG AND fixVersion='3.4'"
+    python3 ${CLAUDE_SKILL_DIR}/scripts/jira_reader.py --graph INFERENG-5233
 """
 
 import argparse
@@ -28,6 +31,97 @@ try:
 except ImportError:
     print(json.dumps({"error": "jira package not installed. Run: python3 -m pip install jira"}))
     sys.exit(1)
+
+
+def adf_to_text(node):
+    """
+    Convert an Atlassian Document Format (ADF) node to plain text.
+
+    API v3 returns description and comment body fields as ADF JSON (a nested
+    document structure) instead of wiki markup. This function recursively
+    extracts readable text, preserving paragraph breaks, list structure, and
+    code block formatting.
+
+    Args:
+        node: An ADF node (dict with 'type' and optional 'content'),
+              a plain string (returned as-is), or None.
+
+    Returns:
+        Plain text representation of the ADF content.
+    """
+    if node is None:
+        return ""
+    if isinstance(node, str):
+        return node
+
+    if not isinstance(node, dict):
+        return ""
+
+    node_type = node.get("type", "")
+    content = node.get("content", [])
+
+    if node_type == "text":
+        text = node.get("text", "")
+        for mark in node.get("marks", []):
+            if mark.get("type") == "link":
+                href = mark.get("attrs", {}).get("href", "")
+                if href and href != text:
+                    return f"{text} ({href})"
+        return text
+
+    if node_type == "hardBreak":
+        return "\n"
+
+    if node_type == "mention":
+        return node.get("attrs", {}).get("text", "")
+
+    if node_type == "emoji":
+        return node.get("attrs", {}).get("shortName", "")
+
+    if node_type == "codeBlock":
+        code_text = "".join(adf_to_text(child) for child in content)
+        return f"\n```\n{code_text}\n```\n"
+
+    if node_type in ("bulletList", "orderedList"):
+        lines = []
+        for i, item in enumerate(content):
+            prefix = "- " if node_type == "bulletList" else f"{i + 1}. "
+            item_text = adf_to_text(item).strip()
+            lines.append(f"{prefix}{item_text}")
+        return "\n".join(lines) + "\n"
+
+    if node_type == "listItem":
+        return "".join(adf_to_text(child) for child in content)
+
+    if node_type in ("heading", "paragraph"):
+        text = "".join(adf_to_text(child) for child in content)
+        return text + "\n"
+
+    if node_type == "blockquote":
+        inner = "".join(adf_to_text(child) for child in content).strip()
+        return "> " + inner.replace("\n", "\n> ") + "\n"
+
+    if node_type == "rule":
+        return "\n---\n"
+
+    if node_type == "table":
+        rows = []
+        for row_node in content:
+            cells = []
+            for cell_node in row_node.get("content", []):
+                cell_text = "".join(
+                    adf_to_text(child) for child in cell_node.get("content", [])
+                ).strip()
+                cells.append(cell_text)
+            rows.append(" | ".join(cells))
+        return "\n".join(rows) + "\n"
+
+    if node_type == "inlineCard":
+        return node.get("attrs", {}).get("url", "")
+
+    # doc, panel, expand, mediaSingle, etc.: recurse into children
+    parts = [adf_to_text(child) for child in content]
+    return "".join(parts)
 
 
 def load_env_file():
@@ -56,13 +150,14 @@ class JiraReader:
         server = server or os.environ.get("JIRA_URL", "https://redhat.atlassian.net")
 
         if "atlassian.net" in server:
+            options = {"rest_api_version": "3"}
             email = os.environ.get("JIRA_EMAIL")
             if not email:
                 raise ValueError(
                     "JIRA_EMAIL environment variable not set. "
                     "Required for Atlassian Cloud. Add it to ~/.env"
                 )
-            self.jira = JIRA(server=server, basic_auth=(email, token))
+            self.jira = JIRA(server=server, basic_auth=(email, token), options=options)
         else:
             self.jira = JIRA(server=server, token_auth=token)
 
@@ -113,8 +208,9 @@ class JiraReader:
             except (ValueError, TypeError):
                 formatted_time = comment.created[:16].replace("T", " ")
 
-            # Clean comment body
-            comment_body = comment.body.strip() if comment.body else ""
+            # Clean comment body (v3 API returns ADF; v2 returns plain text)
+            raw_body = comment.body if comment.body else ""
+            comment_body = adf_to_text(raw_body).strip()
 
             if comment_body:
                 processed_comments.append(
@@ -239,7 +335,7 @@ class JiraReader:
                 "status": str(issue.fields.status),
                 "assignee": assignee,
                 "summary": issue.fields.summary,
-                "description": issue.fields.description or "",
+                "description": adf_to_text(issue.fields.description),
                 "created": issue.fields.created,
                 "updated": issue.fields.updated,
                 "comments": comments_data,
@@ -371,7 +467,7 @@ class JiraReader:
                 "assignee": fields.assignee.displayName
                 if fields.assignee and hasattr(fields.assignee, "displayName")
                 else None,
-                "description": fields.description or "",
+                "description": adf_to_text(fields.description),
             }
         except Exception as e:
             if "403" in str(e) or "Forbidden" in str(e):

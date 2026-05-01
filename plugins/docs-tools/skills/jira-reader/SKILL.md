@@ -7,7 +7,7 @@ allowed-tools: Read, Bash, Grep, Glob
 
 # JIRA Reader Skill
 
-This skill provides read-only access to JIRA issues on Red Hat Issue Tracker (https://redhat.atlassian.net).
+This skill provides read-only access to JIRA issues on Red Hat Issue Tracker (https://redhat.atlassian.net). It uses the Atlassian REST API v3, which returns rich text fields (description, comments) in Atlassian Document Format (ADF). The skill automatically converts ADF to plain text.
 
 ## Prerequisites
 
