@@ -18,7 +18,7 @@ This skill uses a two-pass architecture to analyze documentation requirements:
 ## Arguments
 
 - `$1` — JIRA ticket ID (required)
-- `--base-path <path>` — Base output path (e.g., `.claude/docs/proj-123`)
+- `--base-path <path>` — Base output path (e.g., `.agent_workspace/proj-123`)
 - `--pr <url>` — PR/MR URL to include in analysis (repeatable)
 
 ## Output

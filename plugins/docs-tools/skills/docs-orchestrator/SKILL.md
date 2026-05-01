@@ -1,6 +1,6 @@
 ---
 name: docs-orchestrator
-description: Documentation workflow orchestrator. Reads the step list from .claude/docs-workflow.yaml (or the plugin default). Runs steps sequentially, manages progress state, handles iteration and confirmation gates. Claude is the orchestrator — the YAML is a step list, not a workflow engine.
+description: Documentation workflow orchestrator. Reads the step list from .agent_workspace/docs-workflow.yaml (or the plugin default). Runs steps sequentially, manages progress state, handles iteration and confirmation gates. Claude is the orchestrator — the YAML is a step list, not a workflow engine.
 
 argument-hint: <ticket> [--workflow <name>] [--pr <url>...] [--source-code-repo <url-or-path>...] [--mkdocs] [--draft] [--docs-repo-path <path>] [--create-jira <PROJECT>] [--create-merge-request]
 
@@ -30,12 +30,12 @@ bash ${CLAUDE_SKILL_DIR}/scripts/setup-hooks.sh
 When displaying available options to the user (e.g., on skill load or when asking for flags), reproduce the descriptions below **verbatim** — do not summarize or paraphrase them.
 
 - `$1` — JIRA ticket ID (required). If missing, STOP and ask the user.
-- `--workflow <name>` — Use `.claude/docs-<name>.yaml` instead of `docs-workflow.yaml`. Allows running alternative pipelines (e.g., writing-only, review-only). Falls back to the plugin default at `skills/docs-orchestrator/defaults/docs-workflow.yaml` if no project-level YAML exists
+- `--workflow <name>` — Use `.agent_workspace/docs-<name>.yaml` instead of `docs-workflow.yaml`. Allows running alternative pipelines (e.g., writing-only, review-only). Falls back to the plugin default at `skills/docs-orchestrator/defaults/docs-workflow.yaml` if no project-level YAML exists
 - `--pr <url>...` — PR/MR URLs (space-delimited, one or more). Accepts GitHub PRs (`gh` CLI) and GitLab MRs (`glab` CLI). Used both as requirements input (agent reads diffs/descriptions) and for source repo resolution (repo URL and branch derived from the first PR/MR). When multiple PRs from different repos are provided, all repos are resolved and treated equally as source material
 - `--mkdocs` — Use Material for MkDocs format instead of AsciiDoc. Propagates to the writing step (generates `.md` with MkDocs front matter) and style-review step (applies Markdown-appropriate rules). Sets `options.format` to `"mkdocs"` in the progress file
-- `--draft` — Write documentation to the staging area (`.claude/docs/<ticket>/writing/`) instead of directly into the repo. Uses DRAFT placement mode: no framework detection, no file placement into the target repo. Without this flag, UPDATE-IN-PLACE is the default
+- `--draft` — Write documentation to the staging area (`.agent_workspace/<ticket>/writing/`) instead of directly into the repo. Uses DRAFT placement mode: no framework detection, no file placement into the target repo. Without this flag, UPDATE-IN-PLACE is the default
 - `--docs-repo-path <path>` — Target documentation repository for UPDATE-IN-PLACE mode. The docs-writer explores this directory for framework detection (Antora, MkDocs, Docusaurus, etc.) and writes files there instead of the current working directory. Propagates to `writing` and `create-merge-request` steps (mapped to their internal `--repo-path` flag). **Precedence**: if both `--docs-repo-path` and `--draft` are passed, `--docs-repo-path` wins — log a warning and ignore `--draft`
-- `--source-code-repo <url-or-path>...` — Source code repository/repositories for code evidence and requirements enrichment (space-delimited, one or more). Accepts remote URLs (https://, git@, ssh:// — each shallow-cloned to `.claude/docs/<ticket>/code-repo/<repo_name>/`) or local paths (used directly). The first repo is treated as primary; additional repos are returned as `additional_repos` in the result. Passed to requirements, code-evidence, writing, and technical-review steps (mapped to their internal `--repo` flag). Without `--pr`, the entire repo is the subject matter; with `--pr`, the PR branch is checked out on the primary repo so code-evidence reflects the PR's state. Takes highest priority in source resolution, overriding `source.yaml` and PR-derived URLs
+- `--source-code-repo <url-or-path>...` — Source code repository/repositories for code evidence and requirements enrichment (space-delimited, one or more). Accepts remote URLs (https://, git@, ssh:// — each shallow-cloned to `.agent_workspace/<ticket>/code-repo/<repo_name>/`) or local paths (used directly). The first repo is treated as primary; additional repos are returned as `additional_repos` in the result. Passed to requirements, code-evidence, writing, and technical-review steps (mapped to their internal `--repo` flag). Without `--pr`, the entire repo is the subject matter; with `--pr`, the PR branch is checked out on the primary repo so code-evidence reflects the PR's state. Takes highest priority in source resolution, overriding `source.yaml` and PR-derived URLs
 - `--create-jira <PROJECT>` — Create a linked JIRA ticket in the specified project after the planning step completes. Runs the standalone `docs-workflow-create-jira` workflow (use `--workflow workflow-create-jira`). Requires `JIRA_API_TOKEN` to be set
 - `--create-merge-request` — Create a branch, commit, push, and open a merge request or pull request after reviews complete. Activates the `create-merge-request` workflow step (guarded by `when: create_merge_request`). Off by default
 
@@ -108,7 +108,7 @@ The script outputs JSON to stdout:
 ```json
 {
   "status": "resolved",
-  "repo_path": ".claude/docs/proj-123/code-repo/operator",
+  "repo_path": ".agent_workspace/proj-123/code-repo/operator",
   "repo_url": "https://github.com/org/operator",
   "ref": "pr-branch-name",
   "scope": null
@@ -130,7 +130,7 @@ If `discovered_repos` is present in the result (multiple repos found), log all r
 Writers can create `<base-path>/source.yaml` before starting a workflow to pre-configure the source repo and scope. The script also writes this file after a successful clone so that resume picks it up automatically.
 
 ```yaml
-# .claude/docs/<ticket>/source.yaml
+# .agent_workspace/<ticket>/source.yaml
 repo: https://github.com/org/operator   # URL or local path (required)
 ref: main                                # branch, tag, or commit (default: HEAD)
 scope:
@@ -150,8 +150,8 @@ All fields except `repo` are optional. If `scope` is omitted, the entire reposit
 
 ### 1. Determine the YAML file
 
-- If `--workflow <name>` was specified → `.claude/docs-<name>.yaml`
-- Otherwise → `.claude/docs-workflow.yaml`
+- If `--workflow <name>` was specified → `.agent_workspace/docs-<name>.yaml`
+- Otherwise → `.agent_workspace/docs-workflow.yaml`
 - If the project-level file doesn't exist → fall back to the plugin default at `skills/docs-orchestrator/defaults/docs-workflow.yaml`
 
 ### 2. Read the YAML
@@ -162,7 +162,7 @@ Read the YAML file and extract the ordered step list. Each step has: `name`, `sk
 
 If the YAML includes a top-level `workflow.requires` list, check each condition **before evaluating steps or running anything**:
 
-- `has_source_repo` → a source repo must be resolvable. The pre-flight resolution script tries all sources in priority order: CLI `--source-code-repo`, `source.yaml`, `--pr`-derived, and JIRA ticket discovery (git links and auto-discovered PRs). If **none** yield a source repo, **STOP** immediately with: `"This workflow requires a source code repository. No repo could be discovered from the JIRA ticket. Options: (1) re-run with --source-code-repo <url-or-path>, (2) re-run with --pr <url>, (3) create .claude/docs/<ticket>/source.yaml with a repo: field, or (4) link PRs to the JIRA ticket and re-run."`
+- `has_source_repo` → a source repo must be resolvable. The pre-flight resolution script tries all sources in priority order: CLI `--source-code-repo`, `source.yaml`, `--pr`-derived, and JIRA ticket discovery (git links and auto-discovered PRs). If **none** yield a source repo, **STOP** immediately with: `"This workflow requires a source code repository. No repo could be discovered from the JIRA ticket. Options: (1) re-run with --source-code-repo <url-or-path>, (2) re-run with --pr <url>, (3) create .agent_workspace/<ticket>/source.yaml with a repo: field, or (4) link PRs to the JIRA ticket and re-run."`
 
 Unlike `when` (which makes individual steps conditional), `requires` is a workflow-level precondition — the entire workflow fails if a required condition is not met. This prevents users from running a code-evidence workflow without a repo and only discovering the problem after requirements and planning have already completed.
 
@@ -214,7 +214,7 @@ The orchestrator validates at load time that every step name in `inputs` exists 
 Every step writes to a predictable folder based on the ticket ID and step name:
 
 ```
-.claude/docs/<ticket>/<step-name>/
+.agent_workspace/<ticket>/<step-name>/
 ```
 
 The ticket ID is converted to **lowercase** for directory names (e.g., `PROJ-123` → `proj-123`).
@@ -224,7 +224,7 @@ The ticket ID is converted to **lowercase** for directory names (e.g., `PROJ-123
 Resolve the base path to an absolute path so agents (which may run in a different working directory) can locate files correctly:
 
 ```bash
-BASE_PATH="$(cd "$(git rev-parse --show-toplevel)" && pwd)/.claude/docs/${TICKET_LOWER}"
+BASE_PATH="$(cd "$(git rev-parse --show-toplevel)" && pwd)/.agent_workspace/${TICKET_LOWER}"
 ```
 
 Use this absolute `BASE_PATH` for the progress file's `base_path` field and for all `--base-path` arguments passed to step skills.
@@ -232,7 +232,7 @@ Use this absolute `BASE_PATH` for the progress file's `base_path` field and for 
 ### Folder structure
 
 ```
-.claude/docs/proj-123/
+.agent_workspace/proj-123/
   source.yaml                        (per-ticket source config, if applicable)
   code-repo/
     <repo-name>/                     (each repo gets its own subdirectory)
@@ -267,7 +267,7 @@ Use this absolute `BASE_PATH` for the progress file's `base_path` field and for 
     docs-workflow_proj-123.json
 ```
 
-Each step skill knows its own output folder and writes there. Each step reads input from upstream step folders referenced in its `inputs` list. The orchestrator passes the base path `.claude/docs/<ticket>/` — step skills derive everything else by convention.
+Each step skill knows its own output folder and writes there. Each step reads input from upstream step folders referenced in its `inputs` list. The orchestrator passes the base path `.agent_workspace/<ticket>/` — step skills derive everything else by convention.
 
 ### Step result sidecars
 
@@ -277,7 +277,7 @@ Every step that produces markdown output also writes a `step-result.json` sideca
 
 Claude writes the progress file directly using the Write tool. Create it after parsing arguments, before step 1. Update it after each step. Also write the active workflow marker at the same time (see [Active workflow marker](#active-workflow-marker)).
 
-**Location**: `.claude/docs/<ticket>/workflow/<workflow-type>_<ticket>.json`
+**Location**: `.agent_workspace/<ticket>/workflow/<workflow-type>_<ticket>.json`
 
 The `workflow_type` field and filename prefix match the YAML's `workflow.name`. This allows multiple workflow types to run against the same ticket without conflict.
 
@@ -287,7 +287,7 @@ The `workflow_type` field and filename prefix match the YAML's `workflow.name`. 
 {
   "workflow_type": "<workflow.name from YAML>",
   "ticket": "<TICKET>",
-  "base_path": "/absolute/path/to/.claude/docs/<ticket>",
+  "base_path": "/absolute/path/to/.agent_workspace/<ticket>",
   "status": "in_progress",
   "created_at": "<ISO 8601>",
   "updated_at": "<ISO 8601>",
@@ -310,7 +310,7 @@ The `workflow_type` field and filename prefix match the YAML's `workflow.name`. 
 }
 ```
 
-The `output` field records the step's output folder path (e.g., `.claude/docs/proj-123/writing/`) once completed.
+The `output` field records the step's output folder path (e.g., `.agent_workspace/proj-123/writing/`) once completed.
 
 The `result` field stores selected sidecar data after each step completes. This lets the orchestrator make downstream decisions and display summaries without re-reading sidecar files from disk — especially important on resume. Set to `null` until the step completes; then populated from `step-result.json` (see [Step-specific post-processing](#step-specific-post-processing)).
 
@@ -372,7 +372,7 @@ If the user starts a new workflow (different ticket or different workflow type) 
 
 ## Check for existing work
 
-Before starting, check for a progress file at `.claude/docs/<ticket>/workflow/<workflow-type>_<ticket>.json`.
+Before starting, check for a progress file at `.agent_workspace/<ticket>/workflow/<workflow-type>_<ticket>.json`.
 
 **If a progress file exists:**
 

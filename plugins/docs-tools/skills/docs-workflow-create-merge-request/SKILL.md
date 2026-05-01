@@ -15,7 +15,7 @@ Step skill for the docs-orchestrator pipeline. After writing and reviews are com
 ## Arguments
 
 - `$1` — JIRA ticket ID (required)
-- `--base-path <path>` — Base output path (e.g., `.claude/docs/proj-123`)
+- `--base-path <path>` — Base output path (e.g., `.agent_workspace/proj-123`)
 - `--draft` — If present, skip all git operations
 - `--repo-path <path>` — Target documentation repository (must already be on a feature branch)
 

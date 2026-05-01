@@ -8,18 +8,18 @@ decisions (user prompts, deferred step management) based on the JSON output.
 Modes:
 
 1. Explicit source (--repo and/or --pr):
-    python3 resolve_source.py --base-path .claude/docs/proj-123 \
+    python3 resolve_source.py --base-path .agent_workspace/proj-123 \
         --repo https://github.com/org/repo.git --pr https://github.com/org/repo/pull/42
 
 2. From existing source.yaml:
-    python3 resolve_source.py --base-path .claude/docs/proj-123
+    python3 resolve_source.py --base-path .agent_workspace/proj-123
 
 3. JIRA ticket discovery (auto-discover repo from ticket git links):
-    python3 resolve_source.py --base-path .claude/docs/proj-123 \
+    python3 resolve_source.py --base-path .agent_workspace/proj-123 \
         --ticket PROJ-123 --plugin-root /path/to/docs-tools
 
 4. Scan requirements.md for PR URLs (post-requirements discovery):
-    python3 resolve_source.py --base-path .claude/docs/proj-123 --scan-requirements
+    python3 resolve_source.py --base-path .agent_workspace/proj-123 --scan-requirements
 
 Output: JSON to stdout with the resolved source info, or an error status.
 
@@ -793,7 +793,7 @@ def main():
     parser.add_argument(
         "--base-path",
         required=True,
-        help="Base output path (e.g., .claude/docs/proj-123)",
+        help="Base output path (e.g., .agent_workspace/proj-123)",
     )
     parser.add_argument(
         "--repo",

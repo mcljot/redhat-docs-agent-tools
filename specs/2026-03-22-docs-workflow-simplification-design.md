@@ -6,7 +6,7 @@
 
 ## Problem
 
-The docs-workflow defaults to writing drafts into a `.claude/docs/` staging area and relies on a convoluted `--integrate` flag with a separate `docs-integrator` agent to place files into the repository. This creates unnecessary friction — most users want docs written directly into the repo.
+The docs-workflow defaults to writing drafts into a `.agent_workspace/` staging area and relies on a convoluted `--integrate` flag with a separate `docs-integrator` agent to place files into the repository. This creates unnecessary friction — most users want docs written directly into the repo.
 
 ## Decision
 
@@ -27,7 +27,7 @@ Flip the default: the workflow creates a clean branch from the upstream default 
 
 When `--draft` is passed:
 - No branch creation — stays on current branch
-- Writer saves to `.claude/docs/drafts/<ticket>/` staging area
+- Writer saves to `.agent_workspace/drafts/<ticket>/` staging area
 - Reviewers operate on the staging area
 - No repo integration
 
@@ -128,7 +128,7 @@ The orchestrator must tell the writer which mode to use:
 > Place files directly in the repository following existing conventions. Detect the build framework, analyze file naming and directory conventions, and write modules to the correct repo locations. Update navigation/TOC files as needed.
 
 **Draft mode prompt addition:**
-> Save files to the `.claude/docs/drafts/<jira-id>/` staging area. Do not modify any existing repository files.
+> Save files to the `.agent_workspace/drafts/<jira-id>/` staging area. Do not modify any existing repository files.
 
 #### Review stage prompt changes
 
@@ -136,7 +136,7 @@ Stages 4 and 5 must reference files at their actual locations:
 
 **Default mode:** Pass the `_index.md` manifest path so reviewers can find all written files.
 
-**Draft mode:** Same as current behavior — hardcoded `.claude/docs/drafts/<ticket>/` paths.
+**Draft mode:** Same as current behavior — hardcoded `.agent_workspace/drafts/<ticket>/` paths.
 
 #### Usage examples update
 
@@ -167,13 +167,13 @@ Added before the writing guidelines, active only in default (non-draft) mode:
 
 #### Output location changes
 
-- **Default mode:** Files written directly to repo locations. The `_index.md` manifest is still created at `.claude/docs/drafts/<jira-id>/` as a record of what was written and where.
-- **Draft mode (`--draft`):** Files written to `.claude/docs/drafts/<jira-id>/` (current behavior, unchanged).
+- **Default mode:** Files written directly to repo locations. The `_index.md` manifest is still created at `.agent_workspace/drafts/<jira-id>/` as a record of what was written and where.
+- **Draft mode (`--draft`):** Files written to `.agent_workspace/drafts/<jira-id>/` (current behavior, unchanged).
 
 #### Removed
 
 - Symlink setup for `_attributes/` etc. (unnecessary when writing directly in repo)
-- All language implying `.claude/docs/drafts/` is the *default* output
+- All language implying `.agent_workspace/drafts/` is the *default* output
 
 ### `plugins/docs-tools/agents/docs-integrator.md`
 
@@ -193,8 +193,8 @@ Added before the writing guidelines, active only in default (non-draft) mode:
 2. Fetch JIRA summary → "Add autoscaling support"
 3. Auto-detect remote/default branch (origin/main)
 4. git checkout -b rhaistrat-123_add-autoscaling-support origin/main
-5. Requirements analyst → .claude/docs/requirements/
-6. Docs planner → .claude/docs/plans/
+5. Requirements analyst → .agent_workspace/requirements/
+6. Docs planner → .agent_workspace/plans/
 7. Docs writer:
    - Detects build framework (e.g., Antora)
    - Analyzes repo conventions
@@ -211,9 +211,9 @@ Added before the writing guidelines, active only in default (non-draft) mode:
 ```
 1. Parse args, validate JIRA token
 2. NO branch creation
-3. Requirements analyst → .claude/docs/requirements/
-4. Docs planner → .claude/docs/plans/
-5. Docs writer → .claude/docs/drafts/<ticket>/
+3. Requirements analyst → .agent_workspace/requirements/
+4. Docs planner → .agent_workspace/plans/
+5. Docs writer → .agent_workspace/drafts/<ticket>/
 6. Technical reviewer → reviews drafts
 7. Style reviewer → edits drafts in place
 8. (Optional) Create JIRA ticket

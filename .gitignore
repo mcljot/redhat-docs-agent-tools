@@ -16,6 +16,8 @@ __pycache__/
 *.pyc
 .work/
 *-workspace/
+# Workflow workspace (step outputs, progress files, cloned repos)
+.agent_workspace/
 
 # Auto-generated docs (built by CI, not tracked in source)
 docs/plugins.md

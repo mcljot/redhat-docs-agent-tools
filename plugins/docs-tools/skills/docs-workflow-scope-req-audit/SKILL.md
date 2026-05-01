@@ -18,7 +18,7 @@ This skill classifies each JIRA requirement from the requirements step as ground
 ## Arguments
 
 - `$1` — JIRA ticket ID (required)
-- `--base-path <path>` — Base output path (e.g., `.claude/docs/proj-123`)
+- `--base-path <path>` — Base output path (e.g., `.agent_workspace/proj-123`)
 - `--repo <path>` — Path to the source code repository (required, provided by orchestrator)
 - `--grounded-threshold <float>` — Minimum top score for grounded classification (default: 0.5)
 - `--absent-threshold <float>` — Maximum top score for absent classification (default: 0.25)

@@ -21,10 +21,11 @@ if ! cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null; then
   exit 2
 fi
 
-MARKER=".claude/docs/.active-workflow"
-
-# No marker → no active workflow → allow stop
-if [ ! -f "$MARKER" ]; then
+# Look for progress files
+shopt -s nullglob
+PROGRESS_FILES=(.agent_workspace/*/workflow/*.json)
+shopt -u nullglob
+if [ ${#PROGRESS_FILES[@]} -eq 0 ]; then
   exit 0
 fi
 

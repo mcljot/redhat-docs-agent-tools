@@ -24,7 +24,7 @@ The writer typically works from the **documentation repository**, not the code r
 ## Arguments
 
 - `$1` — JIRA ticket ID (required)
-- `--base-path <path>` — Base output path (e.g., `.claude/docs/proj-123`)
+- `--base-path <path>` — Base output path (e.g., `.agent_workspace/proj-123`)
 - `--repo <path>` — Path to the source code repository (required — provided by the orchestrator after clone/verify, or by the user for standalone invocation)
 - `--scope-include <globs>` — Comma-separated glob patterns to include (e.g., `src/controllers/**,pkg/api/v1/**,README.md`). Scopes both source directory detection and search results. If omitted, the entire repo is in scope.
 - `--scope-exclude <globs>` — Comma-separated glob patterns to exclude (e.g., `**/vendor/**,**/*_test.go`). Applied as post-retrieval filters since code-finder does not support exclude globs natively.

@@ -44,19 +44,19 @@ The docs orchestrator (`/docs-orchestrator`) runs a YAML-defined step list. You 
 
 The orchestrator looks for workflow YAML in this order:
 
-1. `.claude/docs-<name>.yaml` — if `--workflow <name>` is passed
-2. `.claude/docs-workflow.yaml` — project-level default (when no `--workflow` is specified)
+1. `.agent_workspace/docs-<name>.yaml` — if `--workflow <name>` is passed
+2. `.agent_workspace/docs-workflow.yaml` — project-level default (when no `--workflow` is specified)
 3. Plugin default — `skills/docs-orchestrator/defaults/docs-workflow.yaml`
 
 To customize, download the default into your docs repo and edit it:
 
 ```bash
-mkdir -p .claude
+mkdir -p .agent_workspace
 curl -sL https://raw.githubusercontent.com/redhat-documentation/redhat-docs-agent-tools/main/plugins/docs-tools/skills/docs-orchestrator/defaults/docs-workflow.yaml \
-   -o .claude/docs-workflow.yaml
+   -o .agent_workspace/docs-workflow.yaml
 ```
 
-Then modify `.claude/docs-workflow.yaml` to add, remove, or reorder steps:
+Then modify `.agent_workspace/docs-workflow.yaml` to add, remove, or reorder steps:
 
 ```yaml
 workflow:
@@ -116,10 +116,10 @@ This step only runs when `--create-merge-request` is passed to the orchestrator.
 Use `--workflow <name>` to maintain different workflows for different purposes:
 
 ```bash
-# Uses .claude/docs-quick.yaml
+# Uses .agent_workspace/docs-quick.yaml
 /docs-orchestrator PROJ-123 --workflow quick
 
-# Uses .claude/docs-full.yaml
+# Uses .agent_workspace/docs-full.yaml
 /docs-orchestrator PROJ-123 --workflow full
 ```
 
@@ -159,9 +159,9 @@ Compared to the default workflow, the code-evidence variant produces documentati
 To use this workflow without the plugin default, download it into your docs repo:
 
 ```bash
-mkdir -p .claude
+mkdir -p .agent_workspace
 curl -sL https://raw.githubusercontent.com/redhat-documentation/redhat-docs-agent-tools/main/plugins/docs-tools/skills/docs-orchestrator/defaults/docs-workflow-code-evidence.yaml \
-   -o .claude/docs-workflow-code-evidence.yaml
+   -o .agent_workspace/docs-workflow-code-evidence.yaml
 ```
 
 ## Starting a docs workflow
@@ -262,7 +262,7 @@ Multiple `--pr` flags can be passed. The requirements analyst will read the PR d
 | `--mkdocs` | Generate Material for MkDocs Markdown instead of AsciiDoc |
 | `--repo-path <path>` | Write files to a specific repo path (e.g., an external clone) |
 | `--create-jira <PROJECT>` | Create a linked JIRA ticket in the specified project |
-| `--workflow <name>` | Use `.claude/docs-<name>.yaml` instead of the default workflow |
+| `--workflow <name>` | Use `.agent_workspace/docs-<name>.yaml` instead of the default workflow |
 
 ### Resuming a workflow
 

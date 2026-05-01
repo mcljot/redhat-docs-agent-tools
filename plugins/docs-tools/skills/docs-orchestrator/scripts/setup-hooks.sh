@@ -14,9 +14,9 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
 HOOKS_SRC="${PLUGIN_ROOT}/skills/docs-orchestrator/hooks"
 
 # Copy hook script into the project
-mkdir -p .claude/hooks
-cp "$HOOKS_SRC/workflow-completion-check.sh" .claude/hooks/
-chmod +x .claude/hooks/workflow-completion-check.sh
+mkdir -p .agent_workspace/hooks
+cp "$HOOKS_SRC/workflow-completion-check.sh" .agent_workspace/hooks/
+chmod +x .agent_workspace/hooks/workflow-completion-check.sh
 
 # Create settings file if missing
 if [ ! -f "$SETTINGS_FILE" ]; then
@@ -33,7 +33,7 @@ else
     "matcher": "",
     "hooks": [{
       "type": "command",
-      "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/workflow-completion-check.sh",
+      "command": "bash ${CLAUDE_PROJECT_DIR}/.agent_workspace/hooks/workflow-completion-check.sh",
       "timeout": 10
     }]
   }]' "$SETTINGS_FILE" > "${SETTINGS_FILE}.tmp" && mv "${SETTINGS_FILE}.tmp" "$SETTINGS_FILE"

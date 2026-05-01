@@ -160,7 +160,7 @@ No extra fields. Common schema only.
   "completed_at": "2026-04-23T15:00:00Z",
   "topic_count": 8,
   "snippet_count": 42,
-  "repo_path": "/home/user/docs-repo/.claude/docs/proj-123/code-repo/my-project"
+  "repo_path": "/home/user/docs-repo/.agent_workspace/proj-123/code-repo/my-project"
 }
 ```
 
