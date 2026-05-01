@@ -107,7 +107,7 @@ For each requirement, extract:
 
 If no requirements are found matching this pattern, STOP with error: "No requirements found in requirements.md. Expected REQ-NNN pattern."
 
-### 4. Pre-flight: warm the code-finder index
+### 4. Pre-flight: warm the code-finder index and extract API surface
 
 Warm the code-finder index before fanning out. This ensures the index is built once (expensive) and all subagents reuse the cached index at `{repo}/.vibe2doc/index.db`. Run one throwaway query:
 
@@ -117,6 +117,15 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/code-evidence/scripts/find_evidence.py --re
 
 Discard the output. If this fails, STOP with error including the stderr output — the index cannot be built.
 
+Extract the API surface for use as supplementary evidence during classification:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/code-evidence/scripts/api_surface.py \
+  --target "$REPO_PATH" > "${OUTPUT_DIR}/api-surface.json"
+```
+
+Set `API_SURFACE_FILE="${OUTPUT_DIR}/api-surface.json"` if the command succeeds. If it fails, log a warning and set `API_SURFACE_FILE=""` — classifiers will rely on NL search alone.
+
 ### 5. Fan out: dispatch one agent per requirement
 
 For each requirement extracted in step 3, dispatch one Agent call. Launch ALL requirement agents in a **single message** (parallel execution).
@@ -125,7 +134,7 @@ For each requirement, use:
 
 ```
 Agent:
-  subagent_type: docs-tools:evidence-classifier
+  subagent_type: evidence-classifier
   model: haiku
   description: "Classify REQ-NNN: <title truncated to 40 chars>"
   prompt: |
@@ -140,6 +149,7 @@ Agent:
     - REPO_PATH: <absolute repo path>
     - GROUNDED_THRESHOLD: <threshold>
     - ABSENT_THRESHOLD: <threshold>
+    - API_SURFACE_FILE: <API_SURFACE_FILE or omit this line if empty>
 
     DISCOVERED_REPOS:
     <JSON array of discovered_repos from step 2, or [] if none>

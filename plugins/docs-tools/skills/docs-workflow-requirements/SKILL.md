@@ -11,8 +11,8 @@ Step skill for the docs-orchestrator pipeline. Follows the step skill contract: 
 
 This skill uses a two-pass architecture to analyze documentation requirements:
 
-1. **Discovery pass** — A single `docs-tools:requirements-discoverer` agent enumerates requirements from JIRA, PRs, and specs, producing a JSON skeleton
-2. **Deep analysis pass** — One `docs-tools:requirements-analyst` agent per requirement, all running in parallel, each performing thorough analysis with a clean context window
+1. **Discovery pass** — A single `requirements-discoverer` agent enumerates requirements from JIRA, PRs, and specs, producing a JSON skeleton
+2. **Deep analysis pass** — One `requirements-analyst` agent per requirement, all running in parallel, each performing thorough analysis with a clean context window
 3. **Merge** — The orchestrator assembles per-requirement JSON results into the standard `requirements.md` format
 
 ## Arguments
@@ -45,11 +45,11 @@ mkdir -p "$OUTPUT_DIR"
 
 ### 2. Pass 1 — Discovery
 
-Dispatch one `docs-tools:requirements-discoverer` agent to enumerate requirements from all sources.
+Dispatch one `requirements-discoverer` agent to enumerate requirements from all sources.
 
 ```
 Agent:
-  subagent_type: docs-tools:requirements-discoverer
+  subagent_type: requirements-discoverer
   description: "Discover requirements for <TICKET>"
   prompt: |
     Discover documentation requirements for JIRA ticket <TICKET>.
@@ -83,13 +83,13 @@ If `requirements` is empty, write a minimal `requirements.md` noting that no req
 
 ### 4. Pass 2 — Fan out deep analysis
 
-For each requirement in the discovery skeleton, dispatch one `docs-tools:requirements-analyst` agent. Launch ALL agents in a **single message** (parallel execution).
+For each requirement in the discovery skeleton, dispatch one `requirements-analyst` agent. Launch ALL agents in a **single message** (parallel execution).
 
 For each requirement, use:
 
 ```
 Agent:
-  subagent_type: docs-tools:requirements-analyst
+  subagent_type: requirements-analyst
   description: "Analyze REQ-NNN: <title truncated to 40 chars>"
   prompt: |
     Perform deep analysis of this single documentation requirement.
@@ -102,11 +102,15 @@ Agent:
 
     RELEASE: <release from discovery output>
 
+    [If --repo was provided: "REPO_PATH: <repo_path>"]
+
     Fetch detailed content from each source, perform web search expansion,
     and produce complete documentation requirements with acceptance criteria.
 
     Print your JSON result to stdout.
 ```
+
+The `REPO_PATH` line is conditional — include it only if `--repo` was passed to this step. When present, the analyst verifies the requirement against the codebase, identifies existing docs, and extracts code references.
 
 **Important:** All Agent calls MUST be in a single message so they run in parallel.
 

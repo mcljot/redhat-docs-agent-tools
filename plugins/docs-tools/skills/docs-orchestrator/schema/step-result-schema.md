@@ -121,7 +121,8 @@ All sidecars share these fields:
     "minor": 3,
     "sme": 2
   },
-  "iteration": 1
+  "iteration": 1,
+  "code_grounded": true
 }
 ```
 
@@ -134,6 +135,7 @@ All sidecars share these fields:
 | `severity_counts.minor` | integer | Minor issues found | Orchestrator |
 | `severity_counts.sme` | integer | Issues requiring SME verification | Orchestrator |
 | `iteration` | integer | Which iteration of review this represents (1-based) | Orchestrator |
+| `code_grounded` | boolean | Whether the code-grounded pre-scan ran (source repo was available and `grounded_review.py` succeeded) | Informational |
 
 ### style-review
 

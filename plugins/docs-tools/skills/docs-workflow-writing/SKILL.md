@@ -1,7 +1,7 @@
 ---
 name: docs-workflow-writing
-description: Write documentation from a documentation plan. Dispatches the docs-tools:docs-writer agent. Supports AsciiDoc (default) and MkDocs formats. Default placement is UPDATE-IN-PLACE; use --draft for staging area. Also supports fix mode for applying technical review corrections.
-argument-hint: <ticket> --base-path <path> --format <adoc|mkdocs> [--draft] [--repo-path <path>] [--repo <path>] [--fix-from <review_path>]
+description: Write documentation from a documentation plan. Dispatches the docs-writer agent. Supports AsciiDoc (default) and MkDocs formats. Default placement is UPDATE-IN-PLACE; use --draft for staging area. Also supports fix mode for applying technical review corrections.
+argument-hint: <ticket> --base-path <path> --format <adoc|mkdocs> [--draft] [--repo <path>] [--repo-path <path>] [--fix-from <review_path>]
 allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, Agent
 ---
 
@@ -23,31 +23,33 @@ Pass through the full args string. The script emits JSON on stdout:
 
 ```json
 {
-  "mode":              "update-in-place | draft | fix",
-  "ticket":            "PROJ-123",
-  "format":            "adoc | mkdocs",
-  "input_file":        "<base-path>/planning/plan.md",
-  "evidence_file":     "<base-path>/code-evidence/evidence.json | null",
-  "has_evidence":      true | false,
-  "output_dir":        "<base-path>/writing",
-  "output_file":       "<base-path>/writing/_index.md",
-  "docs_repo_path":    "<path> | null",
-  "source_repo_path":  "<path> | null",
-  "fix_from":          "<path> | null",
-  "verify_output":     true | false
+  "mode":                "update-in-place | draft | fix",
+  "ticket":              "PROJ-123",
+  "format":              "adoc | mkdocs",
+  "input_file":          "<base-path>/planning/plan.md",
+  "evidence_file":       "<base-path>/code-evidence/evidence.json | null",
+  "has_evidence":        true | false,
+  "evidence_status":     "<base-path>/scope-req-audit/evidence-status.json | null",
+  "has_evidence_status": true | false,
+  "output_dir":          "<base-path>/writing",
+  "output_file":         "<base-path>/writing/_index.md",
+  "docs_repo_path":      "<path> | null",
+  "source_repo_path":    "<path> | null",
+  "fix_from":            "<path> | null",
+  "verify_output":       true | false
 }
 ```
 
 If the script exits non-zero, stop and report the error from stderr.
 
-### 2. Dispatch the docs-tools:docs-writer agent
+### 2. Dispatch the docs-writer agent
 
-**You MUST use the Agent tool** to invoke the `docs-tools:docs-writer` subagent. Do NOT read the agent's markdown file or attempt to perform the agent's work yourself — the agent has a specialized system prompt and must run as an isolated subagent.
+**You MUST use the Agent tool** to invoke the `docs-writer` subagent. Do NOT read the agent's markdown file or attempt to perform the agent's work yourself — the agent has a specialized system prompt and must run as an isolated subagent.
 
 Select the prompt based on `mode` and `format` from the JSON output. In every prompt below, substitute the `<TICKET>`, `<INPUT_FILE>`, `<OUTPUT_FILE>`, `<OUTPUT_DIR>`, `<DOCS_REPO_PATH>`, `<FIX_FROM>`, and `<EVIDENCE_FILE>` placeholders with the corresponding values from the script's JSON.
 
 **Agent tool parameters for all modes:**
-- `subagent_type`: `docs-tools:docs-writer`
+- `subagent_type`: `docs-writer`
 - `description`: use the value described under each mode below
 
 ---
@@ -63,6 +65,13 @@ Select the prompt based on `mode` and `format` from the JSON output. In every pr
 > Read the plan from: `<INPUT_FILE>`
 >
 > **[Include only if HAS_EVIDENCE=true]** Code evidence is available at `<EVIDENCE_FILE>`. Read it and use the `source_results` for accurate function signatures, parameter types, and code examples. Use `context_results` for narrative context, installation steps, and architectural patterns. Prefer evidence over assumptions — if the evidence contradicts the plan, follow the evidence.
+>
+> **[Include only if HAS_EVIDENCE_STATUS=true]** Evidence classifications are available at `<EVIDENCE_STATUS>`. Read it and apply these rules per requirement:
+> - **Grounded** requirements have strong code evidence — write with full technical detail
+> - **Partial** requirements have weak or ambiguous evidence — write the content but mark unverified technical details (API names, parameter values, configuration keys) with `[NEEDS VERIFICATION]`
+> - **Absent** requirements have no code evidence — if they appear in the plan, skip them and note the omission in the manifest. Do NOT fabricate API signatures, SDK imports, CRD schemas, or configuration examples for absent requirements
+>
+> **[Include only if SOURCE_REPO is not null]** Source code repository is available at `<SOURCE_REPO>`. You may read specific source files for additional detail when the code evidence does not contain sufficient information for a section. Use this to verify function signatures, check parameter types, or find code examples — do not browse the entire repo.
 >
 > **IMPORTANT**: Write COMPLETE .adoc files, not summaries or outlines.
 >
@@ -95,6 +104,13 @@ Select the prompt based on `mode` and `format` from the JSON output. In every pr
 >
 > **[Include only if HAS_EVIDENCE=true]** Code evidence is available at `<EVIDENCE_FILE>`. Read it and use the `source_results` for accurate function signatures, parameter types, and code examples. Use `context_results` for narrative context, installation steps, and architectural patterns. Prefer evidence over assumptions — if the evidence contradicts the plan, follow the evidence.
 >
+> **[Include only if HAS_EVIDENCE_STATUS=true]** Evidence classifications are available at `<EVIDENCE_STATUS>`. Read it and apply these rules per requirement:
+> - **Grounded** requirements have strong code evidence — write with full technical detail
+> - **Partial** requirements have weak or ambiguous evidence — write the content but mark unverified technical details (API names, parameter values, configuration keys) with `[NEEDS VERIFICATION]`
+> - **Absent** requirements have no code evidence — if they appear in the plan, skip them and note the omission in the manifest. Do NOT fabricate API signatures, SDK imports, CRD schemas, or configuration examples for absent requirements
+>
+> **[Include only if SOURCE_REPO is not null]** Source code repository is available at `<SOURCE_REPO>`. You may read specific source files for additional detail when the code evidence does not contain sufficient information for a section. Use this to verify function signatures, check parameter types, or find code examples — do not browse the entire repo.
+>
 > **IMPORTANT**: Write COMPLETE .md files with YAML frontmatter (title, description). Use Material for MkDocs conventions: admonitions, content tabs, code blocks with titles, heading hierarchy starting at `# h1`.
 >
 > **Placement mode: UPDATE-IN-PLACE**
@@ -125,6 +141,13 @@ Select the prompt based on `mode` and `format` from the JSON output. In every pr
 > Read the plan from: `<INPUT_FILE>`
 >
 > **[Include only if HAS_EVIDENCE=true]** Code evidence is available at `<EVIDENCE_FILE>`. Read it and use the `source_results` for accurate function signatures, parameter types, and code examples. Use `context_results` for narrative context, installation steps, and architectural patterns. Prefer evidence over assumptions — if the evidence contradicts the plan, follow the evidence.
+>
+> **[Include only if HAS_EVIDENCE_STATUS=true]** Evidence classifications are available at `<EVIDENCE_STATUS>`. Read it and apply these rules per requirement:
+> - **Grounded** requirements have strong code evidence — write with full technical detail
+> - **Partial** requirements have weak or ambiguous evidence — write the content but mark unverified technical details (API names, parameter values, configuration keys) with `[NEEDS VERIFICATION]`
+> - **Absent** requirements have no code evidence — if they appear in the plan, skip them and note the omission in the manifest. Do NOT fabricate API signatures, SDK imports, CRD schemas, or configuration examples for absent requirements
+>
+> **[Include only if SOURCE_REPO is not null]** Source code repository is available at `<SOURCE_REPO>`. You may read specific source files for additional detail when the code evidence does not contain sufficient information for a section. Use this to verify function signatures, check parameter types, or find code examples — do not browse the entire repo.
 >
 > **IMPORTANT**: Write COMPLETE .adoc files, not summaries or outlines.
 >
@@ -160,6 +183,13 @@ Select the prompt based on `mode` and `format` from the JSON output. In every pr
 > Read the plan from: `<INPUT_FILE>`
 >
 > **[Include only if HAS_EVIDENCE=true]** Code evidence is available at `<EVIDENCE_FILE>`. Read it and use the `source_results` for accurate function signatures, parameter types, and code examples. Use `context_results` for narrative context, installation steps, and architectural patterns. Prefer evidence over assumptions — if the evidence contradicts the plan, follow the evidence.
+>
+> **[Include only if HAS_EVIDENCE_STATUS=true]** Evidence classifications are available at `<EVIDENCE_STATUS>`. Read it and apply these rules per requirement:
+> - **Grounded** requirements have strong code evidence — write with full technical detail
+> - **Partial** requirements have weak or ambiguous evidence — write the content but mark unverified technical details (API names, parameter values, configuration keys) with `[NEEDS VERIFICATION]`
+> - **Absent** requirements have no code evidence — if they appear in the plan, skip them and note the omission in the manifest. Do NOT fabricate API signatures, SDK imports, CRD schemas, or configuration examples for absent requirements
+>
+> **[Include only if SOURCE_REPO is not null]** Source code repository is available at `<SOURCE_REPO>`. You may read specific source files for additional detail when the code evidence does not contain sufficient information for a section. Use this to verify function signatures, check parameter types, or find code examples — do not browse the entire repo.
 >
 > **IMPORTANT**: Write COMPLETE .md files with YAML frontmatter (title, description). Use Material for MkDocs conventions: admonitions, content tabs, code blocks with titles, heading hierarchy starting at `# h1`.
 >

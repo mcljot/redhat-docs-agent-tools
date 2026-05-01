@@ -42,6 +42,7 @@ The writer typically works from the **documentation repository**, not the code r
 
 ```text
 <base-path>/code-evidence/evidence.json
+<base-path>/code-evidence/api-surface.json
 <base-path>/code-evidence/summary.md
 ```
 
@@ -91,7 +92,7 @@ Determine the source directories for the filtered pass (Pass 1). The goal is to 
 
 Store the detected source paths and any exclude patterns for use in step 5.
 
-### 4. Extract topics from the plan
+### 4. Extract topics from the plan (and seed from scope-req-audit)
 
 Read `$PLAN_FILE` and extract the key topics to search for. Look for:
 
@@ -103,6 +104,8 @@ Read `$PLAN_FILE` and extract the key topics to search for. Look for:
 Produce a list of 5-15 natural language search queries that cover the plan's scope. Each query should be specific enough to retrieve relevant code (e.g., "authentication middleware implementation" not "auth").
 
 Additionally, derive 1-2 **pattern-level queries** that ask how the codebase implements the general pattern, not the specific component. For example, if the plan is about adding Prometheus monitoring for a new component, add a query like "how do components implement monitoring and alerting" alongside the component-specific queries. These pattern queries help the unfiltered pass surface analogous implementations from other parts of the codebase, giving the writer examples to reference.
+
+**Seed from scope-req-audit key_files (when available):** Check if `<BASE_PATH>/scope-req-audit/evidence-status.json` exists. If it does, read it and extract the `key_files` from each **grounded** requirement. These are specific source files where the scope-req-audit found strong evidence. For each key_file, add a targeted query scoped to that file's directory (e.g., if `key_files` contains `pkg/api/v1/types.go`, add a query like "types and interfaces in api v1" with `filter_paths: ["pkg/api/v1"]`). This produces higher-quality results than relying solely on plan-derived queries because these files are already confirmed as relevant.
 
 ### 5. Run two-pass evidence retrieval for each topic
 
@@ -196,9 +199,42 @@ Collect all results into a combined evidence structure:
 
 The `scope` field records what was searched so downstream steps know the boundaries. If no scope was provided, `include` and `exclude` are `null` and `source_dirs_used` lists the auto-detected directories.
 
-Write this to `$EVIDENCE_FILE`.
+Write the search results to `$EVIDENCE_FILE`.
 
-### 6. Generate evidence summary
+### 6. Extract API surface
+
+Run `api_surface.py` against the source directories to extract the public API (classes, functions, methods with signatures and line ranges). This gives the writer exact names and types rather than relying solely on search-ranked snippets.
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/code-evidence/scripts/api_surface.py \
+  --target "$REPO_PATH" > "${OUTPUT_DIR}/api-surface.json"
+```
+
+Or with uv fallback if code-finder is not installed.
+
+If `--scope-include` was provided, pass `--target` for each source directory instead of the repo root to limit the extraction scope.
+
+After extraction, read `${OUTPUT_DIR}/api-surface.json` and append an `api_surface` field to `$EVIDENCE_FILE`:
+
+```json
+{
+  "ticket": "<TICKET>",
+  "repo_path": "<REPO_PATH>",
+  "scope": { ... },
+  "topics": [ ... ],
+  "api_surface": {
+    "total_entities": 142,
+    "files_processed": 38,
+    "files_with_api": 24,
+    "entities": { ... }
+  },
+  "index_info": { ... }
+}
+```
+
+If `api_surface.py` fails, log a warning and continue — the `api_surface` field is omitted from `evidence.json`. The search-based evidence is still valid.
+
+### 7. Generate evidence summary
 
 Create a human-readable markdown summary at `$SUMMARY_FILE` with:
 
@@ -209,6 +245,7 @@ Create a human-readable markdown summary at `$SUMMARY_FILE` with:
 **Repository:** <REPO_PATH>
 **Topics searched:** <N>
 **Total code snippets found:** <N> (source: <N>, context: <N>)
+**API surface:** <N> entities across <N> files (omit if api_surface extraction failed)
 
 ## Topics
 
@@ -230,7 +267,7 @@ Create a human-readable markdown summary at `$SUMMARY_FILE` with:
 
 This summary is for human review. The JSON file is what downstream steps consume.
 
-### 7. Write step-result.json
+### 8. Write step-result.json
 
 After generating the evidence, read `$EVIDENCE_FILE` to count topics and total snippets. Write the sidecar to `${OUTPUT_DIR}/step-result.json`:
 
@@ -249,7 +286,7 @@ After generating the evidence, read `$EVIDENCE_FILE` to count topics and total s
 - `topic_count`: length of the `topics` array in `evidence.json`
 - `snippet_count`: sum of all `source_results` and `context_results` entries across all topics
 
-### 8. Verify output
+### 9. Verify output
 
 After completion, verify that `$EVIDENCE_FILE`, `$SUMMARY_FILE`, and `${OUTPUT_DIR}/step-result.json` exist.
 

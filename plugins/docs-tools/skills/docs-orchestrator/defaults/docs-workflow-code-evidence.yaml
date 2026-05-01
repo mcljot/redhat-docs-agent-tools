@@ -1,6 +1,6 @@
 workflow:
   name: docs-workflow
-  description: Code-evidence-grounded documentation workflow. Requires a source code repository. Adds scope-req-audit and code-evidence steps to classify requirements by implementation status and ground documentation in actual source code.
+  description: Code-evidence-grounded documentation workflow. Adds scope-req-audit and code-evidence steps to classify requirements by implementation status and ground documentation in actual source code. Source repo is resolved via explicit --source-code-repo, JIRA auto-discovery, or PR-derived URLs. Fails if no repo can be resolved.
 
   requires:
     - has_source_repo

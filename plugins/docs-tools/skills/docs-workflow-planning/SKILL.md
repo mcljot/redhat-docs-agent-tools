@@ -1,6 +1,6 @@
 ---
 name: docs-workflow-planning
-description: Create a documentation plan from requirements analysis output. Dispatches the docs-tools:docs-planner agent. Invoked by the orchestrator.
+description: Create a documentation plan from requirements analysis output. Dispatches the docs-planner agent. Invoked by the orchestrator.
 argument-hint: <ticket> --base-path <path>
 allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, Agent
 ---
@@ -43,10 +43,10 @@ mkdir -p "$OUTPUT_DIR"
 
 ### 2. Dispatch agent
 
-**You MUST use the Agent tool** to invoke the `docs-tools:docs-planner` subagent. Do NOT read the agent's markdown file or attempt to perform the agent's work yourself — the agent has a specialized system prompt and must run as an isolated subagent.
+**You MUST use the Agent tool** to invoke the `docs-planner` subagent. Do NOT read the agent's markdown file or attempt to perform the agent's work yourself — the agent has a specialized system prompt and must run as an isolated subagent.
 
 **Agent tool parameters:**
-- `subagent_type`: `docs-tools:docs-planner`
+- `subagent_type`: `docs-planner`
 - `description`: `Create documentation plan for <TICKET>`
 
 **Prompt** (pass this as the `prompt` parameter to the Agent tool):
@@ -68,8 +68,8 @@ mkdir -p "$OUTPUT_DIR"
 
 > Code evidence status is available at `<BASE_PATH>/scope-req-audit/evidence-status.json`. Read it and use the evidence status when making scoping decisions:
 >
-> - **Grounded** requirements: create full module specifications as normal
-> - **Partial** requirements: create module specifications but note what evidence was found and what is missing — flag for SME review
+> - **Grounded** requirements: create full module specifications as normal. Use the `key_files` for each grounded requirement as content source references in the module spec — these are the actual source files where the feature is implemented. The code-evidence step will use them for targeted retrieval
+> - **Partial** requirements: create module specifications but note what evidence was found and what is missing — flag for SME review. Include available `key_files` as partial source references
 > - **Absent** requirements: do NOT create module specifications. Instead, list them in a "Deferred requirements (no code evidence)" section at the end of the plan, including the recommended action from the evidence status. These may be unimplemented features — documenting them risks fabrication
 >
 > If `discovered_repos` lists repos that weren't indexed, note them in the deferred section as potential sources for resolving absent requirements.

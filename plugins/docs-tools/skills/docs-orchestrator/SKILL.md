@@ -35,7 +35,7 @@ When displaying available options to the user (e.g., on skill load or when askin
 - `--mkdocs` — Use Material for MkDocs format instead of AsciiDoc. Propagates to the writing step (generates `.md` with MkDocs front matter) and style-review step (applies Markdown-appropriate rules). Sets `options.format` to `"mkdocs"` in the progress file
 - `--draft` — Write documentation to the staging area (`.claude/docs/<ticket>/writing/`) instead of directly into the repo. Uses DRAFT placement mode: no framework detection, no file placement into the target repo. Without this flag, UPDATE-IN-PLACE is the default
 - `--docs-repo-path <path>` — Target documentation repository for UPDATE-IN-PLACE mode. The docs-writer explores this directory for framework detection (Antora, MkDocs, Docusaurus, etc.) and writes files there instead of the current working directory. Propagates to `writing` and `create-merge-request` steps (mapped to their internal `--repo-path` flag). **Precedence**: if both `--docs-repo-path` and `--draft` are passed, `--docs-repo-path` wins — log a warning and ignore `--draft`
-- `--source-code-repo <url-or-path>...` — Source code repository/repositories for code evidence and requirements enrichment (space-delimited, one or more). Accepts remote URLs (https://, git@, ssh:// — each shallow-cloned to `.claude/docs/<ticket>/code-repo/<repo_name>/`) or local paths (used directly). The first repo is treated as primary; additional repos are returned as `additional_repos` in the result. Passed to requirements, code-evidence, and writing steps (mapped to their internal `--repo` flag). Without `--pr`, the entire repo is the subject matter; with `--pr`, the PR branch is checked out on the primary repo so code-evidence reflects the PR's state. Takes highest priority in source resolution, overriding `source.yaml` and PR-derived URLs
+- `--source-code-repo <url-or-path>...` — Source code repository/repositories for code evidence and requirements enrichment (space-delimited, one or more). Accepts remote URLs (https://, git@, ssh:// — each shallow-cloned to `.claude/docs/<ticket>/code-repo/<repo_name>/`) or local paths (used directly). The first repo is treated as primary; additional repos are returned as `additional_repos` in the result. Passed to requirements, code-evidence, writing, and technical-review steps (mapped to their internal `--repo` flag). Without `--pr`, the entire repo is the subject matter; with `--pr`, the PR branch is checked out on the primary repo so code-evidence reflects the PR's state. Takes highest priority in source resolution, overriding `source.yaml` and PR-derived URLs
 - `--create-jira <PROJECT>` — Create a linked JIRA ticket in the specified project after the planning step completes. Runs the standalone `docs-workflow-create-jira` workflow (use `--workflow workflow-create-jira`). Requires `JIRA_API_TOKEN` to be set
 - `--create-merge-request` — Create a branch, commit, push, and open a merge request or pull request after reviews complete. Activates the `create-merge-request` workflow step (guarded by `when: create_merge_request`). Off by default
 
@@ -67,9 +67,12 @@ When displaying available options to the user (e.g., on skill load or when askin
 # Custom workflow YAML
 /docs-orchestrator PROJ-123 --workflow quick
 
-# Code-evidence workflow — requires a source repo
+# Code-evidence workflow — auto-discovers repo from JIRA, or pass explicitly
+/docs-orchestrator PROJ-123 --workflow code-evidence
+
+# Code-evidence workflow — explicit repo (overrides auto-discovery)
 /docs-orchestrator PROJ-123 \
-  --workflow workflow-code-evidence \
+  --workflow code-evidence \
   --source-code-repo https://github.com/org/operator
 ```
 
@@ -159,9 +162,13 @@ Read the YAML file and extract the ordered step list. Each step has: `name`, `sk
 
 If the YAML includes a top-level `workflow.requires` list, check each condition **before evaluating steps or running anything**:
 
-- `has_source_repo` → a source repo must be resolvable. The pre-flight resolution script tries CLI args, `source.yaml`, PR-derived, and JIRA ticket discovery (git links and auto-discovered PRs) in priority order. If **none** of these yield a source repo, **STOP** immediately with: `"This workflow requires a source code repository. No repo could be discovered from the JIRA ticket. Pass --source-code-repo <url-or-path> or --pr <url>."`
+- `has_source_repo` → a source repo must be resolvable. The pre-flight resolution script tries all sources in priority order: CLI `--source-code-repo`, `source.yaml`, `--pr`-derived, and JIRA ticket discovery (git links and auto-discovered PRs). If **none** yield a source repo, **STOP** immediately with: `"This workflow requires a source code repository. No repo could be discovered from the JIRA ticket. Options: (1) re-run with --source-code-repo <url-or-path>, (2) re-run with --pr <url>, (3) create .claude/docs/<ticket>/source.yaml with a repo: field, or (4) link PRs to the JIRA ticket and re-run."`
 
-Unlike `when` (which makes individual steps conditional), `requires` is a workflow-level precondition — the entire workflow fails if a required condition is not met. This prevents users from running a code-evidence-heavy workflow without a repo and only discovering the problem after requirements and planning have already completed.
+Unlike `when` (which makes individual steps conditional), `requires` is a workflow-level precondition — the entire workflow fails if a required condition is not met. This prevents users from running a code-evidence workflow without a repo and only discovering the problem after requirements and planning have already completed.
+
+The `has_source_repo` precondition supports two modes:
+- **Explicit:** User passes `--source-code-repo` → guaranteed grounding against the specified repo
+- **Auto-discovered:** User passes only a JIRA ticket → pre-flight discovers the repo from JIRA git links and linked PRs
 
 ### 4. Evaluate `when` conditions
 
@@ -363,6 +370,7 @@ Build the args string for the step skill. The orchestrator maps its user-facing 
    - `scope-req-audit`: `--repo <repo_path> [--grounded-threshold <float>] [--absent-threshold <float>]`
    - `code-evidence`: `--repo <repo_path> [--scope-include <globs>] [--scope-exclude <globs>] [--reindex]` — scope globs come from `source.yaml` or `options.source.scope` in the progress file
    - `writing`: `--format <adoc|mkdocs> [--draft] [--repo <repo_path>] [--repo-path <path>]`
+   - `technical-review`: `[--repo <repo_path>]`
    - `style-review`: `--format <adoc|mkdocs>`
    - `create-merge-request`: `[--draft] [--repo-path <path>]`
 
@@ -508,13 +516,5 @@ Same as new session. The progress file shows which steps completed and which fai
 
 ### Requirements-analyst agent: repo-aware analysis
 
-When `--source-code-repo` is passed to the requirements step, the `requirements-analyst` agent should use the repo to enrich its analysis. This is **not yet implemented** — the requirements step currently accepts `--source-code-repo` but the agent does not act on it. Future work:
-
-- Scan the repo's `README.md`, `CHANGELOG.md`, and `docs/` directory for existing documentation
-- Note what documentation already exists and what gaps remain (feeds directly into the planning step's gap analysis)
-- Extract project metadata: language, build system, major dependencies, directory structure
-- Identify existing code examples, tutorials, or quickstart guides that the writer could reference or update rather than recreate
-- If no `--pr` was provided, use the repo structure itself to identify the key components and features that need documentation
-
-This work requires changes to the `requirements-analyst` agent definition (`agents/requirements-analyst.md`), not just the step skill.
+When `--repo` is passed to the requirements step, the `requirements-analyst` agent uses the repo to enrich its analysis: verifying features exist in code, identifying existing documentation, extracting project metadata, and noting code references for downstream steps. See `agents/requirements-analyst.md` step 2 (Source repo enrichment).
 

@@ -82,8 +82,8 @@ reset=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --branch) branch="$2"; shift 2 ;;
-        --plugin) plugin="$2"; shift 2 ;;
+        --branch) [[ -n "${2:-}" && "${2:-}" != -* ]] || { echo "ERROR: --branch requires a value"; usage; }; branch="$2"; shift 2 ;;
+        --plugin) [[ -n "${2:-}" && "${2:-}" != -* ]] || { echo "ERROR: --plugin requires a value"; usage; }; plugin="$2"; shift 2 ;;
         --reset) reset=true; shift ;;
         -h|--help) usage ;;
         *) echo "Unknown option: $1"; usage ;;
@@ -119,10 +119,16 @@ if [[ "$reset" == true ]]; then
     exit 0
 fi
 
+if [[ ! -d "$MARKETPLACE_DIR/.git" ]]; then
+    echo "Error: marketplace directory is not a git repository: $MARKETPLACE_DIR"
+    echo "Run the plugin installer first to create the marketplace clone."
+    exit 1
+fi
+
 if [[ -z "$branch" ]]; then
-    branch=$(git branch --show-current 2>/dev/null || true)
+    branch=$(git -C "$MARKETPLACE_DIR" branch --show-current 2>/dev/null || true)
     if [[ -z "$branch" ]]; then
-        echo "Error: --branch <branch> is required (could not detect current branch)."
+        echo "Error: --branch <branch> is required (could not detect current branch in $MARKETPLACE_DIR)."
         echo
         usage
     fi

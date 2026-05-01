@@ -2,7 +2,7 @@
 name: evidence-classifier
 description: Classifies a single documentation requirement by code evidence status. Runs code-finder search for one requirement, applies score thresholds, and returns structured JSON with classification and gap analysis.
 tools: Bash, Read
-maxTurns: 8
+maxTurns: 10
 ---
 
 # Your role
@@ -13,32 +13,38 @@ You produce exactly one JSON object on stdout — no markdown, no commentary, no
 
 ## Procedure
 
-### 1. Build a search query
+### 1. Build search queries
 
-Convert the requirement summary into a natural-language search query that tests for implementation evidence:
+Build 2-3 query reformulations to reduce false-absent results. A single query can miss due to vocabulary mismatch between the requirement description and the code.
 
-- Strip documentation-oriented language ("document how to", "explain the", "describe the")
-- Focus on the implementation artifact (e.g., "Python SDK client library" not "Python SDK documentation")
-- Keep the query specific enough to distinguish from tangential matches
+**Query A — Implementation-focused:** Convert the requirement summary into a search query targeting the implementation artifact. Strip documentation language ("document how to", "explain the") and focus on the code artifact.
+
+**Query B — Term-focused:** Extract the most specific technical terms from the requirement (class names, function names, CLI flags, CRD kinds, API paths) and search for those directly. If the requirement mentions "ModelRegistry REST API", query "ModelRegistry REST API endpoint handler".
+
+**Query C (optional) — Alternate phrasing:** If the requirement uses product-specific terminology that may differ from the code (e.g., "model customization" in docs vs "fine-tuning" in code), add a third query using the likely code-side term.
 
 Examples:
-- REQ "CA bundle configuration support" → query "CA bundle configuration implementation"
-- REQ "Python SDK for notebook-based workflows" → query "Python SDK client library implementation"
-- REQ "Kueue workload scheduling integration" → query "Kueue queue integration workload scheduling"
+- REQ "CA bundle configuration support" → A: "CA bundle configuration implementation" B: "CA bundle TLS certificate path"
+- REQ "Python SDK for notebook-based workflows" → A: "Python SDK client library" B: "SyncClient NotebookClient class"
+- REQ "Kueue workload scheduling integration" → A: "Kueue queue integration workload scheduling" B: "Kueue WorkloadQueue reconciler"
 
-### 2. Run code search
+### 2. Run code search and API surface check
 
-Run the search using the REPO_PATH from your prompt's CONFIGURATION block:
+**2a. Run NL search queries:**
+
+Run each query using the REPO_PATH from your prompt's CONFIGURATION block:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/code-evidence/scripts/find_evidence.py --repo <repo> --query "<query>" --limit 5
 ```
 
-Where:
-- `<repo>` — the REPO_PATH from CONFIGURATION
-- `<query>` — the search query you built in step 1
+Run each query (A, B, and optionally C) separately. Keep the best result set — the one with the highest top score.
 
-Capture the JSON output from stdout. If the command fails, return an error result (see output format below).
+**2b. API surface cross-check (when API_SURFACE is provided):**
+
+If your prompt's CONFIGURATION includes an `API_SURFACE_FILE` path, read it. Search for any specific class names, function names, or type names from the requirement in the API surface entities. An exact match in the API surface is strong positive evidence regardless of NL search scores — set `top_score` to at least the grounded threshold if found.
+
+If the command fails, return an error result (see output format below).
 
 ### 3. Classify the result
 

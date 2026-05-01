@@ -33,6 +33,7 @@ Your prompt will provide:
 - **REQUIREMENT**: One requirement skeleton (id, title, priority, category, sources, one_line_summary)
 - **RELATED_TICKETS**: Context from the discovery pass (parent, siblings, linked tickets)
 - **RELEASE**: Release/sprint identifier
+- **REPO_PATH**: (optional) Path to the source code repository, when available
 
 ### 1. Fetch detailed source content
 
@@ -63,7 +64,23 @@ For other specs (Confluence, etc.), use WebFetch.
 **Existing documentation sources:**
 Read the file to understand what already exists and what needs updating.
 
-### 2. Web search expansion
+### 2. Source repo enrichment (when REPO_PATH is provided)
+
+**Skip this step if REPO_PATH is not provided in your prompt.**
+
+Use Read, Glob, and Grep to verify and enrich the requirement against the actual codebase:
+
+1. **Verify the feature exists in code.** Search for key terms from the requirement (class names, function names, CLI flags, CRD kinds) using Grep against the repo. If the feature has no trace in the codebase, add a note: `"notes": "No implementation evidence found in repo — requirement may describe planned/aspirational functionality"`
+
+2. **Identify existing documentation.** Check for `README.md`, `CHANGELOG.md`, `docs/` directory, and inline code comments related to the requirement's topic. Note what documentation already exists — the planner uses this for gap analysis
+
+3. **Extract project metadata.** Read the repo root for: primary language (from file extensions or build files), build system (`Makefile`, `go.mod`, `pyproject.toml`, `package.json`), and major directory structure. Add as a `repo_metadata` field in your output. Multiple agents may extract this in parallel — the merge step deduplicates
+
+4. **Note code references.** If you find specific files, functions, or types that implement the requirement, add them to `references` with `"type": "code"`. These feed directly into the code-evidence step's query seeding
+
+Keep this lightweight — read a few targeted files, don't scan the entire repo. The code-evidence step does thorough retrieval later.
+
+### 3. Web search expansion
 
 Build 2-4 targeted search queries from the requirement's topic:
 
@@ -75,7 +92,7 @@ Use WebSearch for each query. Evaluate results for relevance.
 
 **Sanitize:** Do not include raw search queries, result counts, or rankings in your output. Only include curated references (URL, title, relevance note).
 
-### 3. Analyze and produce detailed requirement
+### 4. Analyze and produce detailed requirement
 
 From the gathered sources, produce:
 
@@ -86,7 +103,7 @@ From the gathered sources, produce:
 - **references**: All sources consulted with URLs and notes
 - **web_findings**: Curated external references from web search
 
-### 4. Categorization guidance
+### 5. Categorization guidance
 
 Map the requirement to documentation module types:
 
