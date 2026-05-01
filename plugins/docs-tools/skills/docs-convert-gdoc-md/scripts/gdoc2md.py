@@ -1,12 +1,14 @@
 """
 Export Google Docs to Markdown, Slides to Markdown (via PPTX),
-or Sheets to CSV.
+or Sheets to CSV.  Optionally include Google Docs comments as
+Markdown footnotes.
 
 Requires gcloud CLI and python-pptx (for Slides export).
 
-python gdoc2md.py <google-doc-or-slides-or-sheets-url> [output]
+python3 ${CLAUDE_SKILL_DIR}/scripts/gdoc2md.py [--comments] [--include-resolved] <url> [output]
 """
 
+import argparse
 import json
 import re
 import subprocess
@@ -15,6 +17,7 @@ import time
 from io import BytesIO
 from pathlib import Path
 from urllib.error import HTTPError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 # tolerates trailing segments like /edit, /view, ?usp=sharing
@@ -38,26 +41,44 @@ EXTENSIONS = {"doc": ".md", "slides": ".md", "sheets": ".csv"}
 
 
 def parse_and_validate_args():
-    if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} <google-doc-or-slides-or-sheets-url> [output]")
-        sys.exit(1)
+    """Parse CLI arguments and return (file_id, output, mode, comments, include_resolved)."""
+    parser = argparse.ArgumentParser(
+        description="Export Google Docs/Slides/Sheets to Markdown or CSV.",
+    )
+    parser.add_argument("url", help="Google Docs, Slides, or Sheets URL")
+    parser.add_argument("output", nargs="?", default=None, help="Output file path")
+    parser.add_argument(
+        "--comments",
+        action="store_true",
+        help="Include Google Docs comments as Markdown footnotes (Docs only)",
+    )
+    parser.add_argument(
+        "--include-resolved",
+        action="store_true",
+        help="Include resolved comment threads (requires --comments)",
+    )
+    args = parser.parse_args()
 
-    url = sys.argv[1]
-    match = VALID_URL_RE.match(url)
+    if args.include_resolved and not args.comments:
+        parser.error("--include-resolved requires --comments")
+
+    match = VALID_URL_RE.match(args.url)
     if not match:
-        print(
-            "Error: URL must be a Google Docs, Slides, or Sheets URL (https://docs.google.com/...)",
-            file=sys.stderr,
+        parser.error(
+            "URL must be a Google Docs, Slides, or Sheets URL (https://docs.google.com/...)"
         )
-        sys.exit(1)
 
     mode = MODE_MAP[match.group("mode")]
     file_id = match.group("id")
+    output = args.output or f"{file_id}{EXTENSIONS[mode]}"
 
-    explicit_output = sys.argv[2] if len(sys.argv) > 2 else None
-    output = explicit_output or f"{file_id}{EXTENSIONS[mode]}"
+    if args.comments and mode != "doc":
+        print(
+            "Warning: --comments is only supported for Google Docs, ignoring.",
+            file=sys.stderr,
+        )
 
-    return file_id, output, mode
+    return file_id, output, mode, args.comments, args.include_resolved
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +87,7 @@ def parse_and_validate_args():
 
 
 def check_dependencies():
+    """Verify that the gcloud CLI is installed, exiting with guidance if not."""
     result = subprocess.run(["gcloud", "version"], capture_output=True)  # noqa: S607
     if result.returncode != 0:
         print("Error: gcloud CLI is not installed.", file=sys.stderr)
@@ -127,6 +149,7 @@ def get_token() -> str:
 
 
 def download(url: str, token: str, retries: int = 3) -> bytes:
+    """GET *url* with Bearer auth and exponential back-off on 429 responses."""
     req = Request(url, headers={"Authorization": f"Bearer {token}"})  # noqa: S310
     for attempt in range(retries + 1):
         try:
@@ -244,11 +267,209 @@ def _sanitize_filename(name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Google Docs comments → Markdown footnotes
+# ---------------------------------------------------------------------------
+
+
+def fetch_comments(
+    file_id: str,
+    token: str,
+    include_resolved: bool = False,
+) -> list[dict]:
+    """Fetch comment threads from the Drive v3 API.
+
+    Returns a list of dicts with keys: author, content, quoted_text,
+    resolved, and replies (list of {author, content}).
+    """
+    fields = (
+        "nextPageToken,"
+        "comments(id,content,resolved,author/displayName,"
+        "quotedFileContent/value,replies(content,author/displayName))"
+    )
+    comments = []
+    page_token = None
+    while True:
+        api_url = (
+            f"https://www.googleapis.com/drive/v3/files/{file_id}/comments"
+            f"?fields={quote(fields, safe='()/,')}&includeDeleted=false"
+            f"&pageSize=100"
+        )
+        if page_token:
+            api_url += f"&pageToken={quote(page_token)}"
+
+        data = json.loads(download(api_url, token))
+        for c in data.get("comments", []):
+            resolved = c.get("resolved", False)
+            if resolved and not include_resolved:
+                continue
+            quoted = (c.get("quotedFileContent") or {}).get("value", "")
+            replies = [
+                {
+                    "author": r.get("author", {}).get("displayName", "Unknown"),
+                    "content": r.get("content", ""),
+                }
+                for r in c.get("replies", [])
+            ]
+            comments.append(
+                {
+                    "author": c.get("author", {}).get("displayName", "Unknown"),
+                    "content": c.get("content", ""),
+                    "quoted_text": quoted,
+                    "resolved": resolved,
+                    "replies": replies,
+                }
+            )
+
+        page_token = data.get("nextPageToken")
+        if not page_token:
+            break
+
+    return comments
+
+
+def _normalize(text: str) -> str:
+    """Collapse whitespace for fuzzy anchor matching."""
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def insert_comment_footnotes(
+    markdown: str,
+    comments: list[dict],
+) -> str:
+    """Insert footnote references into the Markdown body and append
+    footnote definitions at the end of the file.
+
+    Matching strategy: for each comment with a quoted anchor, find the
+    first occurrence of that anchor text in the Markdown (normalized
+    whitespace) and insert a footnote reference after it.  Comments
+    without an anchor are appended as unanchored footnotes at the end.
+    """
+    if not comments:
+        return markdown
+
+    footnotes: list[str] = []
+    fn_index = 1
+
+    # Pass 1: resolve all anchor positions against the *unmodified* markdown
+    # so earlier matches cannot invalidate later ones.
+    norm_md = _normalize(markdown)
+    used_offsets: set[int] = set()
+    insertions: list[tuple[int, str, str]] = []
+
+    for comment in comments:
+        anchor = comment["quoted_text"]
+        label = f"[^{fn_index}]"
+
+        body_parts = []
+        status = " (resolved)" if comment["resolved"] else ""
+        body_parts.append(f"**{comment['author']}{status}:** {_normalize(comment['content'])}")
+        for reply in comment["replies"]:
+            body_parts.append(f"    **{reply['author']}:** {_normalize(reply['content'])}")
+        footnote_def = f"{label}: " + " \\\n".join(body_parts)
+
+        norm_anchor = _normalize(anchor) if anchor else ""
+        if norm_anchor:
+            search_from = 0
+            pos = -1
+            while True:
+                candidate = norm_md.find(norm_anchor, search_from)
+                if candidate == -1:
+                    break
+                orig_end = _find_original_end(markdown, norm_md, candidate, len(norm_anchor))
+                if orig_end not in used_offsets:
+                    pos = candidate
+                    break
+                search_from = candidate + 1
+            if pos != -1:
+                end_of_anchor = _find_original_end(markdown, norm_md, pos, len(norm_anchor))
+                end_of_anchor = _snap_to_word_boundary(markdown, end_of_anchor)
+                used_offsets.add(end_of_anchor)
+                insertions.append((end_of_anchor, label, footnote_def))
+                fn_index += 1
+                continue
+
+        footnotes.append(footnote_def)
+        fn_index += 1
+
+    # Pass 2: apply insertions from end to start so offsets stay valid.
+    insertions.sort(key=lambda t: t[0], reverse=True)
+    for offset, label, footnote_def in insertions:
+        markdown = markdown[:offset] + label + markdown[offset:]
+        footnotes.append(footnote_def)
+
+    # Re-sort footnotes by their numeric index for consistent output.
+    footnotes.sort(key=lambda f: int(f.split("]")[0].lstrip("[^")))
+
+    if footnotes:
+        markdown = markdown.rstrip() + "\n\n---\n\n"
+        markdown += "\n".join(footnotes) + "\n"
+
+    return markdown
+
+
+def _find_original_end(
+    original: str,
+    normalized: str,
+    norm_pos: int,
+    norm_len: int,
+) -> int:
+    """Map a position in the normalized string back to the original.
+
+    Walk through the original string, tracking how many non-collapsed
+    characters have been consumed, to find where the anchor ends in
+    the original text.
+    """
+    consumed = 0
+    i = 0
+    in_space = False
+
+    while i < len(original) and consumed < norm_pos:
+        if original[i].isspace():
+            if not in_space:
+                consumed += 1
+                in_space = True
+        else:
+            consumed += 1
+            in_space = False
+        i += 1
+
+    chars_left = norm_len
+    while i < len(original) and chars_left > 0:
+        if original[i].isspace():
+            if not in_space:
+                chars_left -= 1
+                in_space = True
+        else:
+            chars_left -= 1
+            in_space = False
+        i += 1
+
+    return i
+
+
+def _snap_to_word_boundary(text: str, pos: int) -> int:
+    """Advance *pos* past any remaining word characters so the footnote
+    reference never splits a word.  Stops at whitespace, punctuation
+    that commonly follows words, or end-of-string.
+    """
+    while pos < len(text) and text[pos].isalnum():
+        pos += 1
+    return pos
+
+
+# ---------------------------------------------------------------------------
 # Fetch & write
 # ---------------------------------------------------------------------------
 
 
-def fetch(file_id: str, output: str, mode: str):
+def fetch(
+    file_id: str,
+    output: str,
+    mode: str,
+    include_comments: bool = False,
+    include_resolved: bool = False,
+):
+    """Download and convert a Google Docs/Slides/Sheets file, writing the result to *output*."""
     token = get_token()
     base = "https://docs.google.com"
 
@@ -272,6 +493,23 @@ def fetch(file_id: str, output: str, mode: str):
 
     if mode == "slides":
         output_path.write_text(pptx_to_markdown(data), encoding="utf-8")
+    elif mode == "doc":
+        md_text = data.decode("utf-8")
+        if include_comments:
+            comments = fetch_comments(
+                file_id,
+                token,
+                include_resolved,
+            )
+            if comments:
+                md_text = insert_comment_footnotes(md_text, comments)
+                print(
+                    f"Inserted {len(comments)} comment(s) as footnotes.",
+                    file=sys.stderr,
+                )
+            else:
+                print("No comments found.", file=sys.stderr)
+        output_path.write_text(md_text, encoding="utf-8")
     else:
         output_path.write_bytes(data)
 
@@ -328,10 +566,10 @@ def _fetch_sheets(file_id: str, output: str, token: str, base: str):
 
 
 def main():
-    # Validate args first — fast failure before any subprocess calls
-    file_id, output, mode = parse_and_validate_args()
+    """CLI entry point: parse arguments, check dependencies, and run the export."""
+    file_id, output, mode, comments, include_resolved = parse_and_validate_args()
     check_dependencies()
-    fetch(file_id, output, mode)
+    fetch(file_id, output, mode, comments, include_resolved)
 
 
 if __name__ == "__main__":

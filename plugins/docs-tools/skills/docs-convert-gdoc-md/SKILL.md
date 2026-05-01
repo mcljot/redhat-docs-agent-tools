@@ -33,7 +33,7 @@ The script is at `${CLAUDE_SKILL_DIR}/scripts/gdoc2md.py`.
 Always quote the URL and output file arguments:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/gdoc2md.py "<url>" ["<output_file>"]
+python3 ${CLAUDE_SKILL_DIR}/scripts/gdoc2md.py [--comments] [--include-resolved] "<url>" ["<output_file>"]
 ```
 
 - The script auto-detects the URL type:
@@ -41,6 +41,20 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/gdoc2md.py "<url>" ["<output_file>"]
   - `/presentation/d/` → Google Slides → Markdown (via PPTX)
   - `/spreadsheets/d/` → Google Sheets → CSV
 - If no output file is specified, it defaults to `<id>.md` or `<id>.csv`.
+
+### Include Google Docs comments
+
+Use `--comments` to pull comment threads from the document and insert them as Markdown footnotes:
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/gdoc2md.py --comments "<google-doc-url>"
+```
+
+- Each comment with a highlighted text anchor becomes a footnote reference placed after the quoted text in the Markdown body.
+- Comments without an anchor appear as footnotes at the end.
+- Reply threads are included under the parent comment.
+- By default, resolved comment threads are excluded. Add `--include-resolved` to include them.
+- The `--comments` flag only applies to Google Docs. The script ignores it for Slides and Sheets.
 
 ### Error handling
 
