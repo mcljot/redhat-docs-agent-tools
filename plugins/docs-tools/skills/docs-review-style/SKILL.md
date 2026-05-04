@@ -590,7 +590,7 @@ If any changes were applied, remind the user:
 - Always use `git_pr_reader.py extract` for deterministic line numbers — never estimate or guess
 - Use Bash with heredoc/cat for writing /tmp files (not the Write tool)
 - Cite the specific style guide rule or review skill for each issue
-- Comments are posted under YOUR username using tokens from `~/.env`
+- Comments are posted under YOUR username using tokens from `.env` files
 - For .adoc files, modular docs compliance uses `docs-review-modular-docs`
 - Release notes skills only apply to .adoc files that appear to be release notes
 - Vale linting requires Vale to be installed and configured

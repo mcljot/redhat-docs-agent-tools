@@ -25,7 +25,7 @@ If JIRA access fails, **STOP IMMEDIATELY**, report the exact error in your JSON 
 
 Git access (for PR/MR details) is only required when PR/MR URLs are present — either provided manually or auto-discovered from the JIRA graph. If no PR/MR URLs exist, skip PR listing entirely. If a specific PR/MR URL fails to fetch, log it in the `errors` array but continue discovery from other sources.
 
-**Do not** prepend `source ~/.env` to bash commands — all Python scripts load `~/.env` automatically.
+**Do not** prepend `source ~/.env` to bash commands — all Python scripts load `.env` files automatically.
 
 **Note:** The jira-reader script requires `jira` and `ratelimit` Python packages. If these are not installed, you will see `ModuleNotFoundError`. Run: `python3 -m pip install jira ratelimit`
 

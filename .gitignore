@@ -1,4 +1,5 @@
 .DS_Store
+.env
 .cache/
 # Claude Code runtime state (ignored by default)
 .claude/*

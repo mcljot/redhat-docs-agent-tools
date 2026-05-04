@@ -10,10 +10,14 @@
 
 - Install [software dependencies](https://redhat-documentation.github.io/redhat-docs-agent-tools/install/#software-dependencies)
 
-- Create an `~/.env` file with your tokens:
+- Create an `.env` file with your tokens. You can use either location:
+
+    - **`~/.env`** — global defaults, shared across all projects
+    - **`.env`** in the project root — project-specific overrides (takes precedence over `~/.env`)
 
     ```bash
     JIRA_API_TOKEN=your_jira_api_token
+    # JIRA_AUTH_TOKEN is also accepted as a backward-compatible alias
     # Required for Atlassian Cloud authentication
     JIRA_EMAIL=you@redhat.com
     # Optional: defaults to https://redhat.atlassian.net if not set
@@ -23,8 +27,8 @@
     # Required scope: "api"
     GITLAB_TOKEN=your_gitlab_pat
     ```
-    
-- Add the following to the end of your `~/.bashrc` (Linux) or `~/.zshrc` (macOS):
+
+    All scripts load both files automatically (global first, then local overrides). You can also add the following to `~/.bashrc` (Linux) or `~/.zshrc` (macOS) to export them into your shell:
     
     ```bash
     if [ -f ~/.env ]; then

@@ -15,8 +15,32 @@ PLAN_FILE="${3:?Missing PLAN_FILE argument}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Source ~/.env for credential mapping
-source ~/.env 2>/dev/null || true
+# Load local overrides first, then global defaults (resolve .env from project root)
+# Safe key/value parser: only reads KEY=VALUE lines, skips shell commands
+_safe_load_env() {
+    local file="$1"
+    [[ -f "$file" ]] || return 0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+        [[ "$line" =~ ^[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*=(.*) ]] || continue
+        local key="${BASH_REMATCH[1]}"
+        local value="${BASH_REMATCH[2]}"
+        value="${value#"${value%%[![:space:]]*}"}"
+        value="${value%"${value##*[![:space:]]}"}"
+        if [[ "$value" =~ ^\"(.*)\"$ ]] || [[ "$value" =~ ^\'(.*)\'$ ]]; then
+            value="${BASH_REMATCH[1]}"
+        fi
+        if [[ -z "${!key+x}" ]]; then
+            export "$key=$value"
+        fi
+    done < "$file"
+}
+_project_root="$(cd "$(dirname "$PLAN_FILE")" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -n "$_project_root" ]]; then
+    _safe_load_env "$_project_root/.env"
+fi
+_safe_load_env ~/.env
 # Fallback: accept JIRA_AUTH_TOKEN for backward compatibility
 : "${JIRA_API_TOKEN:=${JIRA_AUTH_TOKEN:-}}"
 JIRA_URL="${JIRA_URL:-https://redhat.atlassian.net}"

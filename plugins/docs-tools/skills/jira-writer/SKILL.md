@@ -24,7 +24,7 @@ The skill uses a Python script that connects to JIRA using an authentication tok
 
 ### Environment Variables Required
 
-Set in `~/.env` (see docs-tools README for setup):
+Set in `~/.env` (global) or `.env` in the project root (local override). See docs-tools README for setup:
 
 ```bash
 JIRA_API_TOKEN=your-jira-api-token
@@ -32,7 +32,7 @@ JIRA_EMAIL=you@redhat.com           # required for Atlassian Cloud
 JIRA_URL=https://redhat.atlassian.net  # optional, defaults to redhat.atlassian.net
 ```
 
-The script loads `~/.env` automatically — do **not** prepend `source ~/.env` to bash commands.
+The script loads `.env` files automatically — do **not** prepend `source ~/.env` to bash commands.
 
 ### Examples
 

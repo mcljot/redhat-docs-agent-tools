@@ -28,7 +28,7 @@ Unlike other step skills, this skill does **not** dispatch an agent. It runs `sc
 
 ## Environment
 
-Requires `JIRA_API_TOKEN` and `JIRA_EMAIL` in the environment (typically sourced from `~/.env`).
+Requires `JIRA_API_TOKEN` (or the backward-compatible alias `JIRA_AUTH_TOKEN`) and `JIRA_EMAIL` in the environment. `create-jira-ticket.sh` sources `~/.env` then `<project-root>/.env`, where the project root is resolved from the `PLAN_FILE` location.
 
 ## Execution
 

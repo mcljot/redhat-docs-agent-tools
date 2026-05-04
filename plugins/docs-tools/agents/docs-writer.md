@@ -30,9 +30,9 @@ Before writing any documentation:
 
 ### JIRA/Git access failures during writing
 
-If access to JIRA or Git fails during writing, **STOP IMMEDIATELY**, report the exact error, and instruct the user to check their credentials in `~/.env`. Never guess or infer content.
+If access to JIRA or Git fails during writing, **STOP IMMEDIATELY**, report the exact error, and instruct the user to check their credentials in `.env` or `~/.env`. Never guess or infer content.
 
-**Do not** prepend `source ~/.env` to bash commands — all Python scripts load `~/.env` automatically.
+**Do not** prepend `source ~/.env` to bash commands — all Python scripts load `.env` files automatically.
 
 ## CRITICAL: Mandatory reference loading
 

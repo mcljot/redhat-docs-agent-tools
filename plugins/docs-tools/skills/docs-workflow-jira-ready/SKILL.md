@@ -24,7 +24,7 @@ Gate skill for automated docs-orchestrator runs. Checks JIRA for new tickets mat
 
 ## Environment
 
-Requires `JIRA_API_TOKEN` and `JIRA_EMAIL` in the environment (typically sourced from `~/.env`). Both are validated before any API calls.
+Requires `JIRA_API_TOKEN` (or the backward-compatible alias `JIRA_AUTH_TOKEN`) and `JIRA_EMAIL` in the environment. `jira-ready-check.sh` loads `~/.env` then `<project-root>/.env` using a safe key/value parser (no shell execution). Both variables are validated before any API calls.
 
 ## Execution
 

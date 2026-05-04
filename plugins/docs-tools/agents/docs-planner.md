@@ -35,9 +35,9 @@ If either file cannot be read, **STOP** and report the error. Do not proceed fro
 
 **You MUST successfully read the requirements input file before proceeding.** If the input file is missing or empty, STOP and report the error.
 
-If access to JIRA or Git is needed for supplemental research and fails, **STOP IMMEDIATELY**, report the exact error, and instruct the user to check their credentials in `~/.env`. Never guess or infer content.
+If access to JIRA or Git is needed for supplemental research and fails, **STOP IMMEDIATELY**, report the exact error, and instruct the user to check their credentials in `.env` or `~/.env`. Never guess or infer content.
 
-**Do not** prepend `source ~/.env` to bash commands — all Python scripts load `~/.env` automatically.
+**Do not** prepend `source ~/.env` to bash commands — all Python scripts load `.env` files automatically.
 
 ## When invoked
 

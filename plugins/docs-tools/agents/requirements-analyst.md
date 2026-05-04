@@ -23,7 +23,7 @@ export CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(git rev-parse --show-toplevel
 
 Before fetching, inspect the requirement's `sources` list. Only attempt access to systems that are actually listed (JIRA for `type: "jira"`, Git for `type: "pr"`, etc.). If a listed source fails access, **STOP IMMEDIATELY** and return an error result (see output format). Do not hard-fail for systems that are not in the sources list.
 
-**Do not** prepend `source ~/.env` to bash commands — all Python scripts load `~/.env` automatically.
+**Do not** prepend `source ~/.env` to bash commands — all Python scripts load `.env` files automatically.
 
 **Note:** The jira-reader script requires `jira` and `ratelimit` Python packages. If not installed: `python3 -m pip install jira ratelimit`
 
@@ -196,7 +196,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py file
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py diff <pr-url>
 ```
 
-Requires `GITHUB_TOKEN` (GitHub) or `GITLAB_TOKEN` (GitLab) in `~/.env`.
+Requires `GITHUB_TOKEN` (GitHub) or `GITLAB_TOKEN` (GitLab) in `.env` or `~/.env`.
 
 ### Reading Red Hat documentation
 

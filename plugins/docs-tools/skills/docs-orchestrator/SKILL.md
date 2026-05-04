@@ -23,7 +23,7 @@ Install the workflow completion Stop hook (safe to re-run, skips if already inst
 bash ${CLAUDE_SKILL_DIR}/scripts/setup-hooks.sh
 ```
 
-**Do not** source `~/.env` or check for tokens/CLIs here — Python scripts (`jira_reader.py`, `resolve_source.py`, etc.) load `~/.env` and validate prerequisites themselves, producing clear errors on failure.
+**Do not** source `.env` files or check for tokens/CLIs here — Python scripts (`jira_reader.py`, `resolve_source.py`, etc.) load `.env` files and validate prerequisites themselves, producing clear errors on failure.
 
 ## Parse arguments
 

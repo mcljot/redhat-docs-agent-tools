@@ -774,7 +774,7 @@ Entities found in API surface but not referenced in reviewed documentation:
 - Always use `git_pr_reader.py extract` for deterministic line numbers — never estimate or guess
 - Use Bash with heredoc/cat for writing /tmp files (not the Write tool)
 - Include source code evidence in each issue's `reason` field
-- Comments are posted under YOUR username using tokens from `~/.env`
+- Comments are posted under YOUR username using tokens from `.env` files
 - `scripts/extract_refs.py` extracts technical references from doc files (commands, APIs, configs, file paths)
 - Code-finder wrappers live in `${CLAUDE_PLUGIN_ROOT}/skills/code-evidence/scripts/`:
   - `grounded_review.py` — validates doc claims against code (verdicts: supported/unsupported/partially_supported/no_evidence_found)

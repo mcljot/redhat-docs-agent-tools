@@ -125,15 +125,25 @@ def adf_to_text(node):
 
 
 def load_env_file():
-    """Load environment variables from ~/.env file."""
-    env_file = os.path.expanduser("~/.env")
-    if os.path.exists(env_file):
-        with open(env_file) as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    key, value = line.split("=", 1)
-                    os.environ.setdefault(key.strip(), value.strip())
+    """Load environment variables from .env files.
+
+    Loads ./.env first (local settings), then ~/.env (global defaults).
+    Pre-existing environment variables are never overwritten.
+    Surrounding quotes on values are stripped.
+    """
+    for env_path in [".env", os.path.expanduser("~/.env")]:
+        if os.path.exists(env_path):
+            with open(env_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        key, value = line.split("=", 1)
+                        value = value.strip()
+                        if (value.startswith('"') and value.endswith('"')) or (
+                            value.startswith("'") and value.endswith("'")
+                        ):
+                            value = value[1:-1]
+                        os.environ.setdefault(key.strip(), value)
 
 
 class JiraReader:
@@ -145,7 +155,9 @@ class JiraReader:
 
         token = os.environ.get("JIRA_API_TOKEN") or os.environ.get("JIRA_AUTH_TOKEN")
         if not token:
-            raise ValueError("JIRA_API_TOKEN environment variable not set. Add it to ~/.env")
+            raise ValueError(
+                "JIRA_API_TOKEN (or JIRA_AUTH_TOKEN) not set. Add it to .env or ~/.env"
+            )
 
         server = server or os.environ.get("JIRA_URL", "https://redhat.atlassian.net")
 
@@ -155,7 +167,7 @@ class JiraReader:
             if not email:
                 raise ValueError(
                     "JIRA_EMAIL environment variable not set. "
-                    "Required for Atlassian Cloud. Add it to ~/.env"
+                    "Required for Atlassian Cloud. Add it to .env or ~/.env"
                 )
             self.jira = JIRA(server=server, basic_auth=(email, token), options=options)
         else:

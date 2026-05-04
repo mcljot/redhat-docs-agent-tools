@@ -58,19 +58,45 @@ if [[ -z "$JQL" ]]; then
   exit 1
 fi
 
-# --- Validate environment ---
-if [[ -z "${JIRA_API_TOKEN:-}" ]]; then
-  # Try sourcing ~/.env
-  set -a; source ~/.env 2>/dev/null || true; set +a
+# --- Load environment ---
+# Safe key/value parser: only reads KEY=VALUE lines, skips shell commands
+_safe_load_env() {
+  local file="$1"
+  [[ -f "$file" ]] || return 0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+    [[ "$line" =~ ^[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*=(.*) ]] || continue
+    local key="${BASH_REMATCH[1]}"
+    local value="${BASH_REMATCH[2]}"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    if [[ "$value" =~ ^\"(.*)\"$ ]] || [[ "$value" =~ ^\'(.*)\'$ ]]; then
+      value="${BASH_REMATCH[1]}"
+    fi
+    if [[ -z "${!key+x}" ]]; then
+      export "$key=$value"
+    fi
+  done < "$file"
+}
+_project_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -z "$_project_root" ]]; then
+  _project_root="$(cd "$SCRIPT_DIR" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || true)"
 fi
+if [[ -n "$_project_root" ]]; then
+  _safe_load_env "$_project_root/.env"
+fi
+_safe_load_env ~/.env
+# Fallback: accept JIRA_AUTH_TOKEN for backward compatibility
+: "${JIRA_API_TOKEN:=${JIRA_AUTH_TOKEN:-}}"
 
 if [[ -z "${JIRA_API_TOKEN:-}" ]]; then
-  echo '{"error": "JIRA_API_TOKEN is not set. Add it to ~/.env."}'
+  echo '{"error": "JIRA_API_TOKEN is not set. Add it to .env or ~/.env."}'
   exit 1
 fi
 
 if [[ -z "${JIRA_EMAIL:-}" ]]; then
-  echo '{"error": "JIRA_EMAIL is not set. Add it to ~/.env."}'
+  echo '{"error": "JIRA_EMAIL is not set. Add it to .env or ~/.env."}'
   exit 1
 fi
 

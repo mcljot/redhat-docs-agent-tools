@@ -40,7 +40,7 @@ Usage as CLI:
     python git_pr_reader.py detect
 
 Authentication:
-    Requires tokens in ~/.env:
+    Requires tokens in .env or ~/.env:
     - GitHub: GITHUB_TOKEN environment variable
     - GitLab: GITLAB_TOKEN environment variable
 """
@@ -83,15 +83,25 @@ except ImportError:
 
 
 def load_env_file() -> None:
-    """Load environment variables from ~/.env file."""
-    env_file = os.path.expanduser("~/.env")
-    if os.path.exists(env_file):
-        with open(env_file) as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    key, value = line.split("=", 1)
-                    os.environ.setdefault(key.strip(), value.strip())
+    """Load environment variables from .env files.
+
+    Loads ./.env first (local settings), then ~/.env (global defaults).
+    Pre-existing environment variables are never overwritten.
+    Surrounding quotes on values are stripped.
+    """
+    for env_path in [".env", os.path.expanduser("~/.env")]:
+        if os.path.exists(env_path):
+            with open(env_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        key, value = line.split("=", 1)
+                        value = value.strip()
+                        if (value.startswith('"') and value.endswith('"')) or (
+                            value.startswith("'") and value.endswith("'")
+                        ):
+                            value = value[1:-1]
+                        os.environ.setdefault(key.strip(), value)
 
 
 def color_print(prefix: str, message: str) -> None:
@@ -1612,7 +1622,7 @@ def cmd_detect(args) -> int:
         # Try GitLab via urllib.request
         gitlab_token = os.environ.get("GITLAB_TOKEN")
         if not gitlab_token:
-            print("Error: GITLAB_TOKEN not set in ~/.env")
+            print("Error: GITLAB_TOKEN not set in .env or ~/.env")
             return 1
 
         for remote_name, remote_url in remotes.items():
