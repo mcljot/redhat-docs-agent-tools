@@ -94,7 +94,7 @@ Plugin agents have a 2-step access failure procedure:
 
 All pipeline output (requirements, plans, drafts, reviews, batch summary) writes to `artifacts/` at the repository root. This matches the ACP platform convention used by all built-in workflows and is surfaced in the ACP UI as session output.
 
-On ACP, `setup.sh` creates a symlink from `${REPO_ROOT}/artifacts/` to `/workspace/artifacts/` so all scripts write to the ACP platform directory that is surfaced in the UI. This is transparent — no scripts need modification.
+On ACP, `setup.sh` creates two symlinks: `artifacts/` → `/workspace/artifacts/` (the ACP platform directory surfaced in the UI), and `.agent_workspace/` → `artifacts/` (so the orchestrator's output transparently lands in the ACP artifacts directory). No scripts need modification.
 
 If troubleshooting missing output, verify:
 1. The symlink exists: `ls -la artifacts/` (should show `artifacts -> /workspace/artifacts`)

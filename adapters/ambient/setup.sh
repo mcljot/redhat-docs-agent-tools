@@ -151,6 +151,11 @@ else
   echo "Artifacts: ${REPO_ROOT}/artifacts/"
 fi
 
+# Redirect .agent_workspace → artifacts so the orchestrator's output
+# (which hardcodes .agent_workspace/<ticket>/) lands in the ACP artifacts directory.
+ln -sfn "${REPO_ROOT}/artifacts" "${REPO_ROOT}/.agent_workspace"
+echo "Workspace: .agent_workspace -> artifacts/"
+
 # Count resolved skills/agents/references for verification
 skill_count=$(find "${REPO_ROOT}/.claude/skills" -maxdepth 1 -mindepth 1 \( -type d -o -type l \) | wc -l)
 agent_count=$(find "${REPO_ROOT}/.claude/agents" -maxdepth 1 -name '*.md' \( -type f -o -type l \) | wc -l)
