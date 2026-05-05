@@ -23,6 +23,7 @@ queries.json schema:
 import argparse
 import json
 import sys
+from pathlib import Path
 
 
 def _parse_filter_paths(raw):
@@ -30,6 +31,47 @@ def _parse_filter_paths(raw):
     if not raw:
         return None
     return [p.strip() for p in raw.split(",") if p.strip()]
+
+
+def _resolve_filter_paths(repo_path, filter_paths):
+    """Resolve filter paths relative to repo root to match index entries."""
+    if not filter_paths:
+        return None
+    repo_root = Path(repo_path).resolve()
+    return [str((repo_root / p).resolve()) for p in filter_paths]
+
+
+def _format_result(query, filter_paths, repo_path, index_info, results):
+    """Format searcher results into the evidence retrieval output dict."""
+    return {
+        "query": query,
+        "repo_path": repo_path,
+        "result_count": len(results),
+        "index_info": index_info,
+        "results": [
+            {
+                "rank": i + 1,
+                "file_path": r.file_path,
+                "file_name": r.file_name,
+                "start_line": r.start_line,
+                "end_line": r.end_line,
+                "language": r.language,
+                "chunk_type": r.chunk_type,
+                "chunk_name": r.chunk_name,
+                "parent_context": r.parent_context,
+                "signature": r.signature,
+                "docstring": r.docstring,
+                "return_type": r.return_type,
+                "content": r.content,
+                "scores": {
+                    "vector": round(r.vector_score, 4),
+                    "bm25": round(r.bm25_score, 4),
+                    "combined": round(r.combined_score, 4),
+                },
+            }
+            for i, r in enumerate(results)
+        ],
+    }
 
 
 def _run_single(retrieve_evidence, repo, query, limit, filter_paths, reindex):
@@ -88,6 +130,7 @@ def main():
                 sys.exit(1)
 
     try:
+        from claude_context.skills._index_manager import ensure_index
         from claude_context.skills.evidence_retrieval import retrieve_evidence
     except ImportError:
         print(
@@ -98,7 +141,7 @@ def main():
         )
         sys.exit(1)
 
-    # Single query mode
+    # Single query mode — use retrieve_evidence directly (one-shot, no reuse needed)
     if args.query:
         filter_paths = _parse_filter_paths(args.filter_paths)
         result = _run_single(
@@ -113,24 +156,19 @@ def main():
         print()
         return
 
-    # Batch mode
+    # Batch mode — call ensure_index once, reuse searcher for all queries
+    searcher, index_info = ensure_index(args.repo, reindex=args.reindex)
+    repo_path = str(Path(args.repo).resolve())
+
     results = []
-    for i, entry in enumerate(queries):
+    for entry in queries:
         query = entry["query"]
         limit = entry.get("limit", args.limit)
         filter_paths = entry.get("filter_paths")
+        resolved = _resolve_filter_paths(repo_path, filter_paths)
 
-        # Only reindex on the first query — subsequent queries reuse the cache
-        reindex = args.reindex and i == 0
-
-        result = _run_single(
-            retrieve_evidence,
-            args.repo,
-            query,
-            limit,
-            filter_paths,
-            reindex,
-        )
+        raw = searcher.search(query=query, limit=limit, filter_paths=resolved)
+        result = _format_result(query, filter_paths, repo_path, index_info, raw)
         results.append({"query": query, "filter_paths": filter_paths, "result": result})
 
     json.dump(results, sys.stdout, indent=2, default=str)
