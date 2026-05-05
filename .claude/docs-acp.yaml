@@ -1,4 +1,4 @@
-# ACP headless variant — 7 steps (no prepare-branch or create-jira).
+# ACP headless variant — 6 steps (no create-jira).
 # Repo setup (cloning) is handled externally by batch-controller's repo-setup.sh.
 # For the full interactive workflow, see: plugins/docs-tools/skills/docs-orchestrator/defaults/docs-workflow.yaml
 # Invoked via: --workflow acp
@@ -26,12 +26,7 @@ workflow:
       description: Style guide compliance review
       inputs: [writing, technical-review]
 
-    - name: commit
-      skill: docs-tools:docs-workflow-commit
-      description: Commit and push documentation changes
+    - name: create-merge-request
+      skill: docs-tools:docs-workflow-create-merge-request
+      description: Commit, push, and create merge request or pull request
       inputs: [writing, style-review, technical-review]
-
-    - name: create-mr
-      skill: docs-tools:docs-workflow-create-mr
-      description: Create merge request or pull request
-      inputs: [commit]

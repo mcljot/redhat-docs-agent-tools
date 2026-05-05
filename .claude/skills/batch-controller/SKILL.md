@@ -113,7 +113,7 @@ Then invoke the orchestrator with the resolved flags:
 Skill: docs-orchestrator, args: "<TICKET-KEY> --workflow acp ${REPO_FLAGS}"
 ```
 
-The orchestrator runs the full pipeline including commit and MR/PR creation (handled by the `commit` and `create-mr` workflow steps).
+The orchestrator runs the full pipeline including commit and MR/PR creation (handled by the `create-merge-request` workflow step).
 
 ### 2c. Record the result
 
@@ -122,7 +122,7 @@ AGENT_ROOT="$(cd "${CLAUDE_SKILL_DIR}" && git rev-parse --show-toplevel)"
 bash "${AGENT_ROOT}/adapters/ambient/scripts/batch-progress.sh" step 2c
 ```
 
-Read `artifacts/<ticket>/create-mr/mr-info.json` for the MR/PR URL (if created by the orchestrator's `create-mr` step). Track ticket key, status, MR/PR URL, and any error messages.
+Read `artifacts/<ticket>/create-merge-request/step-result.json` for the MR/PR URL (in the `url` field) and commit info (in the `commit_sha` field). Track ticket key, status, MR/PR URL, and any error messages.
 
 ### 2d. Update JIRA labels
 

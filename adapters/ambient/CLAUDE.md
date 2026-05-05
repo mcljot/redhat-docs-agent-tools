@@ -12,7 +12,7 @@ Scheduled, autonomous documentation pipeline for the Ambient Code Platform.
 ## Hard limits
 
 - **No content fabrication.** If JIRA or source access fails, mark the ticket as failed and move on.
-- **Git operations are scoped.** Git operations are restricted to the target docs repo specified in `repo-mapping.yaml`. The pipeline clones, branches, commits, and pushes only to that repo. Never perform git operations on the agent-tools repo itself (this repo). Never push to `main` or `master` — all pushes go to feature branches only. Run `bash adapters/ambient/scripts/commit-guard.sh --repo-path <path>` before `commit.sh` to enforce this.
+- **Git operations are scoped.** Git operations are restricted to the target docs repo specified in `repo-mapping.yaml`. The pipeline clones, branches, commits, and pushes only to that repo. Never perform git operations on the agent-tools repo itself (this repo). Never push to `main` or `master` — all pushes go to feature branches only. Run `bash adapters/ambient/scripts/commit-guard.sh --repo-path <path>` before the create-merge-request step to enforce this.
 - **No skipping technical review.** Always run tech review and check confidence scores.
 
 ## ACP integrations
@@ -46,7 +46,7 @@ repos:
     format: mkdocs
 ```
 
-`repo-setup.sh` runs before the orchestrator to resolve the repo, clone it, and create a feature branch. Publishing (commit + push) and MR/PR creation are handled by the orchestrator's `commit` and `create-mr` workflow steps — the same steps used by the local interactive workflow.
+`repo-setup.sh` runs before the orchestrator to resolve the repo, clone it, and create a feature branch. Publishing (commit + push) and MR/PR creation are handled by the orchestrator's `create-merge-request` workflow step — the same step used by the local interactive workflow.
 
 If no mapping exists for a ticket's project, the pipeline falls back to `--draft` mode automatically.
 
@@ -67,8 +67,7 @@ artifacts/
     │   └── docs/*.md         (MkDocs)
     ├── technical-review/review.md
     ├── style-review/review.md
-    ├── commit/commit-info.json
-    ├── create-mr/mr-info.json
+    ├── create-merge-request/step-result.json
     └── workflow/docs-workflow_<ticket>.json
 ```
 
