@@ -164,7 +164,7 @@ sync-main-to-acp:
   script:
     - git fetch origin acp
     - git checkout acp
-    - git merge origin/main --no-edit -m "chore: merge main into acp"
+    - 'git merge origin/main --no-edit -m "chore: merge main into acp"'
     - git push "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" acp
 
 # ---------------------------------------------------------------------------
