@@ -8,11 +8,11 @@ Assess, fix, and score Red Hat modular documentation against all 54 CQA 2.1 para
 
 ## Prerequisites
 
-- Install the [Red Hat Docs Agent Tools marketplace](https://redhat-documentation.github.io/redhat-docs-agent-tools/install/)
+- Install the [Red Hat Docs Agent Tools marketplace](https://aireilly.gitlab.cee.redhat.com/redhat-docs-agent-tools/install/)
 
-- Install [software dependencies](https://redhat-documentation.github.io/redhat-docs-agent-tools/install/#software-dependencies)
+- Install [software dependencies](https://aireilly.gitlab.cee.redhat.com/redhat-docs-agent-tools/install/#software-dependencies)
 
-- Install [`dita-tools` plugin](https://github.com/redhat-documentation/redhat-docs-agent-tools)
+- Install [`dita-tools` plugin](https://gitlab.cee.redhat.com/aireilly/redhat-docs-agent-tools)
 
 ## Usage
 

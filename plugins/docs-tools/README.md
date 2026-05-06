@@ -6,9 +6,9 @@
 
 ## Prerequisites
 
-- Install the [Red Hat Docs Agent Tools marketplace](https://redhat-documentation.github.io/redhat-docs-agent-tools/install/)
+- Install the [Red Hat Docs Agent Tools marketplace](https://aireilly.gitlab.cee.redhat.com/redhat-docs-agent-tools/install/)
 
-- Install [software dependencies](https://redhat-documentation.github.io/redhat-docs-agent-tools/install/#software-dependencies)
+- Install [software dependencies](https://aireilly.gitlab.cee.redhat.com/redhat-docs-agent-tools/install/#software-dependencies)
 
 - Create an `.env` file with your tokens. You can use either location:
 
@@ -56,7 +56,7 @@ To customize, download the default into your docs repo and edit it:
 
 ```bash
 mkdir -p .agent_workspace
-curl -sL https://raw.githubusercontent.com/redhat-documentation/redhat-docs-agent-tools/main/plugins/docs-tools/skills/docs-orchestrator/defaults/docs-workflow.yaml \
+curl -sL https://gitlab.cee.redhat.com/aireilly/redhat-docs-agent-tools/-/raw/main/plugins/docs-tools/skills/docs-orchestrator/defaults/docs-workflow.yaml \
    -o .agent_workspace/docs-workflow.yaml
 ```
 
@@ -164,7 +164,7 @@ To use this workflow without the plugin default, download it into your docs repo
 
 ```bash
 mkdir -p .agent_workspace
-curl -sL https://raw.githubusercontent.com/redhat-documentation/redhat-docs-agent-tools/main/plugins/docs-tools/skills/docs-orchestrator/defaults/docs-workflow-code-evidence.yaml \
+curl -sL https://gitlab.cee.redhat.com/aireilly/redhat-docs-agent-tools/-/raw/main/plugins/docs-tools/skills/docs-orchestrator/defaults/docs-workflow-code-evidence.yaml \
    -o .agent_workspace/docs-workflow-code-evidence.yaml
 ```
 

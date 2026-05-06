@@ -1,0 +1,199 @@
+stages:
+  - validate
+  - lint
+  - build
+  - deploy
+  - sync
+
+# ---------------------------------------------------------------------------
+# Validate: script syntax + deps.json freshness
+# ---------------------------------------------------------------------------
+validate-scripts:
+  stage: validate
+  image: ruby:3.3
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "acp"
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq python3 python3-pip jq > /dev/null
+  script:
+    - ./scripts/validate-plugins.sh
+    - python3 scripts/scan_deps.py
+    - git diff --exit-code scripts/deps.json
+
+# ---------------------------------------------------------------------------
+# Validate: plugin version bumps on merge requests
+# ---------------------------------------------------------------------------
+check-version-bump:
+  stage: validate
+  image: alpine:latest
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  before_script:
+    - apk add --no-cache git jq bash
+  script:
+    - |
+      set -e
+      git fetch origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+      base=$(git merge-base "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" HEAD)
+
+      changed_plugins=$(git diff --name-only "$base" HEAD -- 'plugins/' | \
+        grep -v 'README.md$' | \
+        grep -v 'SKILL.md$' | \
+        cut -d'/' -f2 | sort -u)
+
+      if [ -z "$changed_plugins" ]; then
+        echo "No plugin code changes detected"
+        exit 0
+      fi
+
+      errors=0
+      for plugin in $changed_plugins; do
+        plugin_json="plugins/$plugin/.claude-plugin/plugin.json"
+
+        if [ ! -f "$plugin_json" ]; then
+          echo "SKIP: $plugin - no plugin.json"
+          continue
+        fi
+
+        current=$(jq -r '.version' "$plugin_json")
+
+        if git show "$base:$plugin_json" > /tmp/old_plugin.json 2>/dev/null; then
+          old=$(jq -r '.version' /tmp/old_plugin.json)
+        else
+          old="0.0.0"
+        fi
+
+        if [ "$current" = "$old" ]; then
+          echo "ERROR: Plugin '$plugin' has code changes but version not bumped ($old)"
+          errors=$((errors + 1))
+        else
+          echo "OK: $plugin version bumped $old -> $current"
+        fi
+      done
+
+      if [ $errors -gt 0 ]; then
+        echo ""
+        echo "$errors plugin(s) need version bumps. Update .claude-plugin/plugin.json for each."
+        exit 1
+      fi
+
+# ---------------------------------------------------------------------------
+# Lint: claudelint
+# ---------------------------------------------------------------------------
+lint-plugins:
+  stage: lint
+  image: docker:latest
+  services:
+    - docker:dind
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "acp"
+  script:
+    - >
+      docker run --rm
+      -v "$CI_PROJECT_DIR:/workspace"
+      -w /workspace
+      ghcr.io/stbenjam/claudelint:main
+      -v --strict
+
+# ---------------------------------------------------------------------------
+# Lint: ruff (Python)
+# ---------------------------------------------------------------------------
+ruff:
+  stage: lint
+  image: python:3-slim
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "acp"
+  before_script:
+    - python3 -m pip install --quiet ruff==0.15.11
+  script:
+    - ruff check plugins/
+    - ruff format --check plugins/
+
+# ---------------------------------------------------------------------------
+# Build: generate docs site
+# ---------------------------------------------------------------------------
+build-docs:
+  stage: build
+  image: python:3-slim
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  before_script:
+    - python3 -m pip install --quiet zensical
+  script:
+    - python3 scripts/scan_deps.py
+    - python3 scripts/generate_plugin_docs.py
+    - zensical build --clean
+  artifacts:
+    paths:
+      - site
+
+# ---------------------------------------------------------------------------
+# Deploy: GitLab Pages (main branch only)
+# ---------------------------------------------------------------------------
+pages:
+  stage: deploy
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  dependencies:
+    - build-docs
+  script:
+    - mv site public
+  artifacts:
+    paths:
+      - public
+
+# ---------------------------------------------------------------------------
+# Sync: merge main into acp
+# ---------------------------------------------------------------------------
+sync-main-to-acp:
+  stage: sync
+  image: alpine:latest
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  before_script:
+    - apk add --no-cache git
+    - git config user.name "gitlab-ci[bot]"
+    - git config user.email "gitlab-ci[bot]@noreply.gitlab.cee.redhat.com"
+  script:
+    - git fetch origin acp
+    - git checkout acp
+    - git merge origin/main --no-edit -m "chore: merge main into acp"
+    - git push "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" acp
+
+# ---------------------------------------------------------------------------
+# Sync: check .claude symlinks (acp MRs) / sync them (acp pushes)
+# ---------------------------------------------------------------------------
+check-symlinks:
+  stage: sync
+  image: alpine:latest
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "acp"
+  before_script:
+    - apk add --no-cache bash git
+  script:
+    - ./scripts/sync-claude-symlinks.sh --check
+
+sync-symlinks:
+  stage: sync
+  image: alpine:latest
+  rules:
+    - if: $CI_COMMIT_BRANCH == "acp"
+  before_script:
+    - apk add --no-cache bash git
+    - git config user.name "gitlab-ci[bot]"
+    - git config user.email "gitlab-ci[bot]@noreply.gitlab.cee.redhat.com"
+  script:
+    - ./scripts/sync-claude-symlinks.sh
+    - |
+      if [ -n "$(git status --porcelain --untracked-files=all .claude/)" ]; then
+        git add .claude/skills/ .claude/agents/ .claude/reference/
+        git commit -m "chore: sync .claude symlinks with plugin directories"
+        git push "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" acp
+      fi

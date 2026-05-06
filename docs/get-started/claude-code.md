@@ -11,7 +11,7 @@ Claude Code installs plugins from a marketplace and runs namespaced commands dir
 1. Add the marketplace:
 
     ```text
-    claude plugin marketplace add redhat-documentation/redhat-docs-agent-tools
+    claude plugin marketplace add https://gitlab.cee.redhat.com/aireilly/redhat-docs-agent-tools.git
     ```
 
 1. Install a plugin (using `hello-world` as an example):

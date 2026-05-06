@@ -21,7 +21,7 @@ This repository uses two long-lived branches:
 - **`main`** — CLI-focused. All plugin, skill, agent, and script development targets `main` via pull request.
 - **`acp`** — Ambient Code Platform integration branch. Carries ACP-specific files (`adapters/ambient/`, `.ambient/`, `.claude/skills/` symlinks, `.claude/docs-acp.yaml`, batch-controller) on top of everything in `main`.
 
-A GitHub Actions workflow automatically merges `main` into `acp` on every push, so `acp` always has the latest plugin and skill updates.
+A GitLab CI pipeline automatically merges `main` into `acp` on every push, so `acp` always has the latest plugin and skill updates.
 
 **Rules:**
 
@@ -35,7 +35,7 @@ A GitHub Actions workflow automatically merges `main` into `acp` on every push, 
 
 Before creating something new, search the existing plugins to see if your use case is already covered:
 
-1. Browse the [plugin catalog](https://redhat-documentation.github.io/redhat-docs-agent-tools/) or run `make update` locally.
+1. Browse the [plugin catalog](https://aireilly.gitlab.cee.redhat.com/redhat-docs-agent-tools/) or run `make update` locally.
 2. Read the README, commands, skills, and agents in each plugin under `plugins/`.
 3. Search for keywords related to your capability using `grep -r "your-keyword" plugins/`.
 
@@ -96,8 +96,8 @@ This prevents wasted effort on contributions that won't be accepted.
 ### 2. Fork and branch
 
 ```bash
-# Fork the repo on GitHub, then:
-git clone https://github.com/<your-username>/redhat-docs-agent-tools.git
+# Fork the repo on GitLab, then:
+git clone https://gitlab.cee.redhat.com/<your-username>/redhat-docs-agent-tools.git
 cd redhat-docs-agent-tools
 git checkout -b my-contribution
 ```
