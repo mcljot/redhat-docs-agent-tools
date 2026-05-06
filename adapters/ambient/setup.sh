@@ -156,6 +156,14 @@ fi
 ln -sfn "${REPO_ROOT}/artifacts" "${REPO_ROOT}/.agent_workspace"
 echo "Workspace: .agent_workspace -> artifacts/"
 
+# Copy ACP workflow YAML so the orchestrator finds it at .agent_workspace/docs-acp.yaml
+if [[ -f "${REPO_ROOT}/.claude/docs-acp.yaml" ]]; then
+  cp "${REPO_ROOT}/.claude/docs-acp.yaml" "${REPO_ROOT}/artifacts/docs-acp.yaml"
+  echo "ACP workflow: copied to artifacts/docs-acp.yaml"
+else
+  echo "WARNING: .claude/docs-acp.yaml not found" >&2
+fi
+
 # Count resolved skills/agents/references for verification
 skill_count=$(find "${REPO_ROOT}/.claude/skills" -maxdepth 1 -mindepth 1 \( -type d -o -type l \) | wc -l)
 agent_count=$(find "${REPO_ROOT}/.claude/agents" -maxdepth 1 -name '*.md' \( -type f -o -type l \) | wc -l)

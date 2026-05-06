@@ -6,8 +6,8 @@
 # Usage: bash resolve-repo-context.sh <ticket-id>
 #
 # Output (single line to stdout, ready to append to orchestrator args):
-#   --repo-path /abs/path/.work/repo --format mkdocs
-#   --draft --format adoc
+#   --docs-repo-path /abs/path/.work/repo --mkdocs
+#   --draft
 #   (empty string if no repo-info.json found)
 #
 # Exit codes:
@@ -55,16 +55,16 @@ fmt = d.get('format', 'adoc')
 
 flags = []
 
-# Add format flag
-if fmt:
-    flags.append(f'--format {fmt}')
+# Add format flag (orchestrator expects --mkdocs boolean; adoc is the default)
+if fmt == 'mkdocs':
+    flags.append('--mkdocs')
 
 if not repo_url:
     # No repo URL — draft mode
     flags.append('--draft')
 elif clone_path and os.path.isdir(clone_path):
     # Repo cloned successfully — update-in-place mode
-    flags.append(f'--repo-path {clone_path}')
+    flags.append(f'--docs-repo-path {clone_path}')
 else:
     # Repo URL set but clone missing — fall back to draft
     print(f'WARNING: clone_path {clone_path!r} does not exist, falling back to --draft', file=sys.stderr)
