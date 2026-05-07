@@ -29,6 +29,8 @@ if [ ${#PROGRESS_FILES[@]} -eq 0 ]; then
   exit 0
 fi
 
+MARKER=".agent_workspace/.active-workflow"
+
 # Read the marker — fail closed on parse errors
 PROGRESS_FILE=$(jq -r '.progress_file // empty' "$MARKER" 2>/dev/null)
 JQ_RC_PF=$?
