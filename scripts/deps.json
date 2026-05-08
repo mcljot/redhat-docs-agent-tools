@@ -131,6 +131,7 @@
     {
       "tool": "jq",
       "found_in": [
+        "plugins/docs-tools/skills/docs-orchestrator/hooks/post-requirements-source-resolve.sh",
         "plugins/docs-tools/skills/docs-orchestrator/hooks/workflow-completion-check.sh",
         "plugins/docs-tools/skills/docs-orchestrator/scripts/setup-hooks.sh",
         "plugins/docs-tools/skills/docs-workflow-create-jira/scripts/create-jira-ticket.sh",
