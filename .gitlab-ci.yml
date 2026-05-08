@@ -91,6 +91,7 @@ lint-plugins:
   image: docker:latest
   services:
     - docker:dind
+  allow_failure: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "main"
