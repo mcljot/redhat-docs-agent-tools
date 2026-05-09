@@ -205,17 +205,21 @@ def _resolve_pr_info(pr_url):
             ]
         )
 
-    pr_branch = _run_gh(
+    pr_data = _run_gh(
         [
             "pr",
             "view",
             pr_url,
             "--json",
-            "headRefName",
-            "--jq",
-            ".headRefName",
+            "headRefName,state",
         ]
     )
+    data = json.loads(pr_data)
+    pr_branch = data["headRefName"]
+
+    if data["state"] == "MERGED":
+        return repo_url, None
+
     return repo_url, pr_branch
 
 
@@ -261,6 +265,9 @@ def _resolve_mr_info(mr_url):
 
     base_url = mr_url.split("/-/merge_requests/")[0]
     repo_url = f"{base_url}.git"
+
+    if mr_data.get("state") == "merged":
+        return repo_url, None
 
     return repo_url, source_branch
 
