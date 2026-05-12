@@ -66,19 +66,27 @@ mkdir -p "$OUTPUT_DIR"
 
 **[Include only if `<BASE_PATH>/scope-req-audit/evidence-status.json` exists]** Append the following paragraph to the prompt:
 
-> Code evidence status is available at `<BASE_PATH>/scope-req-audit/evidence-status.json`. Read it and use the evidence status when making scoping decisions:
+> ## MANDATORY: Scope gating by code evidence
+>
+> **You MUST read** `<BASE_PATH>/scope-req-audit/evidence-status.json` before creating any module specifications. This file classifies each requirement by whether code evidence exists in the indexed repository.
+>
+> **This is not optional. Every requirement must be checked against this file.**
 >
 > - **Grounded** requirements: create full module specifications as normal. Use the `key_files` for each grounded requirement as content source references in the module spec — these are the actual source files where the feature is implemented. The code-evidence step will use them for targeted retrieval
 > - **Partial** requirements: create module specifications but note what evidence was found and what is missing — flag for SME review. Include available `key_files` as partial source references
-> - **Absent** requirements: do NOT create module specifications. Instead, list them in a "Deferred requirements (no code evidence)" section at the end of the plan, including the recommended action from the evidence status. These may be unimplemented features — documenting them risks fabrication
+> - **Absent** requirements: **STOP. Do NOT create module specifications for absent requirements.** These requirements have no code evidence in the indexed repository — the feature may live in a different repo, be unimplemented, or be out of scope. Creating modules for them risks fabrication. Instead, list each absent requirement in a "Deferred requirements (no code evidence)" section at the end of the plan with: (a) the requirement ID and title, (b) the `action` text from the evidence status, (c) which repository the implementation likely lives in (from the evidence status or discovered repos)
 >
 > If `discovered_repos` lists repos that weren't indexed, note them in the deferred section as potential sources for resolving absent requirements.
+>
+> **Self-check before writing the plan:** Count your module specifications. If the count exceeds the number of grounded + partial requirements, you have created modules for absent requirements — go back and move them to the deferred section.
 
 ### 3. Verify output
 
 After the agent completes, verify the output file exists at `<OUTPUT_FILE>`.
 
 If no output file is found, report an error.
+
+**[If `<BASE_PATH>/scope-req-audit/evidence-status.json` exists]** Cross-check the plan against the audit: read the evidence status and verify that no absent requirement has a corresponding module specification in the plan. If any absent requirement was given a full module, log a warning: "Plan includes modules for absent requirement(s): <list>. These risk fabrication." This is a warning, not a blocker — the plan is still valid but the downstream writing step may produce ungrounded content.
 
 ### 4. Write step-result.json
 

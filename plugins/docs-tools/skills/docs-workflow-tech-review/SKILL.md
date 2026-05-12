@@ -77,9 +77,21 @@ Source drafts location: `<DRAFTS_DIR>/`
 
 ### 3. Code-grounded pre-scan (conditional)
 
-**Skip this step entirely if `HAS_REPO=false`.** Proceed directly to step 3.
+**Skip this step entirely if `HAS_REPO=false` AND no prior evidence exists (see reuse check below).** Proceed directly to step 4.
 
 When a source repo is available, run the code-grounded validation pipeline before dispatching the reviewer agent. This produces structured evidence the agent uses alongside its own analysis.
+
+#### Reuse check (iterations 2+)
+
+Before running any scripts, check if `grounded-review.json` and `api-surface.json` already exist in `$OUTPUT_DIR` (from a prior iteration). If **both files exist and are non-empty**:
+
+- Set `HAS_GROUNDED=true` and `HAS_API_SURFACE=true`
+- Skip steps 2a–2c entirely — reuse the existing files
+- Log: `"Reusing code-grounded evidence from prior iteration"`
+
+This is safe because iterations only change the documentation (via the fix cycle), not the source code. The grounded review from iteration 1 remains valid. Re-running the scripts would produce identical results but waste time and risk flaky failures.
+
+**Important:** This reuse also applies when `HAS_REPO=false` (e.g., the orchestrator did not pass `--repo` on re-invocation). If the evidence files exist from a prior iteration, use them regardless of whether `--repo` was passed this time.
 
 #### 2a. Collect draft file paths
 
@@ -235,4 +247,4 @@ After writing the sidecar, sum the byte sizes of all output files in the step's 
 
 The `iteration` field is `1` for the first review pass. If the orchestrator re-invokes this skill after a fix cycle, it passes the current iteration count — increment it for the sidecar.
 
-The `code_grounded` field records whether the code-grounded pre-scan ran (`HAS_GROUNDED`). This is informational — downstream consumers can use it to assess review thoroughness.
+The `code_grounded` field records whether code-grounded evidence was available for this review pass — either from running the pre-scan (`HAS_GROUNDED`) or from reusing prior iteration files. Set to `true` if the reviewer agent received grounded evidence in its prompt, regardless of whether the scripts ran in this invocation or a prior one.
