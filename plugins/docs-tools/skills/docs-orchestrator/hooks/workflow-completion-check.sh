@@ -31,6 +31,11 @@ fi
 
 MARKER=".agent_workspace/.active-workflow"
 
+# No marker → no active workflow → allow stop
+if [ ! -f "$MARKER" ]; then
+  exit 0
+fi
+
 # Read the marker — fail closed on parse errors
 PROGRESS_FILE=$(jq -r '.progress_file // empty' "$MARKER" 2>/dev/null)
 JQ_RC_PF=$?

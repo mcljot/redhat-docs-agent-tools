@@ -21,6 +21,10 @@ Modes:
 4. Scan requirements.md for PR URLs (post-requirements discovery):
     python3 resolve_source.py --base-path .agent_workspace/proj-123 --scan-requirements
 
+5. Dry-run check (CI pre-flight — resolve without cloning):
+    python3 resolve_source.py --base-path .agent_workspace/proj-123 \
+        --ticket PROJ-123 --plugin-root /path/to/docs-tools --dry-run
+
 Output: JSON to stdout with the resolved source info, or an error status.
 
 Exit codes:
@@ -324,7 +328,7 @@ def _read_discovered_repos(base_path):
         return []
 
 
-def _resolve_discovered_repos(discovered, base_path):
+def _resolve_discovered_repos(discovered, base_path, dry_run=False):
     """Clone all repos from discovered_repos.json.
 
     Clones each remote repo into code-repo/<repo_name>/. For repos with
@@ -359,14 +363,15 @@ def _resolve_discovered_repos(discovered, base_path):
         repo_name = repo_name_from_url(repo_url)
         clone_dir = Path(base_path) / "code-repo" / repo_name
 
-        if clone_dir.exists():
-            if not _verify_existing_clone(clone_dir, ref, expected_repo_url=repo_url):
-                errors.append(f"Existing clone at {clone_dir} is invalid.")
-                continue
-        else:
-            if not _clone_repo(repo_url, clone_dir, ref):
-                errors.append(f"Could not clone {repo_url}.")
-                continue
+        if not dry_run:
+            if clone_dir.exists():
+                if not _verify_existing_clone(clone_dir, ref, expected_repo_url=repo_url):
+                    errors.append(f"Existing clone at {clone_dir} is invalid.")
+                    continue
+            else:
+                if not _clone_repo(repo_url, clone_dir, ref):
+                    errors.append(f"Could not clone {repo_url}.")
+                    continue
 
         resolved_repos.append(
             {
@@ -383,7 +388,7 @@ def _resolve_discovered_repos(discovered, base_path):
         }
 
     primary = resolved_repos[0]
-    _write_source_yaml(base_path, primary["repo_url"], primary["ref"])
+    _write_source_yaml(base_path, primary["repo_url"], primary["ref"], dry_run=dry_run)
 
     result = _success(
         primary["repo_path"],
@@ -431,7 +436,7 @@ def extract_repo_url(link_url):
     return None
 
 
-def _discover_from_jira(ticket, base_path, plugin_root):
+def _discover_from_jira(ticket, base_path, plugin_root, dry_run=False):
     """Discover source repo(s) from JIRA ticket git_links and auto-discovered PRs.
 
     Calls jira_reader.py to fetch the ticket's remote links, extracts repo URLs,
@@ -521,9 +526,9 @@ def _discover_from_jira(ticket, base_path, plugin_root):
 
     # Resolve the winner
     if winner["pr_urls"]:
-        result = _resolve_multiple_prs(winner["pr_urls"], base_path)
+        result = _resolve_multiple_prs(winner["pr_urls"], base_path, dry_run=dry_run)
     else:
-        result = _resolve_explicit_repos([winner["url"]], [], base_path)
+        result = _resolve_explicit_repos([winner["url"]], [], base_path, dry_run=dry_run)
 
     # Include all discovered repos in the result for logging
     if len(ranked) > 1 and result.get("status") == "resolved":
@@ -532,8 +537,10 @@ def _discover_from_jira(ticket, base_path, plugin_root):
     return result
 
 
-def _clone_repo(repo_url, clone_dir, ref=None):
+def _clone_repo(repo_url, clone_dir, ref=None, dry_run=False):
     """Clone a repo to clone_dir. Returns True on success."""
+    if dry_run:
+        return True
     clone_dir = str(clone_dir)
 
     if ref:
@@ -572,13 +579,15 @@ def _clone_repo(repo_url, clone_dir, ref=None):
     return result.returncode == 0
 
 
-def _verify_existing_clone(clone_dir, ref=None, expected_repo_url=None):
+def _verify_existing_clone(clone_dir, ref=None, expected_repo_url=None, dry_run=False):
     """Verify an existing clone is valid. Optionally checkout a different ref.
 
     Assumes the remote is named "origin". This is always true for repos cloned
     by this script. For user-provided local paths where the remote was renamed,
     the origin check will fail gracefully (returns False).
     """
+    if dry_run:
+        return True
     result = _run_git(["rev-parse", "HEAD"], cwd=str(clone_dir), check=False)
     if result.returncode != 0:
         return False
@@ -635,8 +644,10 @@ def _verify_existing_clone(clone_dir, ref=None, expected_repo_url=None):
     return True
 
 
-def _write_source_yaml(base_path, repo, ref):
+def _write_source_yaml(base_path, repo, ref, dry_run=False):
     """Write source.yaml for workflow resume."""
+    if dry_run:
+        return
     source_file = Path(base_path) / "source.yaml"
     if source_file.exists():
         return  # Don't overwrite existing config
@@ -646,7 +657,7 @@ def _write_source_yaml(base_path, repo, ref):
     source_file.write_text("\n".join(lines) + "\n")
 
 
-def _resolve_multiple_prs(pr_urls, base_path):
+def _resolve_multiple_prs(pr_urls, base_path, dry_run=False):
     """Resolve and clone repos from a list of PR/MR URLs.
 
     Groups PRs by repo, clones each into code-repo/<repo_name>/,
@@ -679,14 +690,15 @@ def _resolve_multiple_prs(pr_urls, base_path):
         repo_name = repo_name_from_url(repo_url)
         repo_clone_dir = base_path / "code-repo" / repo_name
 
-        if repo_clone_dir.exists():
-            if not _verify_existing_clone(repo_clone_dir, ref, expected_repo_url=repo_url):
-                errors.append(f"Existing clone at {repo_clone_dir} is invalid.")
-                continue
-        else:
-            if not _clone_repo(repo_url, repo_clone_dir, ref):
-                errors.append(f"Could not clone {repo_url}.")
-                continue
+        if not dry_run:
+            if repo_clone_dir.exists():
+                if not _verify_existing_clone(repo_clone_dir, ref, expected_repo_url=repo_url):
+                    errors.append(f"Existing clone at {repo_clone_dir} is invalid.")
+                    continue
+            else:
+                if not _clone_repo(repo_url, repo_clone_dir, ref):
+                    errors.append(f"Could not clone {repo_url}.")
+                    continue
 
         resolved_repos.append(
             {
@@ -703,7 +715,7 @@ def _resolve_multiple_prs(pr_urls, base_path):
         }
 
     primary = resolved_repos[0]
-    _write_source_yaml(base_path, primary["repo_url"], primary["ref"])
+    _write_source_yaml(base_path, primary["repo_url"], primary["ref"], dry_run=dry_run)
 
     discovered = {
         normalize_git_url(info["repo_url"]): len(info["urls"]) for info in repo_groups.values()
@@ -736,7 +748,7 @@ def _success(repo_path, repo_url=None, ref=None, scope=None, discovered_repos=No
     return result
 
 
-def _resolve_explicit_repos(repo_values, pr_urls, base_path):
+def _resolve_explicit_repos(repo_values, pr_urls, base_path, dry_run=False):
     """Resolve one or more explicit --repo values.
 
     Clones each remote repo into code-repo/<repo_name>/.
@@ -763,18 +775,19 @@ def _resolve_explicit_repos(repo_values, pr_urls, base_path):
                         file=sys.stderr,
                     )
 
-            if clone_dir.exists():
-                if not _verify_existing_clone(clone_dir, ref, expected_repo_url=repo_value):
-                    errors.append(
-                        f"Existing clone at {clone_dir} is invalid or points to a different repo."
-                    )
-                    continue
-            else:
-                if not _clone_repo(repo_value, clone_dir, ref):
-                    errors.append(
-                        f"Cannot clone {repo_value}. For private repos, ensure gh is authenticated."
-                    )
-                    continue
+            if not dry_run:
+                if clone_dir.exists():
+                    if not _verify_existing_clone(clone_dir, ref, expected_repo_url=repo_value):
+                        errors.append(
+                            f"Existing clone at {clone_dir} is invalid or points to a different repo."
+                        )
+                        continue
+                else:
+                    if not _clone_repo(repo_value, clone_dir, ref):
+                        errors.append(
+                            f"Cannot clone {repo_value}. For private repos, ensure gh is authenticated."
+                        )
+                        continue
 
             resolved_repos.append(
                 {
@@ -785,7 +798,7 @@ def _resolve_explicit_repos(repo_values, pr_urls, base_path):
             )
         else:
             local = Path(repo_value)
-            if not local.exists() or not local.is_dir():
+            if not dry_run and (not local.exists() or not local.is_dir()):
                 errors.append(f"Source repo path does not exist: {repo_value}")
                 continue
             resolved_repos.append(
@@ -803,7 +816,7 @@ def _resolve_explicit_repos(repo_values, pr_urls, base_path):
         }
 
     primary = resolved_repos[0]
-    _write_source_yaml(base_path, primary.get("repo_url") or primary["repo_path"], primary["ref"])
+    _write_source_yaml(base_path, primary.get("repo_url") or primary["repo_path"], primary["ref"], dry_run=dry_run)
 
     result = _success(
         primary["repo_path"],
@@ -819,6 +832,7 @@ def _resolve_explicit_repos(repo_values, pr_urls, base_path):
 
 def resolve(args):
     """Main resolution logic. Returns a result dict."""
+    dry_run = getattr(args, "dry_run", False)
     base_path = Path(args.base_path)
 
     # Collect PR URLs from args
@@ -826,7 +840,7 @@ def resolve(args):
 
     # --- Priority 1: Explicit --repo flag ---
     if args.repo:
-        return _resolve_explicit_repos(args.repo, pr_urls, base_path)
+        return _resolve_explicit_repos(args.repo, pr_urls, base_path, dry_run=dry_run)
 
     # --- Priority 2: source.yaml ---
     source_config = _read_source_yaml(base_path)
@@ -845,25 +859,26 @@ def resolve(args):
 
         if _is_remote_url(repo_value):
             clone_dir = base_path / "code-repo" / repo_name_from_url(repo_value)
-            if clone_dir.exists():
-                if not _verify_existing_clone(clone_dir, ref, expected_repo_url=repo_value):
-                    return {
-                        "status": "error",
-                        "message": (
-                            f"Existing clone at {clone_dir} is invalid "
-                            "or points to a different repo."
-                        ),
-                    }
-            else:
-                if not _clone_repo(repo_value, clone_dir, ref):
-                    return {
-                        "status": "error",
-                        "message": f"Cannot clone {repo_value}.",
-                    }
+            if not dry_run:
+                if clone_dir.exists():
+                    if not _verify_existing_clone(clone_dir, ref, expected_repo_url=repo_value):
+                        return {
+                            "status": "error",
+                            "message": (
+                                f"Existing clone at {clone_dir} is invalid "
+                                "or points to a different repo."
+                            ),
+                        }
+                else:
+                    if not _clone_repo(repo_value, clone_dir, ref):
+                        return {
+                            "status": "error",
+                            "message": f"Cannot clone {repo_value}.",
+                        }
             return _success(clone_dir, repo_url=repo_value, ref=ref, scope=scope)
         else:
             local = Path(repo_value)
-            if not local.exists() or not local.is_dir():
+            if not dry_run and (not local.exists() or not local.is_dir()):
                 return {
                     "status": "error",
                     "message": f"Source repo path does not exist: {repo_value}",
@@ -872,20 +887,20 @@ def resolve(args):
 
     # --- Priority 3: PR-derived (--pr without --repo) ---
     if pr_urls:
-        return _resolve_multiple_prs(pr_urls, base_path)
+        return _resolve_multiple_prs(pr_urls, base_path, dry_run=dry_run)
 
     # --- Priority 4: JIRA ticket discovery ---
     ticket = getattr(args, "ticket", None)
     plugin_root = getattr(args, "plugin_root", None)
     if ticket and plugin_root:
-        result = _discover_from_jira(ticket, base_path, plugin_root)
+        result = _discover_from_jira(ticket, base_path, plugin_root, dry_run=dry_run)
         if result["status"] != "no_source":
             return result
 
     # --- Priority 4b: discovered_repos.json (from graph walk) ---
     discovered = _read_discovered_repos(base_path)
     if discovered:
-        result = _resolve_discovered_repos(discovered, base_path)
+        result = _resolve_discovered_repos(discovered, base_path, dry_run=dry_run)
         if result["status"] != "no_source":
             return result
 
@@ -898,7 +913,7 @@ def resolve(args):
 
         # Collect first PR URL from each discovered repo
         all_pr_urls = [prs[0]["url"] for prs in repos.values()]
-        return _resolve_multiple_prs(all_pr_urls, base_path)
+        return _resolve_multiple_prs(all_pr_urls, base_path, dry_run=dry_run)
 
     # --- Priority 6: No source ---
     return {"status": "no_source"}
@@ -936,9 +951,17 @@ def main():
         action="store_true",
         help="Scan requirements.md for PR URLs (post-requirements discovery)",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Check if a source repo can be resolved without cloning or writing files",
+    )
     args = parser.parse_args()
 
     result = resolve(args)
+
+    if args.dry_run:
+        result["dry_run"] = True
 
     json.dump(result, sys.stdout, indent=2)
     print()
