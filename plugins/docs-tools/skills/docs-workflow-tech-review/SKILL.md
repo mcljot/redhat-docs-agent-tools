@@ -226,9 +226,12 @@ Write the sidecar to `${BASE_PATH}/technical-review/step-result.json`:
     "sme": "<N>"
   },
   "iteration": 1,
-  "code_grounded": <true|false>
+  "code_grounded": <true|false>,
+  "context_size_bytes": <total_bytes>
 }
 ```
+
+After writing the sidecar, sum the byte sizes of all output files in the step's output folder and add `context_size_bytes` to the sidecar.
 
 The `iteration` field is `1` for the first review pass. If the orchestrator re-invokes this skill after a fix cycle, it passes the current iteration count — increment it for the sidecar.
 

@@ -35,7 +35,20 @@ Your prompt will provide:
 - **RELEASE**: Release/sprint identifier
 - **REPO_PATH**: (optional) Path to the source code repository, when available
 
-### 1. Fetch detailed source content
+### 1. Read persisted source data
+
+Your prompt may include a `PERSISTED_SOURCES` object listing files saved to disk by the discoverer. Read these files to get the full source content:
+
+1. For each file in `persisted_sources`, check its size from the metadata.
+2. If the file is under 50 KB: read it in full using the Read tool.
+3. If the file is over 50 KB: read it in sections of ~40 KB each (~1000 lines) using the Read tool's `offset` and `limit` parameters. Process each section before reading the next. Take notes on key findings from each section.
+4. For Google Docs specs with a `.manifest.md` file: read the manifest first to understand the document structure. Then read the sections most relevant to your requirement, starting with sections whose headings match the requirement's topic.
+5. For PR diffs: read the full diff file (typically under 50 KB after filtering). Focus on files relevant to the requirement.
+6. For `comments.json`: recent comments (last 30 days) are highest priority. Older comments matter if they contain design decisions, architecture choices, or requirement clarifications.
+
+If `PERSISTED_SOURCES` is not present in your prompt, skip this step and proceed with the standard source fetching below.
+
+### 1a. Fetch detailed source content
 
 For each source in the requirement's `sources` list:
 

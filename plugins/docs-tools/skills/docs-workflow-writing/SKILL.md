@@ -261,6 +261,9 @@ Write the sidecar to `<OUTPUT_DIR>/step-result.json` using the `mode` and `forma
     "/absolute/path/to/file2.adoc"
   ],
   "mode": "<mode from script JSON>",
-  "format": "<format from script JSON>"
+  "format": "<format from script JSON>",
+  "context_size_bytes": <total_bytes>
 }
 ```
+
+After writing the sidecar, sum the byte sizes of all output files in the step's output folder and add `context_size_bytes` to the sidecar.

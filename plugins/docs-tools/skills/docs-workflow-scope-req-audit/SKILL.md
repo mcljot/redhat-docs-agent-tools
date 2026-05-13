@@ -291,9 +291,12 @@ Write the sidecar to `${OUTPUT_DIR}/step-result.json`:
   "partial": <partial count>,
   "absent": <absent count>,
   "total": <total count>,
-  "discovered_repos_count": <length of discovered_repos list>
+  "discovered_repos_count": <length of discovered_repos list>,
+  "context_size_bytes": <total_bytes>
 }
 ```
+
+After writing the sidecar, sum the byte sizes of all output files in the step's output folder and add `context_size_bytes` to the sidecar.
 
 - `recommendation`: the `recommendation` field from `evidence-status.json`
 - `grounded`, `partial`, `absent`, `total`: the counts from `evidence-status.json`'s `summary` object

@@ -41,7 +41,7 @@ EXTENSIONS = {"doc": ".md", "slides": ".md", "sheets": ".csv"}
 
 
 def parse_and_validate_args():
-    """Parse CLI arguments and return (file_id, output, mode, comments, include_resolved)."""
+    """Parse CLI arguments and return validated args tuple."""
     parser = argparse.ArgumentParser(
         description="Export Google Docs/Slides/Sheets to Markdown or CSV.",
     )
@@ -56,6 +56,11 @@ def parse_and_validate_args():
         "--include-resolved",
         action="store_true",
         help="Include resolved comment threads (requires --comments)",
+    )
+    parser.add_argument(
+        "--manifest",
+        action="store_true",
+        help="Write a companion manifest file with section map (Docs only)",
     )
     args = parser.parse_args()
 
@@ -78,7 +83,7 @@ def parse_and_validate_args():
             file=sys.stderr,
         )
 
-    return file_id, output, mode, args.comments, args.include_resolved
+    return file_id, output, mode, args.comments, args.include_resolved, args.manifest
 
 
 # ---------------------------------------------------------------------------
@@ -458,6 +463,59 @@ def _snap_to_word_boundary(text: str, pos: int) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Manifest generation
+# ---------------------------------------------------------------------------
+
+HEADING_RE = re.compile(r"^#{1,3}\s")
+
+
+def generate_manifest(content: str, output_path: str) -> dict:
+    lines = content.splitlines()
+    total_lines = len(lines)
+
+    title = Path(output_path).stem
+    for line in lines:
+        if HEADING_RE.match(line):
+            title = line.lstrip("#").strip()
+            break
+
+    sections: list[tuple[str, int, int]] = []
+    for i, line in enumerate(lines):
+        if HEADING_RE.match(line):
+            sections.append((line.strip(), i, -1))
+
+    section_entries: list[str] = []
+    for idx, (heading, start, _) in enumerate(sections):
+        end = sections[idx + 1][1] - 1 if idx + 1 < len(sections) else total_lines - 1
+        char_count = sum(len(lines[j]) for j in range(start, end + 1))
+        section_entries.append(
+            f"- Line {start + 1}-{end + 1}: {heading.lstrip('#').strip()} ({char_count:,} chars)"
+        )
+
+    total_chars = len(content)
+    total_estimated_tokens = total_chars // 3
+
+    manifest_lines = [
+        f"# Document Manifest: {title}",
+        f"Total characters: {total_chars}",
+        f"Total estimated tokens: {total_estimated_tokens}",
+        "",
+        "## Sections",
+    ]
+    manifest_lines.extend(section_entries)
+
+    manifest_file = f"{output_path}.manifest.md"
+    Path(manifest_file).write_text("\n".join(manifest_lines) + "\n", encoding="utf-8")
+
+    return {
+        "manifest_file": manifest_file,
+        "total_chars": total_chars,
+        "total_estimated_tokens": total_estimated_tokens,
+        "section_count": len(sections),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Fetch & write
 # ---------------------------------------------------------------------------
 
@@ -567,9 +625,15 @@ def _fetch_sheets(file_id: str, output: str, token: str, base: str):
 
 def main():
     """CLI entry point: parse arguments, check dependencies, and run the export."""
-    file_id, output, mode, comments, include_resolved = parse_and_validate_args()
+    file_id, output, mode, comments, include_resolved, manifest = parse_and_validate_args()
     check_dependencies()
     fetch(file_id, output, mode, comments, include_resolved)
+
+    if manifest and mode == "doc":
+        content = Path(output).read_text(encoding="utf-8")
+        result = generate_manifest(content, output)
+        result["output_file"] = output
+        print(json.dumps(result))
 
 
 if __name__ == "__main__":

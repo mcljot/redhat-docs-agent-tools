@@ -52,6 +52,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -107,6 +108,133 @@ def load_env_file() -> None:
 def color_print(prefix: str, message: str) -> None:
     """Print output to terminal (Claude Code compatible, no color codes)."""
     print(f"  {prefix}: {message}")
+
+
+# -- Ignore patterns for large PR filtering ----------------------------------
+
+DEFAULT_IGNORE_PATTERNS: List[re.Pattern] = [
+    re.compile(p)
+    for p in [
+        # -- Vendored / dependency dirs (all ecosystems) --
+        r"(^|/)vendor/",
+        r"(^|/)node_modules/",
+        r"(^|/)venv/",
+        r"(^|/)\.venv/",
+        r"(^|/)env/",
+        r"(^|/)__pycache__/",
+        r"(^|/)\.tox/",
+        r"\.egg-info/",
+        # -- Test dirs and files --
+        r"(^|/)test/",
+        r"(^|/)tests/",
+        r"(^|/)__tests__/",
+        r"(^|/)testdata/",
+        r"(^|/)src/test/",  # Java/Maven
+        r"(^|/)spec/",  # Ruby RSpec
+        r"(^|/)cypress/",
+        r"(^|/)coverage/",
+        r"_test\.go$",
+        r"_test\.py$",
+        r"test_.*\.py$",
+        r"\.test\.[jt]sx?$",
+        r"\.spec\.[jt]sx?$",
+        # -- Build / output dirs --
+        r"(^|/)dist/",
+        r"(^|/)build/",
+        r"(^|/)bin/",
+        r"(^|/)target/",  # Java/Maven, Rust
+        r"(^|/)out/",
+        r"(^|/)\.next/",  # Next.js
+        r"(^|/)\.nuxt/",  # Nuxt.js
+        # -- Generated / compiled files --
+        r"\.pb\.go$",
+        r"\.gen\.go$",
+        r"zz_generated",
+        r"\.class$",
+        r"\.pyc$",
+        r"\.jar$",
+        r"\.war$",
+        r"\.min\.[jc]ss?$",
+        r"\.bundle\.js$",
+        # -- Lock / dependency manifests --
+        r"go\.mod$",
+        r"go\.sum$",
+        r"\.lock$",
+        r"package-lock\.json$",
+        r"yarn\.lock$",
+        r"pnpm-lock\.yaml$",
+        r"Pipfile\.lock$",
+        r"Gemfile\.lock$",
+        r"Cargo\.lock$",
+        r"poetry\.lock$",
+        r"requirements\.txt$",
+        r"requirements.*\.txt$",
+        # -- Build / tooling files --
+        r"(^|/)hack/",
+        r"Makefile$",
+        r"Tiltfile$",
+        r"Dockerfile",
+        r"docker-compose",
+        r"pyproject\.toml$",
+        r"setup\.cfg$",
+        r"setup\.py$",
+        r"pom\.xml$",  # Maven
+        r"build\.gradle",  # Gradle
+        # -- CI/CD --
+        r"(^|/)\.(github|gitlab)",
+        r"\.travis\.yml$",
+        r"\.gitlab-ci\.yml$",
+        r"[Jj]enkinsfile$",
+        r"\.circleci/",
+        # -- Config / linting --
+        r"\.gitignore$",
+        r"\.gitattributes$",
+        r"\.editorconfig$",
+        r"\.eslintrc",
+        r"\.prettierrc",
+        r"\.golangci",
+        r"\.rubocop",
+        r"\.flake8$",
+        r"\.pylintrc$",
+        r"tox\.ini$",
+        # -- Media / assets --
+        r"\.png$",
+        r"\.jpg$",
+        r"\.jpeg$",
+        r"\.svg$",
+        r"\.gif$",
+        r"\.ico$",
+        r"\.woff2?$",
+        r"\.ttf$",
+        r"\.eot$",
+        # -- Infrastructure --
+        r"\.tfstate",
+        # -- Docs / meta --
+        r"CHANGELOG\.md$",
+        r"LICENSE$",
+        r"NOTICE$",
+    ]
+]
+
+
+def filter_files(file_list: List[str], patterns: List[re.Pattern]) -> List[str]:
+    """Filter file paths, dropping any that match an ignore pattern."""
+    return [f for f in file_list if not any(p.search(f) for p in patterns)]
+
+
+def _redact_token(arg: str) -> str:
+    """Redact auth tokens from git command arguments for safe error messages."""
+    return re.sub(r"(https?://)[^@]+@", r"\1***@", arg)
+
+
+def load_ignore_config(path: str) -> List[re.Pattern]:
+    """Load ignore patterns from a YAML file with a `git_ignore_list` key."""
+    if yaml is None:
+        raise ImportError("PyYAML required for --ignore-config. Run: pip install pyyaml")
+    with open(path) as f:
+        config = yaml.safe_load(f)
+    raw = config.get("git_ignore_list", [])
+    return [re.compile(p) for p in raw]
 
 
 # =============================================================================
@@ -657,30 +785,65 @@ class GitHubReviewAPI(GitReviewAPI):
     # -- Abstract method implementations -------------------------------------
 
     def get_pr_info(self) -> Dict:
-        """Fetch PR information including head SHA."""
+        """Fetch PR information including base and head SHAs."""
         if self._pr_info:
             return self._pr_info
 
         self._pr_info = {
             "head_sha": self._pr.head.sha,
             "head_ref": self._pr.head.ref,
+            "base_sha": self._pr.base.sha,
             "title": self._pr.title,
             "body": self._pr.body or "",
             "base_ref": self._pr.base.ref,
         }
         return self._pr_info
 
-    def get_diff(self, file_path: Optional[str] = None) -> str:
+    def get_diff(
+        self,
+        file_path: Optional[str] = None,
+        ignore_patterns: Optional[List[re.Pattern]] = None,
+        max_files: int = 1000,
+    ) -> str:
         """
         Fetch the unified diff for the PR.
 
-        Uses the raw GitHub API with Accept: application/vnd.github.diff
-        because PyGithub does not expose the full unified diff natively.
+        Tier 1: Uses the raw GitHub API bulk diff endpoint.
+        Tier 2: On HTTP 406 (PR too large), falls back to blobless git clone
+        with Python regex filtering and targeted diffs.
         """
         cache_key = file_path or "_all_"
         if cache_key in self._diff_cache:
             return self._diff_cache[cache_key]
 
+        try:
+            diff = self._fetch_bulk_diff(file_path)
+        except urllib.error.HTTPError as e:
+            if e.code != 406:
+                raise
+            if not self.token:
+                raise RuntimeError(
+                    f"PR diff too large for GitHub API ({self._pr.changed_files} files) "
+                    "and no GITHUB_TOKEN set for git clone fallback."
+                ) from e
+            print(
+                f"Diff too large for GitHub API ({self._pr.changed_files} files), "
+                "falling back to local git clone...",
+                file=sys.stderr,
+            )
+            pr_info = self.get_pr_info()
+            diff = self._blobless_clone_diff(
+                pr_info["base_sha"],
+                pr_info["head_sha"],
+                ignore_patterns or DEFAULT_IGNORE_PATTERNS,
+                max_files,
+            )
+
+        self._diff_cache[cache_key] = diff
+        return diff
+
+    def _fetch_bulk_diff(self, file_path: Optional[str] = None) -> str:
+        """Tier 1: Fetch full diff via GitHub's bulk diff API endpoint."""
         url = f"https://api.github.com/repos/{self.owner_repo}/pulls/{self.pr_number}"
         headers = {
             "Accept": "application/vnd.github.diff",
@@ -691,10 +854,76 @@ class GitHubReviewAPI(GitReviewAPI):
 
         req = urllib.request.Request(url, headers=headers)  # noqa: S310
         with urllib.request.urlopen(req) as response:  # noqa: S310
-            diff = response.read().decode()
+            return response.read().decode()
 
-        self._diff_cache[cache_key] = diff
-        return diff
+    def _blobless_clone_diff(
+        self,
+        base_sha: str,
+        head_sha: str,
+        ignore_patterns: List[re.Pattern],
+        max_files: int,
+    ) -> str:
+        """Tier 2: Blobless git clone with filtered targeted diffs."""
+        for sha in (base_sha, head_sha):
+            if not re.fullmatch(r"[0-9a-f]{40}", sha):
+                raise ValueError(f"Invalid SHA: {sha}")
+
+        auth_url = f"https://x-access-token:{self.token}@github.com/{self.owner_repo}.git"
+        env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+
+        with tempfile.TemporaryDirectory(prefix="git-pr-reader-") as tmpdir:
+            self._git_run(
+                ["git", "clone", "--bare", "--filter=blob:none", auth_url, tmpdir],
+                env=env,
+            )
+
+            self._git_run(
+                ["git", "-C", tmpdir, "fetch", "origin", head_sha],
+                env=env,
+            )
+
+            result = self._git_run(
+                ["git", "-C", tmpdir, "diff", "--name-only", base_sha, head_sha],
+                text=True,
+            )
+            all_files = [f for f in result.stdout.strip().split("\n") if f]
+            self._blobless_total_files = len(all_files)
+
+            filtered = filter_files(all_files, ignore_patterns)[:max_files]
+            self._blobless_filtered_files = len(filtered)
+
+            if not filtered:
+                return ""
+
+            diff_parts: List[str] = []
+            for i in range(0, len(filtered), 50):
+                batch = filtered[i : i + 50]
+                diff_cmd = [
+                    "git",
+                    "-C",
+                    tmpdir,
+                    "diff",
+                    base_sha,
+                    head_sha,
+                    "--",
+                ] + batch
+                result = self._git_run(diff_cmd, text=True, env=env)
+                diff_parts.append(result.stdout)
+
+            return "".join(diff_parts)
+
+    @staticmethod
+    def _git_run(cmd: List[str], **kwargs) -> subprocess.CompletedProcess:
+        """Run a git command, capturing output and redacting tokens from errors."""
+        kwargs.setdefault("capture_output", True)
+        kwargs.setdefault("check", True)
+        try:
+            return subprocess.run(cmd, **kwargs)  # noqa: S603
+        except subprocess.CalledProcessError as e:
+            safe_cmd = [_redact_token(arg) for arg in cmd]
+            raise subprocess.CalledProcessError(
+                e.returncode, safe_cmd, e.stdout, e.stderr
+            ) from None
 
     def get_changed_files(self) -> List[Dict]:
         """Get list of changed files in the PR using PyGithub."""
@@ -879,9 +1108,18 @@ class GitHubReviewAPI(GitReviewAPI):
             diffs: List[Dict] = []
             total_files = 0
             filtered_count = 0
+            max_files = 3000
 
             for f in self._pr.get_files():
                 total_files += 1
+                if total_files > max_files:
+                    print(
+                        f"Warning: capped file iteration at {max_files} "
+                        f"(PR has more files). Use 'diff --save-diff' for "
+                        f"large PRs.",
+                        file=sys.stderr,
+                    )
+                    break
                 filename = f.filename
 
                 if not self._should_include_file(filename):
@@ -906,6 +1144,7 @@ class GitHubReviewAPI(GitReviewAPI):
                     "total_files": total_files,
                     "filtered_files": filtered_count,
                     "included_files": len(diffs),
+                    "truncated": total_files > max_files,
                 },
             }
         except Exception as e:
@@ -1364,8 +1603,14 @@ def cmd_files(args) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
+    max_files = getattr(args, "max_files", None)
+
     try:
         files = api.get_changed_files()
+
+        total_count = len(files)
+        if max_files and len(files) > max_files:
+            files = files[:max_files]
 
         if args.filter:
             import fnmatch
@@ -1375,7 +1620,10 @@ def cmd_files(args) -> int:
         if args.json:
             print(json.dumps(files, indent=2))
         else:
-            print(f"Changed files: {len(files)}")
+            if max_files and total_count > max_files:
+                print(f"Changed files: {len(files)} (capped from {total_count})")
+            else:
+                print(f"Changed files: {len(files)}")
             print()
             for f in files:
                 status_char = {"added": "A", "modified": "M", "deleted": "D"}.get(f["status"], "?")
@@ -1422,6 +1670,33 @@ def cmd_comments(args) -> int:
     return 0
 
 
+def _parse_diff_file_stats(diff_text: str) -> List[Dict]:
+    """Parse unified diff text to extract per-file addition/deletion counts."""
+    files: List[Dict] = []
+    current_path: Optional[str] = None
+    additions = 0
+    deletions = 0
+
+    for line in diff_text.split("\n"):
+        if line.startswith("diff --git"):
+            if current_path is not None:
+                files.append({"path": current_path, "additions": additions, "deletions": deletions})
+            match = re.search(r"b/(.+)$", line)
+            current_path = match.group(1) if match else "unknown"
+            additions = 0
+            deletions = 0
+        elif current_path is not None:
+            if line.startswith("+") and not line.startswith("+++"):
+                additions += 1
+            elif line.startswith("-") and not line.startswith("---"):
+                deletions += 1
+
+    if current_path is not None:
+        files.append({"path": current_path, "additions": additions, "deletions": deletions})
+
+    return files
+
+
 def cmd_diff(args) -> int:
     """Handle 'diff' subcommand -- get PR/MR diff."""
     try:
@@ -1430,9 +1705,49 @@ def cmd_diff(args) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
+    ignore_patterns = DEFAULT_IGNORE_PATTERNS
+    if getattr(args, "ignore_config", None):
+        try:
+            ignore_patterns = load_ignore_config(args.ignore_config)
+        except Exception as e:
+            print(f"Error loading ignore config: {e}", file=sys.stderr)
+            return 1
+
+    max_files = getattr(args, "max_files", 1000) or 1000
+
     try:
-        diff = api.get_diff()
-        print(diff)
+        diff = api.get_diff(ignore_patterns=ignore_patterns, max_files=max_files)
+
+        used_blobless = hasattr(api, "_blobless_total_files")
+
+        if args.save_diff:
+            save_path = args.save_diff
+            os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+
+            manifest: Dict = {
+                "diff_saved_to": save_path if diff else None,
+                "total_lines": diff.count("\n") + (1 if diff and not diff.endswith("\n") else 0),
+                "total_bytes": len(diff.encode("utf-8")),
+                "files": _parse_diff_file_stats(diff),
+            }
+
+            if used_blobless:
+                manifest["diff_mode"] = "blobless_clone"
+                manifest["total_files_in_pr"] = api._blobless_total_files
+                manifest["files_after_filter"] = api._blobless_filtered_files
+                manifest["ignore_patterns_applied"] = True
+                if not diff:
+                    manifest["reason"] = (
+                        "All changed files matched ignore patterns (vendor, test, CI, etc.)"
+                    )
+
+            if diff:
+                with open(save_path, "w") as f:
+                    f.write(diff)
+
+            print(json.dumps(manifest, indent=2))
+        else:
+            print(diff)
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -1862,6 +2177,11 @@ Examples:
         help='Filter files by glob pattern (e.g., "*.adoc")',
     )
     files_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    files_parser.add_argument(
+        "--max-files",
+        type=int,
+        help="Max files to fetch (caps API pagination for large PRs)",
+    )
 
     # -- comments subcommand -------------------------------------------------
     comments_parser = subparsers.add_parser(
@@ -1882,6 +2202,22 @@ Examples:
         help="Get the unified diff for the PR/MR",
     )
     diff_parser.add_argument("pr_url", help="GitHub PR or GitLab MR URL")
+    diff_parser.add_argument(
+        "--save-diff",
+        metavar="PATH",
+        help="Write full diff to file and return file manifest as JSON",
+    )
+    diff_parser.add_argument(
+        "--ignore-config",
+        metavar="PATH",
+        help="YAML file with git_ignore_list patterns (overrides defaults)",
+    )
+    diff_parser.add_argument(
+        "--max-files",
+        type=int,
+        default=1000,
+        help="Max files to include in diff after filtering (default: 1000)",
+    )
 
     # -- post subcommand -----------------------------------------------------
     post_parser = subparsers.add_parser(

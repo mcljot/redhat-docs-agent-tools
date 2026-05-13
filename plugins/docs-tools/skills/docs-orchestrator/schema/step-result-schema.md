@@ -21,6 +21,7 @@ All sidecars share these fields:
 | `step` | string | Step name matching the YAML step list (e.g., `"requirements"`) |
 | `ticket` | string | JIRA ticket ID as provided by the user (preserves original case) |
 | `completed_at` | string | ISO 8601 timestamp of when the step finished |
+| `context_size_bytes` | integer (optional) | Total bytes of the step's output files. Used by the orchestrator for size logging. Consumers can estimate tokens as `context_size_bytes // 3` |
 
 ## Per-step extensions
 

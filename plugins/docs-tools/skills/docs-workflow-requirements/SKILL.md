@@ -104,6 +104,10 @@ Agent:
 
     [If --repo was provided: "REPO_PATH: <repo_path>"]
 
+    [If persisted_sources is present in the discovery JSON:]
+    PERSISTED_SOURCES:
+    <JSON of persisted_sources from discovery output>
+
     Fetch detailed content from each source, perform web search expansion,
     and produce complete documentation requirements with acceptance criteria.
 
@@ -111,6 +115,8 @@ Agent:
 ```
 
 The `REPO_PATH` line is conditional — include it only if `--repo` was passed to this step. When present, the analyst verifies the requirement against the codebase, identifies existing docs, and extracts code references.
+
+The `PERSISTED_SOURCES` block is conditional — include it only if the discovery JSON contains a `persisted_sources` field. When present, the analyst reads full source data from disk (comments, specs, diffs) instead of re-fetching from APIs.
 
 **Important:** All Agent calls MUST be in a single message so they run in parallel.
 
@@ -255,7 +261,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/parse_title.py "<OUTPUT_FILE>"
 
 The script prints `{"title": "..."}` to stdout. If it exits non-zero, report the stderr message as an error.
 
-Use the `title` value from the script's JSON output to write the sidecar to `<OUTPUT_DIR>/step-result.json`:
+Use the `title` value from the script's JSON output to write the sidecar to `<OUTPUT_DIR>/step-result.json`. After writing the sidecar, sum the byte sizes of all output files in `<OUTPUT_DIR>` and add `context_size_bytes` to the sidecar:
 
 ```json
 {
@@ -263,7 +269,8 @@ Use the `title` value from the script's JSON output to write the sidecar to `<OU
   "step": "requirements",
   "ticket": "<TICKET>",
   "completed_at": "<current ISO 8601 timestamp>",
-  "title": "<first heading, max 80 chars>"
+  "title": "<first heading, max 80 chars>",
+  "context_size_bytes": 45230
 }
 ```
 

@@ -431,7 +431,10 @@ Skill: <step.skill>, args: "<constructed args>"
 2. Read the step's `step-result.json` sidecar if it exists in the output folder. If present, store the step-specific fields in `steps.<step-name>.result` in the progress file (see [Step-specific post-processing](#step-specific-post-processing) for which fields to record per step). Log a warning if the sidecar is missing (the step still counts as completed — sidecars are expected but not required for backward compatibility)
 3. Update the step's status to `"completed"` with the output folder path in the progress file
 4. Update the progress file's `updated_at` timestamp
-5. Run [step-specific post-processing](#step-specific-post-processing) for the just-completed step
+5. If `context_size_bytes` is present in the sidecar, log: `"Step '<step>' output: <bytes> bytes (~<bytes // 3> tokens)"`
+6. Do NOT read step output files (requirements.md, plan.md, review.md) into the orchestrator context. Read only step-result.json sidecars. Step skills and their dispatched agents read output files — the orchestrator reads metadata only
+7. After each step completes, assess your own context usage. If you are experiencing degraded recall of earlier steps, losing track of which steps have completed, or uncertain about arguments you parsed at the start — tell the user: "Context is getting large after N steps. All progress is saved. Recommend resuming in a new session: `Resume docs workflow for <TICKET>`." Do not silently degrade — warn early so the user can resume cleanly
+8. Run [step-specific post-processing](#step-specific-post-processing) for the just-completed step
 
 ### Step-specific post-processing
 
@@ -555,6 +558,10 @@ User says: `"Resume docs workflow for PROJ-123"`
 ### After failure
 
 Same as new session. The progress file shows which steps completed and which failed. Walk back to the earliest incomplete dependency and resume from there.
+
+### Context overflow resilience
+
+The progress file is the orchestrator's context overflow safety net. If a workflow session exhausts its context window — due to complex tickets, multiple tech review iterations, or extensive user interaction — the user resumes from a new session with a fresh 200K-token context window. All completed steps are preserved in the progress file. Output folders persist on disk. This is by design: the orchestrator is resilient to session boundaries because every decision it needs (step status, sidecar metadata, CLI flags) is recorded in the progress file, not held in memory.
 
 ## Follow-on work
 

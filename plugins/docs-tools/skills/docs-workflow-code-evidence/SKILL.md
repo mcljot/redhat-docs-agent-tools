@@ -279,9 +279,12 @@ After generating the evidence, read `$EVIDENCE_FILE` to count topics and total s
   "completed_at": "<current ISO 8601 timestamp>",
   "topic_count": 8,
   "snippet_count": 42,
-  "repo_path": "<REPO_PATH>"
+  "repo_path": "<REPO_PATH>",
+  "context_size_bytes": <total_bytes>
 }
 ```
+
+After writing the sidecar, sum the byte sizes of all output files in the step's output folder and add `context_size_bytes` to the sidecar.
 
 - `topic_count`: length of the `topics` array in `evidence.json`
 - `snippet_count`: sum of all `source_results` and `context_results` entries across all topics

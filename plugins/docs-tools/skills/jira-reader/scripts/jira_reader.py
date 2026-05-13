@@ -776,6 +776,170 @@ class JiraReader:
         auto_discovered = {"pull_requests": pull_requests, "google_docs": google_docs}
         return web_links, auto_discovered, errors
 
+    def save_comments_to_disk(self, jira_id, output_path):
+        """
+        Fetch all comments for an issue and persist them to disk.
+
+        Args:
+            jira_id: JIRA issue key.
+            output_path: File path to write comments JSON. If it doesn't
+                end with '.json', '.json' is appended.
+
+        Returns metadata dict (no full comment text) for stdout output.
+        """
+        if not output_path.endswith(".json"):
+            output_path = output_path + ".json"
+        os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+
+        comments = self.jira.comments(jira_id)
+        processed = self.process_comments(comments)
+
+        comments_data = {
+            "total_comments": len(processed),
+            "comments": [
+                {
+                    "index": i,
+                    "author": c["participant"],
+                    "created": c["timestamp"],
+                    "body": c["body"],
+                }
+                for i, c in enumerate(processed)
+            ],
+        }
+
+        total_bytes = len(json.dumps(comments_data))
+        authors = sorted(set(c["participant"] for c in processed))
+        date_range = {}
+        if processed:
+            timestamps = [c["timestamp"] for c in processed]
+            date_range = {"earliest": timestamps[0], "latest": timestamps[-1]}
+
+        comments_data["total_bytes"] = total_bytes
+        comments_data["date_range"] = date_range
+        comments_data["authors"] = authors
+
+        with open(output_path, "w") as f:
+            json.dump(comments_data, f, indent=2)
+
+        return {
+            "comments_saved_to": output_path,
+            "comments_total": len(processed),
+            "comments_total_bytes": total_bytes,
+            "comments_date_range": date_range,
+            "comments_authors": authors,
+        }
+
+    def fetch_attachments(self, issue_key, output_dir, max_total_bytes=5_000_000):
+        """
+        Download attachments for an issue to disk.
+
+        Text-extractable files are downloaded first. Binary files get placeholders.
+        Stops when cumulative bytes exceed max_total_bytes.
+        """
+        os.makedirs(output_dir, exist_ok=True)
+        attachments_dir = os.path.join(output_dir, "attachments")
+        os.makedirs(attachments_dir, exist_ok=True)
+
+        try:
+            issue = self.jira.issue(issue_key, fields="attachment")
+        except Exception as e:
+            return {"error": f"Failed to fetch attachments for {issue_key}: {e}"}
+
+        raw_attachments = issue.fields.attachment or []
+
+        text_extensions = {".txt", ".md", ".csv", ".yaml", ".yml", ".json", ".adoc", ".xml"}
+        text_items = []
+        binary_items = []
+
+        for att in raw_attachments:
+            ext = os.path.splitext(att.filename)[1].lower()
+            entry = {
+                "filename": att.filename,
+                "mime_type": getattr(att, "mimeType", "application/octet-stream"),
+                "size_bytes": int(att.size) if hasattr(att, "size") and att.size else 0,
+                "jira_id": att.id,
+            }
+            if ext in text_extensions:
+                text_items.append(entry)
+            else:
+                binary_items.append(entry)
+
+        sorted_items = text_items + binary_items
+        downloaded = []
+        total_downloaded = 0
+        skipped = []
+
+        for item in sorted_items:
+            if total_downloaded + item["size_bytes"] > max_total_bytes:
+                skipped.append(item["filename"])
+                continue
+
+            safe_name = os.path.basename(item["filename"])
+            ext = os.path.splitext(safe_name)[1].lower()
+            output_path = os.path.join(attachments_dir, safe_name)
+
+            if ext in text_extensions:
+                try:
+                    content = self.jira.attachment(item["jira_id"]).get()
+                    if isinstance(content, bytes):
+                        content = content.decode("utf-8", errors="replace")
+                    with open(output_path, "w") as f:
+                        f.write(content)
+                    token_estimate = len(content) // 3
+                    downloaded.append(
+                        {
+                            "filename": item["filename"],
+                            "mime_type": item["mime_type"],
+                            "size_bytes": item["size_bytes"],
+                            "extracted": True,
+                            "extracted_path": output_path,
+                            "token_estimate": token_estimate,
+                        }
+                    )
+                    total_downloaded += item["size_bytes"]
+                except Exception:
+                    placeholder_path = output_path + ".txt"
+                    with open(placeholder_path, "w") as f:
+                        f.write(
+                            f"[{ext} attachment: {item['filename']}, "
+                            f"{item['size_bytes']} bytes. Download failed.]"
+                        )
+                    downloaded.append(
+                        {
+                            "filename": item["filename"],
+                            "mime_type": item["mime_type"],
+                            "size_bytes": item["size_bytes"],
+                            "extracted": False,
+                            "extracted_path": placeholder_path,
+                            "token_estimate": 0,
+                        }
+                    )
+            else:
+                placeholder_path = output_path + ".txt"
+                with open(placeholder_path, "w") as f:
+                    f.write(
+                        f"[{ext.lstrip('.').upper() or 'binary'} attachment: "
+                        f"{item['filename']}, {item['size_bytes']} bytes. "
+                        f"Content not extracted.]"
+                    )
+                downloaded.append(
+                    {
+                        "filename": item["filename"],
+                        "mime_type": item["mime_type"],
+                        "size_bytes": item["size_bytes"],
+                        "extracted": False,
+                        "extracted_path": placeholder_path,
+                        "token_estimate": 0,
+                    }
+                )
+
+        return {
+            "attachments": downloaded,
+            "total_bytes_downloaded": total_downloaded,
+            "budget_bytes_remaining": max(0, max_total_bytes - total_downloaded),
+            "skipped": skipped,
+        }
+
     def get_ticket_graph(self, ticket_key, max_children=25, max_siblings=25, max_links=15):
         """
         Traverse the JIRA ticket graph: ancestors, children, siblings, issue links, web links.
@@ -845,6 +1009,77 @@ class JiraReader:
         }
 
 
+def trim_graph(graph, max_tokens):
+    """
+    Trim a ticket graph to fit within a token budget using depth-decay scoring.
+
+    Nodes closer to the primary ticket score higher. Within the same depth,
+    children/parent score higher than siblings, which score higher than links.
+    """
+    base_scores = {"parent": 1.0, "children": 1.0, "siblings": 0.6, "issue_links": 0.5}
+    decay = 0.8
+
+    scored_nodes = []
+
+    for i, ancestor in enumerate(graph.get("ancestors", [])):
+        depth = i + 1
+        score = base_scores["parent"] * (decay**depth)
+        scored_nodes.append(("ancestors", ancestor, score))
+
+    for child in graph.get("children", {}).get("issues", []):
+        score = base_scores["children"] * decay
+        scored_nodes.append(("children", child, score))
+
+    for sibling in graph.get("siblings", {}).get("issues", []):
+        score = base_scores["siblings"] * (decay**2)
+        scored_nodes.append(("siblings", sibling, score))
+
+    for link in graph.get("issue_links", {}).get("links", []):
+        score = base_scores["issue_links"] * decay
+        scored_nodes.append(("issue_links", link, score))
+
+    scored_nodes.sort(key=lambda x: x[2], reverse=True)
+
+    total_nodes = len(scored_nodes)
+    kept = {"ancestors": [], "children": [], "siblings": [], "issue_links": []}
+    used_tokens = len(json.dumps({"ticket": graph["ticket"]})) // 3
+
+    for category, node, _score in scored_nodes:
+        node_tokens = len(json.dumps(node)) // 3
+        if used_tokens + node_tokens > max_tokens:
+            continue
+        used_tokens += node_tokens
+        kept[category].append(node)
+
+    trimmed = dict(graph)
+    trimmed["ancestors"] = kept["ancestors"]
+    trimmed["parent"] = kept["ancestors"][0] if kept["ancestors"] else None
+    trimmed["children"] = {
+        "total": graph.get("children", {}).get("total", 0),
+        "showing": len(kept["children"]),
+        "skipped": max(0, graph.get("children", {}).get("total", 0) - len(kept["children"])),
+        "issues": kept["children"],
+    }
+    trimmed["siblings"] = {
+        "total": graph.get("siblings", {}).get("total", 0),
+        "showing": len(kept["siblings"]),
+        "skipped": max(0, graph.get("siblings", {}).get("total", 0) - len(kept["siblings"])),
+        "issues": kept["siblings"],
+    }
+    trimmed["issue_links"] = {
+        "total": graph.get("issue_links", {}).get("total", 0),
+        "showing": len(kept["issue_links"]),
+        "skipped": max(0, graph.get("issue_links", {}).get("total", 0) - len(kept["issue_links"])),
+        "links": kept["issue_links"],
+    }
+    nodes_included = sum(len(v) for v in kept.values())
+    trimmed["graph_trimmed"] = nodes_included < total_nodes
+    trimmed["nodes_included"] = nodes_included
+    trimmed["nodes_total"] = total_nodes
+
+    return trimmed
+
+
 def main():
     """Main entry point for the script."""
     parser = argparse.ArgumentParser(
@@ -901,15 +1136,58 @@ def main():
         default=15,
         help="Maximum issue links to extract in graph mode (default: 15)",
     )
+    parser.add_argument(
+        "--max-graph-tokens",
+        type=int,
+        default=None,
+        help="Token budget for graph output. Trims lowest-scored nodes using depth-decay scoring.",
+    )
+    parser.add_argument(
+        "--save-comments",
+        metavar="PATH",
+        help="Save full comments to <PATH>/comments.json and return metadata only in stdout.",
+    )
+    parser.add_argument(
+        "--attachments",
+        metavar="ISSUE_KEY",
+        help="Download attachments for an issue to --output-dir.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        metavar="PATH",
+        help="Output directory for attachments (required with --attachments).",
+    )
+    parser.add_argument(
+        "--max-bytes",
+        type=int,
+        default=5_000_000,
+        help="Maximum total bytes to download for attachments (default: 5000000).",
+    )
 
     args = parser.parse_args()
 
     # Validate arguments
-    if not args.issue and not args.jql and not args.graph:
-        parser.error("Must specify --issue, --jql, or --graph")
+    if not args.issue and not args.jql and not args.graph and not args.attachments:
+        parser.error("Must specify --issue, --jql, --graph, or --attachments")
+
+    if args.attachments and not args.output_dir:
+        parser.error("--output-dir is required with --attachments")
+
+    if args.save_comments:
+        args.include_comments = True
 
     try:
         reader = JiraReader()
+
+        # Handle attachments download
+        if args.attachments:
+            result = reader.fetch_attachments(
+                args.attachments, args.output_dir, max_total_bytes=args.max_bytes
+            )
+            print(json.dumps(result, indent=2))
+            if result.get("error"):
+                sys.exit(1)
+            return
 
         # Handle graph traversal
         if args.graph:
@@ -919,9 +1197,12 @@ def main():
                 max_siblings=args.max_siblings,
                 max_links=args.max_links,
             )
-            print(json.dumps(result, indent=2))
             if result.get("error"):
+                print(json.dumps(result, indent=2))
                 sys.exit(1)
+            if args.max_graph_tokens:
+                result = trim_graph(result, args.max_graph_tokens)
+            print(json.dumps(result, indent=2))
             return
 
         results = []
@@ -936,7 +1217,6 @@ def main():
                 sys.exit(1)
 
             if args.fetch_details:
-                # search_results contains issue keys, fetch details for each
                 for issue_key in search_results:
                     issue_data = reader.get_issue_data(
                         issue_key,
@@ -945,7 +1225,6 @@ def main():
                     )
                     results.append(issue_data)
             else:
-                # search_results already contains summaries, use directly
                 results = search_results
 
         # Handle individual issue requests
@@ -954,6 +1233,12 @@ def main():
                 issue_data = reader.get_issue_data(
                     issue_key, include_comments=args.include_comments, git_link_types=args.git_links
                 )
+
+                if args.save_comments and args.include_comments:
+                    comment_meta = reader.save_comments_to_disk(issue_key, args.save_comments)
+                    issue_data.pop("comments", None)
+                    issue_data["comments_metadata"] = comment_meta
+
                 results.append(issue_data)
 
         # Output results as JSON
