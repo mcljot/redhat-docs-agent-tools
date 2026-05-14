@@ -157,10 +157,7 @@ fi
 ### For --local mode
 
 ```bash
-git diff --name-only "$BASE_BRANCH"...HEAD > /tmp/docs-review-all-files.txt
-git diff --name-only HEAD >> /tmp/docs-review-all-files.txt
-git diff --name-only --cached >> /tmp/docs-review-all-files.txt
-sort -u /tmp/docs-review-all-files.txt | grep -E '\.(adoc|md)$' > /tmp/docs-review-doc-files.txt || true
+git diff --name-only "$BASE_BRANCH"...HEAD | sort -u | grep -E '\.(adoc|md)$' > /tmp/docs-review-doc-files.txt || true
 DOC_FILES=$(wc -l < /tmp/docs-review-doc-files.txt)
 ```
 
