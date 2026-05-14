@@ -384,7 +384,10 @@ def _resolve_discovered_repos(discovered, base_path, dry_run=False):
     if not resolved_repos:
         return {
             "status": "error" if errors else "no_source",
-            "message": f"Could not clone any discovered repos. Errors: {'; '.join(errors)}" if errors else None,
+            "message": (
+                f"Could not clone any discovered repos."
+                f" Errors: {'; '.join(errors)}"
+            ) if errors else None,
         }
 
     primary = resolved_repos[0]
@@ -779,13 +782,16 @@ def _resolve_explicit_repos(repo_values, pr_urls, base_path, dry_run=False):
                 if clone_dir.exists():
                     if not _verify_existing_clone(clone_dir, ref, expected_repo_url=repo_value):
                         errors.append(
-                            f"Existing clone at {clone_dir} is invalid or points to a different repo."
+                            f"Existing clone at {clone_dir} is invalid"
+                            " or points to a different repo."
                         )
                         continue
                 else:
                     if not _clone_repo(repo_value, clone_dir, ref):
                         errors.append(
-                            f"Cannot clone {repo_value}. For private repos, ensure gh is authenticated."
+                            f"Cannot clone {repo_value}."
+                            " For private repos, ensure gh"
+                            " is authenticated."
                         )
                         continue
 
@@ -816,7 +822,8 @@ def _resolve_explicit_repos(repo_values, pr_urls, base_path, dry_run=False):
         }
 
     primary = resolved_repos[0]
-    _write_source_yaml(base_path, primary.get("repo_url") or primary["repo_path"], primary["ref"], dry_run=dry_run)
+    repo = primary.get("repo_url") or primary["repo_path"]
+    _write_source_yaml(base_path, repo, primary["ref"], dry_run=dry_run)
 
     result = _success(
         primary["repo_path"],

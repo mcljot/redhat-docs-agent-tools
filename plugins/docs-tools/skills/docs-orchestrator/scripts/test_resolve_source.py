@@ -7,10 +7,7 @@ correctly through caller chains.
 
 import json
 import subprocess
-from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 
 def test_resolve_pr_info_merged_returns_none_ref():

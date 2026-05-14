@@ -844,7 +844,13 @@ class JiraReader:
             brief_path = comments_json_path.replace("comments.json", "comments-brief.md")
             with open(brief_path, "w") as f:
                 f.write("# Comments Brief\n\nNo comments found.\n")
-            return {"brief_file": brief_path, "brief_bytes": 0, "recent_count": 0, "decision_count": 0, "omitted_count": 0}
+            return {
+                "brief_file": brief_path,
+                "brief_bytes": 0,
+                "recent_count": 0,
+                "decision_count": 0,
+                "omitted_count": 0,
+            }
 
         cutoff = datetime.now() - timedelta(days=recent_days)
         cutoff_str = cutoff.strftime("%Y-%m-%d %H:%M")
@@ -869,7 +875,10 @@ class JiraReader:
             "# Comments Brief",
             "",
             f"Total comments: {total} | Showing: {shown} | Omitted: {older_omitted}",
-            f"Date range: {date_range.get('earliest', 'N/A')} to {date_range.get('latest', 'N/A')}",
+            (
+                f"Date range: {date_range.get('earliest', 'N/A')}"
+                f" to {date_range.get('latest', 'N/A')}"
+            ),
         ]
 
         if recent:
@@ -905,8 +914,15 @@ class JiraReader:
             lines = [
                 "# Comments Brief",
                 "",
-                f"Total comments: {total} | Showing: {len(recent) + len(older_decision)} | Omitted: {older_omitted}",
-                f"Date range: {date_range.get('earliest', 'N/A')} to {date_range.get('latest', 'N/A')}",
+                (
+                    f"Total comments: {total}"
+                    f" | Showing: {len(recent) + len(older_decision)}"
+                    f" | Omitted: {older_omitted}"
+                ),
+                (
+                    f"Date range: {date_range.get('earliest', 'N/A')}"
+                    f" to {date_range.get('latest', 'N/A')}"
+                ),
             ]
             if recent:
                 lines.append("")
@@ -926,7 +942,11 @@ class JiraReader:
                     lines.append(c["body"])
             lines.append("")
             lines.append("---")
-            lines.append(f"{older_omitted} older comments omitted (no decision keywords found or truncated to fit 30 KB limit).")
+            lines.append(
+                f"{older_omitted} older comments omitted"
+                " (no decision keywords found or truncated"
+                " to fit 30 KB limit)."
+            )
             lines.append(f"Full comments: {os.path.basename(comments_json_path)}")
             content = "\n".join(lines) + "\n"
 
@@ -1359,7 +1379,9 @@ def main():
                 if args.save_comments and args.include_comments:
                     comment_meta = reader.save_comments_to_disk(issue_key, args.save_comments)
                     if args.brief:
-                        brief_meta = reader.generate_comments_brief(comment_meta["comments_saved_to"])
+                        brief_meta = reader.generate_comments_brief(
+                            comment_meta["comments_saved_to"]
+                        )
                         comment_meta.update(brief_meta)
                     issue_data.pop("comments", None)
                     issue_data["comments_metadata"] = comment_meta

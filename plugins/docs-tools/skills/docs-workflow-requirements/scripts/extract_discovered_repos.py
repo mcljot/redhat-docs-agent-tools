@@ -6,7 +6,9 @@ extracts all repo and PR URLs from git_links and auto_discovered_urls,
 groups by normalized repo URL, and writes discovered_repos.json.
 
 Usage:
-    python3 jira_reader.py --graph PROJ-123 | python3 extract_discovered_repos.py --output-dir .agent_workspace/proj-123/requirements
+    python3 jira_reader.py --graph PROJ-123 | \
+        python3 extract_discovered_repos.py \
+        --output-dir .agent_workspace/proj-123/requirements
     cat graph-data.json | python3 extract_discovered_repos.py --output-dir /path/to/output
 """
 
