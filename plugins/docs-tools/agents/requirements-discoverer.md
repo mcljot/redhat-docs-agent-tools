@@ -60,10 +60,10 @@ Handle errors gracefully: the script exits 0 if the primary ticket was fetched, 
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/jira-reader/scripts/jira_reader.py \
-  --issue <TICKET> --include-comments --save-comments <OUTPUT_DIR>
+  --issue <TICKET> --include-comments --save-comments <OUTPUT_DIR> --brief
 ```
 
-The full comments are written to `<OUTPUT_DIR>/comments.json`. Stdout returns metadata only (comment count, authors, date range). Record this metadata for the `persisted_sources` output.
+The full comments are written to `<OUTPUT_DIR>/comments.json` and a brief digest to `<OUTPUT_DIR>/comments-brief.md`. Stdout returns metadata only (comment count, authors, date range, brief file path). Record this metadata for the `persisted_sources` output.
 
 ### 2b. Fetch attachments to disk
 
@@ -91,10 +91,10 @@ Record: PR title, description summary, changed file paths. The full diff is save
 For each Google Doc URL discovered, convert to markdown and generate a manifest:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/docs-convert-gdoc-md/scripts/gdoc2md.py --manifest "<google-doc-url>" <OUTPUT_DIR>/spec-<id>.md
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/docs-convert-gdoc-md/scripts/gdoc2md.py --manifest --split-sections "<google-doc-url>" <OUTPUT_DIR>/spec-<id>.md
 ```
 
-The full document is written to `<OUTPUT_DIR>/spec-<id>.md` and the manifest to `<OUTPUT_DIR>/spec-<id>.md.manifest.md`. Record the file path, manifest path, and character count for `persisted_sources`.
+The full document is written to `<OUTPUT_DIR>/spec-<id>.md`, per-section files to `<OUTPUT_DIR>/spec-<id>-section-NN.md`, and the manifest to `<OUTPUT_DIR>/spec-<id>.md.manifest.md`. Record the file path, manifest path, section file paths, and character count for `persisted_sources`.
 
 For other spec links (Confluence, etc.), note them as sources but do not deep-read.
 
@@ -175,11 +175,20 @@ Print exactly one JSON object to the file path provided in your prompt. Nothing 
   },
   "persisted_sources": {
     "comments_file": "<OUTPUT_DIR>/comments.json",
+    "comments_brief_file": "<OUTPUT_DIR>/comments-brief.md",
     "comments_total": 80,
     "attachment_dir": "<OUTPUT_DIR>/attachments/",
     "attachment_count": 3,
     "spec_files": [
-      {"file": "<OUTPUT_DIR>/spec-abc123.md", "manifest": "<OUTPUT_DIR>/spec-abc123.md.manifest.md", "chars": 184000}
+      {
+        "file": "<OUTPUT_DIR>/spec-abc123.md",
+        "manifest": "<OUTPUT_DIR>/spec-abc123.md.manifest.md",
+        "section_files": [
+          "<OUTPUT_DIR>/spec-abc123-section-01.md",
+          "<OUTPUT_DIR>/spec-abc123-section-02.md"
+        ],
+        "chars": 184000
+      }
     ],
     "diff_files": [
       {"file": "<OUTPUT_DIR>/pr-42.diff", "lines": 3200}

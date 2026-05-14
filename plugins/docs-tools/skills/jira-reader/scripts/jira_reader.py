@@ -21,7 +21,7 @@ import json
 import os
 import re
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import urllib3
 from ratelimit import limits, sleep_and_retry
@@ -829,6 +829,120 @@ class JiraReader:
             "comments_authors": authors,
         }
 
+    _DECISION_KEYWORDS = re.compile(
+        r"\b(?:decided|agreed|requirement|must|blocked|changed|approved|rejected|architecture|design)\b",
+        re.IGNORECASE,
+    )
+
+    def generate_comments_brief(self, comments_json_path, max_bytes=30720, recent_days=30):
+        """Produce a comments-brief.md digest from a previously saved comments.json."""
+        with open(comments_json_path) as f:
+            data = json.load(f)
+
+        comments = data.get("comments", [])
+        if not comments:
+            brief_path = comments_json_path.replace("comments.json", "comments-brief.md")
+            with open(brief_path, "w") as f:
+                f.write("# Comments Brief\n\nNo comments found.\n")
+            return {"brief_file": brief_path, "brief_bytes": 0, "recent_count": 0, "decision_count": 0, "omitted_count": 0}
+
+        cutoff = datetime.now() - timedelta(days=recent_days)
+        cutoff_str = cutoff.strftime("%Y-%m-%d %H:%M")
+
+        recent = []
+        older_decision = []
+        older_omitted = 0
+
+        for c in comments:
+            if c["created"] >= cutoff_str:
+                recent.append(c)
+            elif self._DECISION_KEYWORDS.search(c["body"]):
+                older_decision.append(c)
+            else:
+                older_omitted += 1
+
+        date_range = data.get("date_range", {})
+        total = len(comments)
+        shown = len(recent) + len(older_decision)
+
+        lines = [
+            "# Comments Brief",
+            "",
+            f"Total comments: {total} | Showing: {shown} | Omitted: {older_omitted}",
+            f"Date range: {date_range.get('earliest', 'N/A')} to {date_range.get('latest', 'N/A')}",
+        ]
+
+        if recent:
+            lines.append("")
+            lines.append(f"## Recent comments (last {recent_days} days)")
+            for c in recent:
+                lines.append("")
+                lines.append(f"### [{c['author']}] — {c['created']}")
+                lines.append("")
+                lines.append(c["body"])
+
+        if older_decision:
+            lines.append("")
+            lines.append("## Decision-relevant older comments")
+            for c in older_decision:
+                lines.append("")
+                lines.append(f"### [{c['author']}] — {c['created']}")
+                lines.append("")
+                lines.append(c["body"])
+
+        if older_omitted:
+            lines.append("")
+            lines.append("---")
+            lines.append(f"{older_omitted} older comments omitted (no decision keywords found).")
+            lines.append(f"Full comments: {os.path.basename(comments_json_path)}")
+
+        content = "\n".join(lines) + "\n"
+
+        # Truncate oldest decision comments if over budget
+        while len(content.encode("utf-8")) > max_bytes and older_decision:
+            older_decision.pop(0)
+            older_omitted += 1
+            lines = [
+                "# Comments Brief",
+                "",
+                f"Total comments: {total} | Showing: {len(recent) + len(older_decision)} | Omitted: {older_omitted}",
+                f"Date range: {date_range.get('earliest', 'N/A')} to {date_range.get('latest', 'N/A')}",
+            ]
+            if recent:
+                lines.append("")
+                lines.append(f"## Recent comments (last {recent_days} days)")
+                for c in recent:
+                    lines.append("")
+                    lines.append(f"### [{c['author']}] — {c['created']}")
+                    lines.append("")
+                    lines.append(c["body"])
+            if older_decision:
+                lines.append("")
+                lines.append("## Decision-relevant older comments")
+                for c in older_decision:
+                    lines.append("")
+                    lines.append(f"### [{c['author']}] — {c['created']}")
+                    lines.append("")
+                    lines.append(c["body"])
+            lines.append("")
+            lines.append("---")
+            lines.append(f"{older_omitted} older comments omitted (no decision keywords found or truncated to fit 30 KB limit).")
+            lines.append(f"Full comments: {os.path.basename(comments_json_path)}")
+            content = "\n".join(lines) + "\n"
+
+        brief_path = comments_json_path.replace("comments.json", "comments-brief.md")
+        os.makedirs(os.path.dirname(brief_path) or ".", exist_ok=True)
+        with open(brief_path, "w") as f:
+            f.write(content)
+
+        return {
+            "brief_file": brief_path,
+            "brief_bytes": len(content.encode("utf-8")),
+            "recent_count": len(recent),
+            "decision_count": len(older_decision),
+            "omitted_count": older_omitted,
+        }
+
     def fetch_attachments(self, issue_key, output_dir, max_total_bytes=5_000_000):
         """
         Download attachments for an issue to disk.
@@ -1148,6 +1262,11 @@ def main():
         help="Save full comments to <PATH>/comments.json and return metadata only in stdout.",
     )
     parser.add_argument(
+        "--brief",
+        action="store_true",
+        help="With --save-comments, also produce a comments-brief.md digest (under 30 KB).",
+    )
+    parser.add_argument(
         "--attachments",
         metavar="ISSUE_KEY",
         help="Download attachments for an issue to --output-dir.",
@@ -1172,6 +1291,9 @@ def main():
 
     if args.attachments and not args.output_dir:
         parser.error("--output-dir is required with --attachments")
+
+    if args.brief and not args.save_comments:
+        parser.error("--brief requires --save-comments")
 
     if args.save_comments:
         args.include_comments = True
@@ -1236,6 +1358,9 @@ def main():
 
                 if args.save_comments and args.include_comments:
                     comment_meta = reader.save_comments_to_disk(issue_key, args.save_comments)
+                    if args.brief:
+                        brief_meta = reader.generate_comments_brief(comment_meta["comments_saved_to"])
+                        comment_meta.update(brief_meta)
                     issue_data.pop("comments", None)
                     issue_data["comments_metadata"] = comment_meta
 

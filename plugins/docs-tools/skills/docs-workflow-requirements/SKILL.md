@@ -116,7 +116,7 @@ Agent:
 
 The `REPO_PATH` line is conditional — include it only if `--repo` was passed to this step. When present, the analyst verifies the requirement against the codebase, identifies existing docs, and extracts code references.
 
-The `PERSISTED_SOURCES` block is conditional — include it only if the discovery JSON contains a `persisted_sources` field. When present, the analyst reads full source data from disk (comments, specs, diffs) instead of re-fetching from APIs.
+The `PERSISTED_SOURCES` block is conditional — include it only if the discovery JSON contains a `persisted_sources` field. When present, the analyst reads full source data from disk (comments, specs, diffs) instead of re-fetching from APIs. The `persisted_sources` format may include `section_files` arrays (for split Google Docs specs) and `comments_brief_file` (for comment digests). The analyst handles both the new and legacy formats.
 
 **Important:** All Agent calls MUST be in a single message so they run in parallel.
 
