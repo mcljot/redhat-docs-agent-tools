@@ -218,9 +218,7 @@ def generate_comments_brief(comments_json_path, max_bytes=30720, recent_days=30)
         if older_omitted:
             lines.append("")
             lines.append("---")
-            lines.append(
-                f"{older_omitted} older comments omitted (no decision keywords found)."
-            )
+            lines.append(f"{older_omitted} older comments omitted (no decision keywords found).")
             lines.append(f"Full comments: {os.path.basename(comments_json_path)}")
         return "\n".join(lines) + "\n"
 

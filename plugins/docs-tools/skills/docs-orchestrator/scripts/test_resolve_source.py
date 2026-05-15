@@ -29,9 +29,7 @@ def test_resolve_pr_info_open_returns_branch():
     from resolve_source import _resolve_pr_info
 
     pr_url = "https://github.com/opendatahub-io/kubeflow/pull/800"
-    fake_response = json.dumps(
-        {"headRefName": "feat/new-feature", "state": "OPEN"}
-    )
+    fake_response = json.dumps({"headRefName": "feat/new-feature", "state": "OPEN"})
 
     with patch("resolve_source._run_gh", return_value=fake_response):
         repo_url, ref = _resolve_pr_info(pr_url)
@@ -44,9 +42,7 @@ def test_resolve_pr_info_closed_returns_branch():
     from resolve_source import _resolve_pr_info
 
     pr_url = "https://github.com/org/repo/pull/99"
-    fake_response = json.dumps(
-        {"headRefName": "fix/abandoned", "state": "CLOSED"}
-    )
+    fake_response = json.dumps({"headRefName": "fix/abandoned", "state": "CLOSED"})
 
     with patch("resolve_source._run_gh", return_value=fake_response):
         repo_url, ref = _resolve_pr_info(pr_url)
@@ -59,9 +55,7 @@ def test_resolve_mr_info_merged_returns_none_ref():
     from resolve_source import _resolve_mr_info
 
     mr_url = "https://gitlab.example.com/group/project/-/merge_requests/42"
-    fake_response = json.dumps(
-        {"source_branch": "feat/old-branch", "state": "merged"}
-    )
+    fake_response = json.dumps({"source_branch": "feat/old-branch", "state": "merged"})
 
     with patch("resolve_source._run_glab", return_value=fake_response):
         repo_url, ref = _resolve_mr_info(mr_url)
@@ -74,9 +68,7 @@ def test_resolve_mr_info_opened_returns_branch():
     from resolve_source import _resolve_mr_info
 
     mr_url = "https://gitlab.example.com/group/project/-/merge_requests/43"
-    fake_response = json.dumps(
-        {"source_branch": "feat/active-branch", "state": "opened"}
-    )
+    fake_response = json.dumps({"source_branch": "feat/active-branch", "state": "opened"})
 
     with patch("resolve_source._run_glab", return_value=fake_response):
         repo_url, ref = _resolve_mr_info(mr_url)
@@ -109,9 +101,7 @@ def test_resolve_discovered_repos_merged_pr_clones_default_branch(tmp_path):
         }
     ]
 
-    merged_response = json.dumps(
-        {"headRefName": "feat/deleted-branch", "state": "MERGED"}
-    )
+    merged_response = json.dumps({"headRefName": "feat/deleted-branch", "state": "MERGED"})
 
     with (
         patch("resolve_source._run_gh", return_value=merged_response),
@@ -144,9 +134,7 @@ def test_resolve_discovered_repos_open_pr_clones_branch(tmp_path):
         }
     ]
 
-    open_response = json.dumps(
-        {"headRefName": "feat/active-work", "state": "OPEN"}
-    )
+    open_response = json.dumps({"headRefName": "feat/active-work", "state": "OPEN"})
 
     with (
         patch("resolve_source._run_gh", return_value=open_response),
@@ -172,9 +160,7 @@ def test_resolve_multiple_prs_merged_clones_default_branch(tmp_path):
     from resolve_source import _resolve_multiple_prs
 
     pr_urls = ["https://github.com/org/repo/pull/42"]
-    merged_response = json.dumps(
-        {"headRefName": "feat/old-branch", "state": "MERGED"}
-    )
+    merged_response = json.dumps({"headRefName": "feat/old-branch", "state": "MERGED"})
 
     with (
         patch("resolve_source._run_gh", return_value=merged_response),

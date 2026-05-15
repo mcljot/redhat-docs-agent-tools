@@ -66,8 +66,7 @@ def parse_and_validate_args():
         "--split-sections",
         action="store_true",
         help=(
-            "Split output into per-section files under 40 KB each"
-            " (requires --manifest, Docs only)"
+            "Split output into per-section files under 40 KB each (requires --manifest, Docs only)"
         ),
     )
     args = parser.parse_args()
@@ -95,8 +94,13 @@ def parse_and_validate_args():
         )
 
     return (
-        file_id, output, mode, args.comments,
-        args.include_resolved, args.manifest, args.split_sections,
+        file_id,
+        output,
+        mode,
+        args.comments,
+        args.include_resolved,
+        args.manifest,
+        args.split_sections,
     )
 
 
@@ -683,9 +687,7 @@ def split_into_section_files(
             filepath = parent / filename
             filepath.write_text(section_text + "\n", encoding="utf-8")
             heading = (
-                section_lines[0].lstrip("#").strip()
-                if HEADING_RE.match(section_lines[0])
-                else stem
+                section_lines[0].lstrip("#").strip() if HEADING_RE.match(section_lines[0]) else stem
             )
             results.append(
                 {

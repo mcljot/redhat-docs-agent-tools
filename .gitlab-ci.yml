@@ -31,21 +31,22 @@ validate-scripts:
 # ---------------------------------------------------------------------------
 check-version-bump:
   stage: validate
-  image: alpine:latest
+  image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+  variables:
+    GIT_DEPTH: 0
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   before_script:
-    - apk add --no-cache git jq bash
+    - microdnf install -y --nodocs git jq bash && microdnf clean all
   script:
     - |
       set -e
-      git fetch origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
-      base=$(git merge-base "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" HEAD)
+      base="$CI_MERGE_REQUEST_DIFF_BASE_SHA"
 
       changed_plugins=$(git diff --name-only "$base" HEAD -- 'plugins/' | \
         grep -v 'README.md$' | \
         grep -v 'SKILL.md$' | \
-        cut -d'/' -f2 | sort -u)
+        cut -d'/' -f2 | sort -u || true)
 
       if [ -z "$changed_plugins" ]; then
         echo "No plugin code changes detected"

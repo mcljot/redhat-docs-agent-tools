@@ -384,10 +384,9 @@ def _resolve_discovered_repos(discovered, base_path, dry_run=False):
     if not resolved_repos:
         return {
             "status": "error" if errors else "no_source",
-            "message": (
-                f"Could not clone any discovered repos."
-                f" Errors: {'; '.join(errors)}"
-            ) if errors else None,
+            "message": (f"Could not clone any discovered repos. Errors: {'; '.join(errors)}")
+            if errors
+            else None,
         }
 
     primary = resolved_repos[0]
