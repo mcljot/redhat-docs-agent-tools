@@ -134,7 +134,7 @@ For each requirement, use:
 
 ```
 Agent:
-  subagent_type: evidence-classifier
+  subagent_type: docs-tools:evidence-classifier
   model: haiku
   description: "Classify REQ-NNN: <title truncated to 40 chars>"
   prompt: |

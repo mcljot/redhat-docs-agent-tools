@@ -170,7 +170,7 @@ Build a `CODE_EVIDENCE_SUMMARY` text block containing:
 **You MUST use the Agent tool** to invoke the `technical-reviewer` subagent. Do NOT read the agent's markdown file or attempt to perform the agent's work yourself — the agent has a specialized system prompt and must run as an isolated subagent.
 
 **Agent tool parameters:**
-- `subagent_type`: `technical-reviewer`
+- `subagent_type`: `docs-tools:technical-reviewer`
 - `description`: `Technical review of documentation for <TICKET>`
 
 **Prompt** (pass this as the `prompt` parameter to the Agent tool):

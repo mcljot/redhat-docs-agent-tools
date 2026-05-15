@@ -51,7 +51,7 @@ Dispatch one `requirements-discoverer` agent to enumerate requirements from all 
 
 ```
 Agent:
-  subagent_type: requirements-discoverer
+  subagent_type: docs-tools:requirements-discoverer
   description: "Discover requirements for <TICKET>"
   prompt: |
     Discover documentation requirements for JIRA ticket <TICKET>.
@@ -102,7 +102,7 @@ For each requirement, use:
 
 ```
 Agent:
-  subagent_type: requirements-analyst
+  subagent_type: docs-tools:requirements-analyst
   description: "Analyze REQ-NNN: <title truncated to 40 chars>"
   prompt: |
     Perform deep analysis of this single documentation requirement.

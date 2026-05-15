@@ -39,6 +39,10 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/jira-reader/scripts/jira_reader.py --issue 
 
 Record the ticket's summary, description, priority, fix version, and labels.
 
+### 1a. Extract PR/repo URLs from description text
+
+Scan the description for GitHub PR URLs (`github.com/.../pull/NNN`), GitLab MR URLs (`gitlab.../merge_requests/NNN`), and bare repo URLs (`github.com/org/repo`). Add any found URLs to the PR/repo list — these are treated the same as manually-provided or graph-discovered URLs. Include them in `sources_consulted.pull_requests` in the output.
+
 ### 2. Traverse the JIRA ticket graph
 
 ```bash

@@ -33,7 +33,8 @@ def extract_repos_from_graph(graph_data):
 
     Accepts either:
     - A single ticket's graph output (from jira_reader.py --graph): has
-      "issue_key", "git_links", "auto_discovered_urls", "children", etc.
+      "ticket" or "issue_key", "git_links", "auto_discovered_urls",
+      "children", etc.
     - A dict of tickets keyed by ticket key (from jira_graph_walker.py):
       each value has "git_links", "auto_discovered_urls"
 
@@ -41,16 +42,17 @@ def extract_repos_from_graph(graph_data):
     """
     tickets = {}
 
-    if "issue_key" in graph_data:
-        tickets[graph_data["issue_key"]] = graph_data
+    if "issue_key" in graph_data or "ticket" in graph_data:
+        key = graph_data.get("issue_key") or graph_data.get("ticket")
+        tickets[key] = graph_data
         for child in graph_data.get("children", {}).get("issues", []):
-            key = child.get("key")
-            if key:
-                tickets[key] = child
+            child_key = child.get("key")
+            if child_key:
+                tickets[child_key] = child
         for link in graph_data.get("issue_links", {}).get("links", []):
-            key = link.get("key")
-            if key:
-                tickets[key] = link
+            link_key = link.get("key")
+            if link_key:
+                tickets[link_key] = link
     elif "tickets" in graph_data:
         tickets = graph_data["tickets"]
     else:
