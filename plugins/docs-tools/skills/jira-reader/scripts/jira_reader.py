@@ -146,6 +146,103 @@ def load_env_file():
                         os.environ.setdefault(key.strip(), value)
 
 
+_DECISION_KEYWORDS = re.compile(
+    r"\b(?:decided|agreed|requirement|must|blocked|changed|approved|rejected|architecture|design)\b",
+    re.IGNORECASE,
+)
+
+
+def generate_comments_brief(comments_json_path, max_bytes=30720, recent_days=30):
+    """Produce a comments-brief.md digest from a previously saved comments.json."""
+    with open(comments_json_path) as f:
+        data = json.load(f)
+
+    comments = data.get("comments", [])
+    if not comments:
+        brief_path = os.path.join(os.path.dirname(comments_json_path), "comments-brief.md")
+        with open(brief_path, "w") as f:
+            f.write("# Comments Brief\n\nNo comments found.\n")
+        return {
+            "brief_file": brief_path,
+            "brief_bytes": 0,
+            "recent_count": 0,
+            "decision_count": 0,
+            "omitted_count": 0,
+        }
+
+    cutoff = datetime.now() - timedelta(days=recent_days)
+
+    recent = []
+    older_decision = []
+    older_omitted = 0
+
+    for c in comments:
+        try:
+            created = datetime.strptime(c["created"], "%Y-%m-%d %H:%M")
+        except (ValueError, KeyError):
+            created = datetime.min
+        if created >= cutoff:
+            recent.append(c)
+        elif _DECISION_KEYWORDS.search(c["body"]):
+            older_decision.append(c)
+        else:
+            older_omitted += 1
+
+    date_range = data.get("date_range", {})
+    total = len(comments)
+
+    def _render_brief(recent, older_decision, older_omitted):
+        shown = len(recent) + len(older_decision)
+        lines = [
+            "# Comments Brief",
+            "",
+            f"Total comments: {total} | Showing: {shown} | Omitted: {older_omitted}",
+            f"Date range: {date_range.get('earliest', 'N/A')} to {date_range.get('latest', 'N/A')}",
+        ]
+        if recent:
+            lines.append("")
+            lines.append(f"## Recent comments (last {recent_days} days)")
+            for c in recent:
+                lines.append("")
+                lines.append(f"### [{c['author']}] — {c['created']}")
+                lines.append("")
+                lines.append(c["body"])
+        if older_decision:
+            lines.append("")
+            lines.append("## Decision-relevant older comments")
+            for c in older_decision:
+                lines.append("")
+                lines.append(f"### [{c['author']}] — {c['created']}")
+                lines.append("")
+                lines.append(c["body"])
+        if older_omitted:
+            lines.append("")
+            lines.append("---")
+            lines.append(f"{older_omitted} older comments omitted (no decision keywords found).")
+            lines.append(f"Full comments: {os.path.basename(comments_json_path)}")
+        return "\n".join(lines) + "\n"
+
+    content = _render_brief(recent, older_decision, older_omitted)
+
+    while len(content.encode("utf-8")) > max_bytes and older_decision:
+        older_decision.pop(0)
+        older_omitted += 1
+        content = _render_brief(recent, older_decision, older_omitted)
+
+    brief_path = os.path.join(os.path.dirname(comments_json_path), "comments-brief.md")
+    os.makedirs(os.path.dirname(brief_path) or ".", exist_ok=True)
+    with open(brief_path, "w") as f:
+        f.write(content)
+
+    return {
+        "brief_file": brief_path,
+        "brief_bytes": len(content.encode("utf-8")),
+        "recent_count": len(recent),
+        "decision_count": len(older_decision),
+        "omitted_count": older_omitted,
+    }
+
+
 class JiraReader:
     """Read-only JIRA client for fetching, analyzing, and traversing issues."""
 
@@ -829,139 +926,8 @@ class JiraReader:
             "comments_authors": authors,
         }
 
-    _DECISION_KEYWORDS = re.compile(
-        r"\b(?:decided|agreed|requirement|must|blocked|changed|approved|rejected|architecture|design)\b",
-        re.IGNORECASE,
-    )
-
     def generate_comments_brief(self, comments_json_path, max_bytes=30720, recent_days=30):
-        """Produce a comments-brief.md digest from a previously saved comments.json."""
-        with open(comments_json_path) as f:
-            data = json.load(f)
-
-        comments = data.get("comments", [])
-        if not comments:
-            brief_path = comments_json_path.replace("comments.json", "comments-brief.md")
-            with open(brief_path, "w") as f:
-                f.write("# Comments Brief\n\nNo comments found.\n")
-            return {
-                "brief_file": brief_path,
-                "brief_bytes": 0,
-                "recent_count": 0,
-                "decision_count": 0,
-                "omitted_count": 0,
-            }
-
-        cutoff = datetime.now() - timedelta(days=recent_days)
-        cutoff_str = cutoff.strftime("%Y-%m-%d %H:%M")
-
-        recent = []
-        older_decision = []
-        older_omitted = 0
-
-        for c in comments:
-            if c["created"] >= cutoff_str:
-                recent.append(c)
-            elif self._DECISION_KEYWORDS.search(c["body"]):
-                older_decision.append(c)
-            else:
-                older_omitted += 1
-
-        date_range = data.get("date_range", {})
-        total = len(comments)
-        shown = len(recent) + len(older_decision)
-
-        lines = [
-            "# Comments Brief",
-            "",
-            f"Total comments: {total} | Showing: {shown} | Omitted: {older_omitted}",
-            (
-                f"Date range: {date_range.get('earliest', 'N/A')}"
-                f" to {date_range.get('latest', 'N/A')}"
-            ),
-        ]
-
-        if recent:
-            lines.append("")
-            lines.append(f"## Recent comments (last {recent_days} days)")
-            for c in recent:
-                lines.append("")
-                lines.append(f"### [{c['author']}] — {c['created']}")
-                lines.append("")
-                lines.append(c["body"])
-
-        if older_decision:
-            lines.append("")
-            lines.append("## Decision-relevant older comments")
-            for c in older_decision:
-                lines.append("")
-                lines.append(f"### [{c['author']}] — {c['created']}")
-                lines.append("")
-                lines.append(c["body"])
-
-        if older_omitted:
-            lines.append("")
-            lines.append("---")
-            lines.append(f"{older_omitted} older comments omitted (no decision keywords found).")
-            lines.append(f"Full comments: {os.path.basename(comments_json_path)}")
-
-        content = "\n".join(lines) + "\n"
-
-        # Truncate oldest decision comments if over budget
-        while len(content.encode("utf-8")) > max_bytes and older_decision:
-            older_decision.pop(0)
-            older_omitted += 1
-            lines = [
-                "# Comments Brief",
-                "",
-                (
-                    f"Total comments: {total}"
-                    f" | Showing: {len(recent) + len(older_decision)}"
-                    f" | Omitted: {older_omitted}"
-                ),
-                (
-                    f"Date range: {date_range.get('earliest', 'N/A')}"
-                    f" to {date_range.get('latest', 'N/A')}"
-                ),
-            ]
-            if recent:
-                lines.append("")
-                lines.append(f"## Recent comments (last {recent_days} days)")
-                for c in recent:
-                    lines.append("")
-                    lines.append(f"### [{c['author']}] — {c['created']}")
-                    lines.append("")
-                    lines.append(c["body"])
-            if older_decision:
-                lines.append("")
-                lines.append("## Decision-relevant older comments")
-                for c in older_decision:
-                    lines.append("")
-                    lines.append(f"### [{c['author']}] — {c['created']}")
-                    lines.append("")
-                    lines.append(c["body"])
-            lines.append("")
-            lines.append("---")
-            lines.append(
-                f"{older_omitted} older comments omitted"
-                " (no decision keywords found or truncated"
-                " to fit 30 KB limit)."
-            )
-            lines.append(f"Full comments: {os.path.basename(comments_json_path)}")
-            content = "\n".join(lines) + "\n"
-
-        brief_path = comments_json_path.replace("comments.json", "comments-brief.md")
-        os.makedirs(os.path.dirname(brief_path) or ".", exist_ok=True)
-        with open(brief_path, "w") as f:
-            f.write(content)
-
-        return {
-            "brief_file": brief_path,
-            "brief_bytes": len(content.encode("utf-8")),
-            "recent_count": len(recent),
-            "decision_count": len(older_decision),
-            "omitted_count": older_omitted,
-        }
+        return generate_comments_brief(comments_json_path, max_bytes, recent_days)
 
     def fetch_attachments(self, issue_key, output_dir, max_total_bytes=5_000_000):
         """

@@ -20,11 +20,7 @@ from pathlib import Path
 
 sys.path.insert(
     0,
-    str(
-        Path(__file__).resolve().parents[2]
-        / "docs-orchestrator"
-        / "scripts"
-    ),
+    str(Path(__file__).resolve().parents[2] / "docs-orchestrator" / "scripts"),
 )
 from resolve_source import extract_repo_url, normalize_git_url
 
@@ -121,12 +117,9 @@ def extract_repos_from_graph(graph_data):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Extract repo/PR URLs from JIRA ticket graph data"
-    )
+    parser = argparse.ArgumentParser(description="Extract repo/PR URLs from JIRA ticket graph data")
     parser.add_argument(
-        "--output-dir", required=True,
-        help="Directory to write discovered_repos.json"
+        "--output-dir", required=True, help="Directory to write discovered_repos.json"
     )
     args = parser.parse_args()
 
@@ -146,8 +139,7 @@ def main():
         json.dump(result, f, indent=2)
 
     print(
-        f"Wrote {output_file}: {result['total_repos']} repos, "
-        f"{result['total_prs']} PRs",
+        f"Wrote {output_file}: {result['total_repos']} repos, {result['total_prs']} PRs",
         file=sys.stderr,
     )
 

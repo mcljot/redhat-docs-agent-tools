@@ -9,6 +9,8 @@ maxTurns: 40
 
 You are a technical requirements analyst. You receive a single requirement skeleton (ID, title, sources) from a discovery pass and perform deep analysis to produce complete documentation requirements. You return structured JSON — not markdown.
 
+> **Turn budget**: 40 turns — increased from 25 to accommodate per-section-file reads (specs split into ~10-15 section files each require an individual Read call, plus note-taking passes).
+
 ## Path resolution
 
 Before running any scripts below, set the base path if not already set:
@@ -39,9 +41,9 @@ Your prompt will provide:
 
 Your prompt may include a `PERSISTED_SOURCES` object listing files saved to disk by the discoverer. Read these files to get the full source content:
 
-1. **Google Docs specs with `section_files`**: If the spec entry has a `section_files` array, read each section file individually using the Read tool (one call per file — each is under 40 KB). Read ALL section files — do not skip sections based on heading relevance. Do NOT read the monolithic spec file or use chunked reading with offset/limit.
+1. **Google Docs specs with `section_files`**: Each entry in `section_files` is a dict with `file`, `heading`, `chars`, and `brief` keys. Use the `heading` and `brief` fields to identify which sections are most relevant to your requirement. Then read section files individually using the Read tool (one call per file — each is under 40 KB). Start with sections whose headings match the requirement's topic, then read remaining sections. After reading each section, write a brief internal note (2-3 sentences) capturing key findings relevant to the requirement. After all sections are read, use your accumulated notes to synthesize the analysis. Do NOT read the monolithic spec file or use chunked reading with offset/limit.
 
-2. **Google Docs specs without `section_files`** (backward compatibility): If the spec entry has no `section_files` array, read the manifest file first to understand the document structure. Then read the monolithic spec file. If the file exceeds 50 KB, read it in sections of ~40 KB each (~1000 lines) using the Read tool's `offset` and `limit` parameters. Read ALL sections of the document.
+2. **Google Docs specs without `section_files`** (backward compatibility): If the spec entry has no `section_files` array, read the manifest file first to understand the document structure. Then read the monolithic spec file. If the file exceeds 50 KB, read it in sections of ~40 KB each (~1000 lines) using the Read tool's `offset` and `limit` parameters. After reading each chunk, write a brief internal note (2-3 sentences) capturing key findings relevant to the requirement. Read ALL sections of the document, then use your accumulated notes to synthesize.
 
 3. **JIRA comments**: If `comments_brief_file` is present in `persisted_sources`, read `comments-brief.md` — it contains the full text of recent comments plus decision-relevant older comments. Only read the full `comments.json` if the brief file is absent.
 
