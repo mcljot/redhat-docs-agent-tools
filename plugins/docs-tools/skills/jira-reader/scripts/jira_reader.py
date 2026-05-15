@@ -33,6 +33,20 @@ except ImportError:
     sys.exit(1)
 
 
+def _deep_to_dict(obj):
+    """Recursively convert JIRA PropertyHolder trees to plain dicts."""
+    if isinstance(obj, dict):
+        return {k: _deep_to_dict(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_deep_to_dict(item) for item in obj]
+    if isinstance(obj, (str, int, float, bool, type(None))):
+        return obj
+    try:
+        return {k: _deep_to_dict(v) for k, v in vars(obj).items()}
+    except TypeError:
+        return obj
+
+
 def adf_to_text(node):
     """
     Convert an Atlassian Document Format (ADF) node to plain text.
@@ -55,7 +69,9 @@ def adf_to_text(node):
         return node
 
     if not isinstance(node, dict):
-        return ""
+        node = _deep_to_dict(node)
+        if not isinstance(node, dict):
+            return str(node) if node else ""
 
     node_type = node.get("type", "")
     content = node.get("content", [])
@@ -654,7 +670,7 @@ class JiraReader:
                     "assignee": f.assignee.displayName
                     if f.assignee and hasattr(f.assignee, "displayName")
                     else None,
-                    "description": f.description or "",
+                    "description": adf_to_text(f.description),
                     "source": parent_source,
                 }
             )
