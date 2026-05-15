@@ -184,8 +184,8 @@ Print exactly one JSON object to the file path provided in your prompt. Nothing 
         "file": "<OUTPUT_DIR>/spec-abc123.md",
         "manifest": "<OUTPUT_DIR>/spec-abc123.md.manifest.md",
         "section_files": [
-          "<OUTPUT_DIR>/spec-abc123-section-01.md",
-          "<OUTPUT_DIR>/spec-abc123-section-02.md"
+          {"file": "<OUTPUT_DIR>/spec-abc123-section-01.md", "heading": "Introduction", "chars": 12000, "brief": "This document describes..."},
+          {"file": "<OUTPUT_DIR>/spec-abc123-section-02.md", "heading": "Architecture", "chars": 28000, "brief": "The system uses a microservices..."}
         ],
         "chars": 184000
       }

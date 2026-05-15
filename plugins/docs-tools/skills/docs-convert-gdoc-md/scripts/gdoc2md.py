@@ -481,6 +481,25 @@ def _snap_to_word_boundary(text: str, pos: int) -> int:
 # ---------------------------------------------------------------------------
 
 HEADING_RE = re.compile(r"^#{1,3}\s")
+SUB_HEADING_RE = re.compile(r"^#{4,6}\s")
+
+
+def _extract_brief(lines: list[str], max_len: int = 120) -> str:
+    """Return the first non-heading, non-blank line as a content brief, truncated to max_len."""
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if HEADING_RE.match(stripped) or SUB_HEADING_RE.match(stripped):
+            continue
+        if stripped.startswith(("---", "===", "```", "<!--", "|", "![")):
+            continue
+        if re.match(r"^[-*]\s|^\d+\.\s", stripped):
+            continue
+        if len(stripped) > max_len:
+            return stripped[: max_len - 1] + "…"
+        return stripped
+    return ""
 
 
 def generate_manifest(
@@ -524,8 +543,10 @@ def generate_manifest(
         manifest_lines.append("")
         manifest_lines.append("## Section Files")
         for sf in section_files:
+            brief = sf.get("brief", "")
+            brief_suffix = f" — {brief}" if brief else ""
             manifest_lines.append(
-                f"- {Path(sf['file']).name}: {sf['heading']} ({sf['chars']:,} chars)"
+                f"- {Path(sf['file']).name}: {sf['heading']} ({sf['chars']:,} chars){brief_suffix}"
             )
 
     manifest_file = f"{output_path}.manifest.md"
@@ -538,11 +559,8 @@ def generate_manifest(
         "section_count": len(sections),
     }
     if section_files:
-        result["section_files"] = [sf["file"] for sf in section_files]
+        result["section_files"] = section_files
     return result
-
-
-SUB_HEADING_RE = re.compile(r"^#{4,6}\s")
 
 
 def _split_at_blank_lines(lines: list[str], max_bytes: int) -> list[list[str]]:
@@ -552,10 +570,15 @@ def _split_at_blank_lines(lines: list[str], max_bytes: int) -> list[list[str]]:
     current_bytes = 0
     for line in lines:
         line_bytes = len(line.encode("utf-8")) + 1
-        if current_bytes + line_bytes > max_bytes and current and line.strip() == "":
-            chunks.append(current)
-            current = []
-            current_bytes = 0
+        if current_bytes + line_bytes > max_bytes and current:
+            if line.strip() == "":
+                chunks.append(current)
+                current = []
+                current_bytes = 0
+            elif current_bytes >= max_bytes:
+                chunks.append(current)
+                current = []
+                current_bytes = 0
         current.append(line)
         current_bytes += line_bytes
     if current:
@@ -600,16 +623,19 @@ def _split_oversized_section(
         filepath = parent / filename
         text = "\n".join(chunk)
         filepath.write_text(text + "\n", encoding="utf-8")
-        is_heading = (
-            HEADING_RE.match(chunk[0])
-            or SUB_HEADING_RE.match(chunk[0])
-        )
         heading = (
             chunk[0].lstrip("#").strip()
-            if is_heading
+            if HEADING_RE.match(chunk[0]) or SUB_HEADING_RE.match(chunk[0])
             else f"(continued part {suffix})"
         )
-        results.append({"file": str(filepath), "heading": heading, "chars": len(text)})
+        results.append(
+            {
+                "file": str(filepath),
+                "heading": heading,
+                "chars": len(text),
+                "brief": _extract_brief(chunk),
+            }
+        )
     return results
 
 
@@ -631,7 +657,14 @@ def split_into_section_files(
         filename = f"{stem}-section-01.md"
         filepath = parent / filename
         filepath.write_text(content + "\n", encoding="utf-8")
-        return [{"file": str(filepath), "heading": stem, "chars": len(content)}]
+        return [
+            {
+                "file": str(filepath),
+                "heading": stem,
+                "chars": len(content),
+                "brief": _extract_brief(lines),
+            }
+        ]
 
     if boundaries[0] > 0:
         boundaries.insert(0, 0)
@@ -654,7 +687,14 @@ def split_into_section_files(
                 if HEADING_RE.match(section_lines[0])
                 else stem
             )
-            results.append({"file": str(filepath), "heading": heading, "chars": len(section_text)})
+            results.append(
+                {
+                    "file": str(filepath),
+                    "heading": heading,
+                    "chars": len(section_text),
+                    "brief": _extract_brief(section_lines),
+                }
+            )
             section_idx += 1
         else:
             sub_results = _split_oversized_section(
