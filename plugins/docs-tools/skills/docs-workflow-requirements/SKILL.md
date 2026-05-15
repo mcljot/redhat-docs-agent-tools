@@ -1,7 +1,7 @@
 ---
 name: docs-workflow-requirements
 description: Analyze documentation requirements for a JIRA ticket using a two-pass fanout. Pass 1 dispatches a discovery agent to enumerate requirements. Pass 2 fans out one deep-analysis agent per requirement for isolated, thorough analysis. Assembles the standard requirements.md output. Invoked by the orchestrator.
-argument-hint: <ticket> --base-path <path> [--pr <url>]...
+argument-hint: <ticket> --base-path <path> [--pr <url>]... [--repo <path>]
 allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, Agent, WebSearch, WebFetch
 ---
 
@@ -20,19 +20,21 @@ This skill uses a two-pass architecture to analyze documentation requirements:
 - `$1` — JIRA ticket ID (required)
 - `--base-path <path>` — Base output path (e.g., `.agent_workspace/proj-123`)
 - `--pr <url>` — PR/MR URL to include in analysis (repeatable)
+- `--repo <path>` — Source code repo path (optional, passed to analyst agents for code verification)
 
 ## Output
 
 ```
 <base-path>/requirements/requirements.md
 <base-path>/requirements/step-result.json
+<base-path>/requirements/discovered_repos.json     (produced by repo extraction, consumed by resolve_source.py)
 ```
 
 ## Execution
 
 ### 1. Parse arguments
 
-Extract the ticket ID, `--base-path`, and any `--pr` URLs from the args string.
+Extract the ticket ID, `--base-path`, any `--pr` URLs, and optional `--repo` from the args string.
 
 Set the output path:
 
@@ -70,7 +72,18 @@ After the agent completes, read `<DISCOVERY_FILE>`.
 
 If the discovery JSON has an `error` field set, STOP and report the error (likely an access failure).
 
-### 3. Parse discovery output
+### 3. Extract discovered repos
+
+After the discoverer agent completes, extract repo/PR URLs from the JIRA graph data it collected. Pipe the discovery JSON through the extraction script:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/jira-reader/scripts/jira_reader.py --graph <TICKET> | \
+  python3 ${CLAUDE_SKILL_DIR}/scripts/extract_discovered_repos.py --output-dir "$OUTPUT_DIR"
+```
+
+This produces `discovered_repos.json` in the output directory, which `resolve_source.py` reads at Priority 4b for automatic repo discovery. If the script fails, log a warning and continue — repo discovery is optional.
+
+### 4. Parse discovery output
 
 Read the discovery JSON and extract:
 - `requirements` — the list of requirement skeletons
@@ -81,7 +94,7 @@ Read the discovery JSON and extract:
 
 If `requirements` is empty, write a minimal `requirements.md` noting that no requirements were found, write `step-result.json`, and exit successfully.
 
-### 4. Pass 2 — Fan out deep analysis
+### 5. Pass 2 — Fan out deep analysis
 
 For each requirement in the discovery skeleton, dispatch one `requirements-analyst` agent. Launch ALL agents in a **single message** (parallel execution).
 
@@ -120,7 +133,7 @@ The `PERSISTED_SOURCES` block is conditional — include it only if the discover
 
 **Important:** All Agent calls MUST be in a single message so they run in parallel.
 
-### 5. Merge results
+### 6. Merge results
 
 Each agent returns a JSON object (or text containing a JSON object). Parse each agent's response to extract the JSON.
 
@@ -153,7 +166,7 @@ Convert each entry in the skeleton's `sources` array to the analyst format: use 
 
 Collect all per-requirement results into a list ordered by requirement ID.
 
-### 6. Assemble requirements.md
+### 7. Assemble requirements.md
 
 Write `<OUTPUT_FILE>` by assembling the merged results into the standard requirements format. The document structure must match the existing output contract exactly:
 
@@ -251,7 +264,7 @@ Write `<OUTPUT_FILE>` by assembling the merged results into the standard require
 
 **Deduplication:** Sources consulted and references are gathered across all per-requirement results. Deduplicate by URL or file path.
 
-### 7. Write step-result.json
+### 8. Write step-result.json
 
 Run the title-extraction script:
 
@@ -274,7 +287,7 @@ Use the `title` value from the script's JSON output to write the sidecar to `<OU
 }
 ```
 
-### 8. Verify output
+### 9. Verify output
 
 Verify that `<OUTPUT_FILE>` and `<OUTPUT_DIR>/step-result.json` exist.
 
@@ -285,5 +298,5 @@ Verify that `<OUTPUT_FILE>` and `<OUTPUT_DIR>/step-result.json` exist.
 - **Parallel execution:** All pass-2 agents are dispatched in a single message for parallel execution
 - **Error isolation:** A failed deep-analysis agent does not block other requirements — the merge step uses skeleton data as a fallback
 - **Output contract:** The assembled `requirements.md` is identical in format to the previous single-pass output. Downstream consumers (scope-req-audit, planning, orchestrator) see no change
+- **Repo discovery:** After discovery, the repo extraction script produces `discovered_repos.json` from the JIRA graph. This enables `resolve_source.py` Priority 4b to auto-discover and clone repos without user flags
 - **Discovery JSON:** The `discovery.json` file is retained in the output directory as a debugging artifact. It is not consumed by downstream steps
-- **Intermediate artifacts:** The previous version had the requirements-analyst save intermediary files to `artifacts/`. The deep-analysis agents do not write intermediary files — their structured JSON output is the artifact. If intermediary research is needed for audit, it can be reconstructed from the discovery JSON and per-requirement sources

@@ -87,7 +87,12 @@ def _run_single(retrieve_evidence, repo, query, limit, filter_paths, reindex):
 
 def main():
     parser = argparse.ArgumentParser(description="Retrieve code evidence from a repository")
-    parser.add_argument("--repo", required=True, help="Path to the repository")
+    parser.add_argument(
+        "--repo",
+        required=True,
+        nargs="+",
+        help="Path(s) to source code repository/repositories",
+    )
     parser.add_argument("--query", help="Natural language search query (single mode)")
     parser.add_argument(
         "--queries-file",
@@ -141,35 +146,44 @@ def main():
         )
         sys.exit(1)
 
+    reindex = args.reindex
+
     # Single query mode — use retrieve_evidence directly (one-shot, no reuse needed)
     if args.query:
         filter_paths = _parse_filter_paths(args.filter_paths)
-        result = _run_single(
-            retrieve_evidence,
-            args.repo,
-            args.query,
-            args.limit,
-            filter_paths,
-            args.reindex,
-        )
-        json.dump(result, sys.stdout, indent=2, default=str)
+        all_results = []
+        for repo in args.repo:
+            result = _run_single(
+                retrieve_evidence,
+                repo,
+                args.query,
+                args.limit,
+                filter_paths,
+                reindex,
+            )
+            all_results.append({"repo": repo, "result": result})
+            reindex = False
+        json.dump(all_results, sys.stdout, indent=2, default=str)
         print()
         return
 
-    # Batch mode — call ensure_index once, reuse searcher for all queries
-    searcher, index_info = ensure_index(args.repo, reindex=args.reindex)
-    repo_path = str(Path(args.repo).resolve())
-
+    # Batch mode — call ensure_index once per repo, reuse searcher for all queries
     results = []
-    for entry in queries:
-        query = entry["query"]
-        limit = entry.get("limit", args.limit)
-        filter_paths = entry.get("filter_paths")
-        resolved = _resolve_filter_paths(repo_path, filter_paths)
+    for repo in args.repo:
+        repo_path = str(Path(repo).resolve())
+        searcher, index_info = ensure_index(repo_path, reindex=reindex)
+        reindex = False
+        for entry in queries:
+            query = entry["query"]
+            limit = entry.get("limit", args.limit)
+            filter_paths = entry.get("filter_paths")
+            resolved = _resolve_filter_paths(repo_path, filter_paths)
 
-        raw = searcher.search(query=query, limit=limit, filter_paths=resolved)
-        result = _format_result(query, filter_paths, repo_path, index_info, raw)
-        results.append({"query": query, "filter_paths": filter_paths, "result": result})
+            raw = searcher.search(query=query, limit=limit, filter_paths=resolved)
+            result = _format_result(query, filter_paths, repo_path, index_info, raw)
+            results.append(
+                {"repo": repo, "query": query, "filter_paths": filter_paths, "result": result}
+            )
 
     json.dump(results, sys.stdout, indent=2, default=str)
     print()

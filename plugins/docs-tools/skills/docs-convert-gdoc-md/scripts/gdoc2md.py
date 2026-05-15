@@ -65,7 +65,10 @@ def parse_and_validate_args():
     parser.add_argument(
         "--split-sections",
         action="store_true",
-        help="Split output into per-section files under 40 KB each (requires --manifest, Docs only)",
+        help=(
+            "Split output into per-section files under 40 KB each"
+            " (requires --manifest, Docs only)"
+        ),
     )
     args = parser.parse_args()
 
@@ -91,7 +94,10 @@ def parse_and_validate_args():
             file=sys.stderr,
         )
 
-    return file_id, output, mode, args.comments, args.include_resolved, args.manifest, args.split_sections
+    return (
+        file_id, output, mode, args.comments,
+        args.include_resolved, args.manifest, args.split_sections,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -594,7 +600,15 @@ def _split_oversized_section(
         filepath = parent / filename
         text = "\n".join(chunk)
         filepath.write_text(text + "\n", encoding="utf-8")
-        heading = chunk[0].lstrip("#").strip() if HEADING_RE.match(chunk[0]) or SUB_HEADING_RE.match(chunk[0]) else f"(continued part {suffix})"
+        is_heading = (
+            HEADING_RE.match(chunk[0])
+            or SUB_HEADING_RE.match(chunk[0])
+        )
+        heading = (
+            chunk[0].lstrip("#").strip()
+            if is_heading
+            else f"(continued part {suffix})"
+        )
         results.append({"file": str(filepath), "heading": heading, "chars": len(text)})
     return results
 
@@ -635,7 +649,11 @@ def split_into_section_files(
             filename = f"{stem}-section-{section_idx:02d}.md"
             filepath = parent / filename
             filepath.write_text(section_text + "\n", encoding="utf-8")
-            heading = section_lines[0].lstrip("#").strip() if HEADING_RE.match(section_lines[0]) else stem
+            heading = (
+                section_lines[0].lstrip("#").strip()
+                if HEADING_RE.match(section_lines[0])
+                else stem
+            )
             results.append({"file": str(filepath), "heading": heading, "chars": len(section_text)})
             section_idx += 1
         else:
