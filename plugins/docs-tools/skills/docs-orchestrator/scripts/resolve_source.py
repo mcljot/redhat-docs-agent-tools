@@ -581,13 +581,9 @@ def _clone_repo(repo_url, clone_dir, ref=None, pr_url=None, dry_run=False):
         if result.returncode != 0:
             return False
 
-        fetch = _run_git(
-            ["fetch", "origin", ref], cwd=clone_dir, check=False
-        )
+        fetch = _run_git(["fetch", "origin", ref], cwd=clone_dir, check=False)
         if fetch.returncode == 0:
-            checkout = _run_git(
-                ["checkout", "FETCH_HEAD"], cwd=clone_dir, check=False
-            )
+            checkout = _run_git(["checkout", "FETCH_HEAD"], cwd=clone_dir, check=False)
             return checkout.returncode == 0
 
         # Branch not on origin — try PR ref for fork-based PRs
