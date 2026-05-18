@@ -369,7 +369,8 @@ def _resolve_discovered_repos(discovered, base_path, dry_run=False):
                     errors.append(f"Existing clone at {clone_dir} is invalid.")
                     continue
             else:
-                if not _clone_repo(repo_url, clone_dir, ref):
+                first_pr = pr_urls[0] if pr_urls else None
+                if not _clone_repo(repo_url, clone_dir, ref, pr_url=first_pr):
                     errors.append(f"Could not clone {repo_url}.")
                     continue
 
@@ -539,14 +540,32 @@ def _discover_from_jira(ticket, base_path, plugin_root, dry_run=False):
     return result
 
 
-def _clone_repo(repo_url, clone_dir, ref=None, dry_run=False):
-    """Clone a repo to clone_dir. Returns True on success."""
+def _extract_pr_number(pr_url):
+    """Extract the PR/MR number from a GitHub PR or GitLab MR URL."""
+    if not pr_url:
+        return None
+    m = re.search(r"/pull/(\d+)", pr_url)
+    if m:
+        return int(m.group(1))
+    m = re.search(r"/merge_requests/(\d+)", pr_url)
+    if m:
+        return int(m.group(1))
+    return None
+
+
+def _clone_repo(repo_url, clone_dir, ref=None, pr_url=None, dry_run=False):
+    """Clone a repo to clone_dir. Returns True on success.
+
+    When ref is a branch from a fork-based PR, --branch and fetch will
+    both fail because the branch only exists in the fork.  Falls back to
+    fetching refs/pull/<N>/head (GitHub) or refs/merge-requests/<N>/head
+    (GitLab) when a pr_url is provided.
+    """
     if dry_run:
         return True
     clone_dir = str(clone_dir)
 
     if ref:
-        # Try cloning at the specific branch first
         result = _run_git(
             ["clone", "--depth", "1", "--branch", ref, repo_url, clone_dir],
             check=False,
@@ -563,16 +582,44 @@ def _clone_repo(repo_url, clone_dir, ref=None, dry_run=False):
             return False
 
         fetch = _run_git(["fetch", "origin", ref], cwd=clone_dir, check=False)
-        if fetch.returncode != 0:
-            print(
-                f"WARNING: Cloned {repo_url} but ref '{ref}' not found "
-                f"(branch may have been deleted after merge). Using default branch.",
-                file=sys.stderr,
-            )
-            return True
+        if fetch.returncode == 0:
+            checkout = _run_git(["checkout", "FETCH_HEAD"], cwd=clone_dir, check=False)
+            return checkout.returncode == 0
 
-        checkout = _run_git(["checkout", "FETCH_HEAD"], cwd=clone_dir, check=False)
-        return checkout.returncode == 0
+        # Branch not on origin — try PR ref for fork-based PRs
+        pr_number = _extract_pr_number(pr_url)
+        if pr_number:
+            pr_ref = (
+                f"refs/merge-requests/{pr_number}/head"
+                if "gitlab" in repo_url
+                else f"refs/pull/{pr_number}/head"
+            )
+            pr_fetch = _run_git(
+                ["fetch", "origin", pr_ref],
+                cwd=clone_dir,
+                check=False,
+            )
+            if pr_fetch.returncode == 0:
+                checkout = _run_git(
+                    ["checkout", "FETCH_HEAD"],
+                    cwd=clone_dir,
+                    check=False,
+                )
+                if checkout.returncode == 0:
+                    print(
+                        f"Checked out PR #{pr_number} via {pr_ref}"
+                        f" (fork branch '{ref}' not on origin).",
+                        file=sys.stderr,
+                    )
+                    return True
+
+        print(
+            f"WARNING: Cloned {repo_url} but ref '{ref}' not found"
+            f" (branch may be in a fork or deleted after merge)."
+            f" Using default branch.",
+            file=sys.stderr,
+        )
+        return True
 
     result = _run_git(
         ["clone", "--depth", "1", repo_url, clone_dir],
@@ -698,7 +745,8 @@ def _resolve_multiple_prs(pr_urls, base_path, dry_run=False):
                     errors.append(f"Existing clone at {repo_clone_dir} is invalid.")
                     continue
             else:
-                if not _clone_repo(repo_url, repo_clone_dir, ref):
+                first_pr = info["urls"][0] if info["urls"] else None
+                if not _clone_repo(repo_url, repo_clone_dir, ref, pr_url=first_pr):
                     errors.append(f"Could not clone {repo_url}.")
                     continue
 
@@ -786,7 +834,8 @@ def _resolve_explicit_repos(repo_values, pr_urls, base_path, dry_run=False):
                         )
                         continue
                 else:
-                    if not _clone_repo(repo_value, clone_dir, ref):
+                    first_pr = pr_urls[0] if pr_urls else None
+                    if not _clone_repo(repo_value, clone_dir, ref, pr_url=first_pr):
                         errors.append(
                             f"Cannot clone {repo_value}."
                             " For private repos, ensure gh"
@@ -876,7 +925,8 @@ def resolve(args):
                             ),
                         }
                 else:
-                    if not _clone_repo(repo_value, clone_dir, ref):
+                    first_pr = pr_urls[0] if pr_urls else None
+                    if not _clone_repo(repo_value, clone_dir, ref, pr_url=first_pr):
                         return {
                             "status": "error",
                             "message": f"Cannot clone {repo_value}.",
