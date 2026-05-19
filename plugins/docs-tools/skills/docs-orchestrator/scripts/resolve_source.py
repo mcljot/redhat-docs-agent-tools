@@ -405,6 +405,39 @@ def _resolve_discovered_repos(discovered, base_path, dry_run=False):
     return result
 
 
+_JIRA_SMARTLINK_PIPE_RE = re.compile(r"\|[^|\]]*$")
+_URL_CANDIDATE_RE = re.compile(r"https?://(?:github\.com|gitlab\.[^\s/]+)/[^\s\[\]()|<>\"']+")
+
+
+def _clean_jira_url(raw):
+    """Strip Jira smart-link formatting artifacts from a URL string."""
+    url = raw.strip("[]() \t")
+    url = _JIRA_SMARTLINK_PIPE_RE.sub("", url)
+    url = url.rstrip(".,;:!?>)")
+    return url
+
+
+def _extract_urls_from_text(text):
+    """Extract GitHub/GitLab URLs from free-form text (e.g. Jira descriptions).
+
+    Handles Jira smart-link formatting and deduplicates results.
+    Returns a list of cleaned URL strings that match known Git hosts.
+    """
+    if not text:
+        return []
+    candidates = _URL_CANDIDATE_RE.findall(text)
+    seen = set()
+    urls = []
+    for raw in candidates:
+        cleaned = _clean_jira_url(raw)
+        if not cleaned or cleaned in seen:
+            continue
+        if extract_repo_url(cleaned) is not None:
+            seen.add(cleaned)
+            urls.append(cleaned)
+    return urls
+
+
 def extract_repo_url(link_url):
     """Extract a normalized repo URL from a GitHub/GitLab link.
 
@@ -440,10 +473,12 @@ def extract_repo_url(link_url):
 
 
 def _discover_from_jira(ticket, base_path, plugin_root, dry_run=False):
-    """Discover source repo(s) from JIRA ticket git_links and auto-discovered PRs.
+    """Discover source repo(s) from JIRA ticket links and description URLs.
 
-    Calls jira_reader.py to fetch the ticket's remote links, extracts repo URLs,
-    groups by repo, and selects the primary repo by reference count.
+    Calls jira_reader.py to fetch the ticket's remote links and description,
+    extracts repo URLs from both, groups by repo with weighted scoring
+    (remote links count double vs description mentions), and selects the
+    primary repo.
 
     Returns a result dict (same contract as resolve()).
     """
@@ -454,8 +489,9 @@ def _discover_from_jira(ticket, base_path, plugin_root, dry_run=False):
             "message": f"jira_reader.py not found at {jira_script}",
         }
 
-    # Fetch git_links from --issue
+    # Fetch git_links and description from --issue
     git_links = []
+    description_urls = []
     try:
         result = subprocess.run(  # noqa: S603
             ["python3", str(jira_script), "--issue", ticket],  # noqa: S607
@@ -468,6 +504,8 @@ def _discover_from_jira(ticket, base_path, plugin_root, dry_run=False):
             if isinstance(issue_data, list):
                 issue_data = issue_data[0]
             git_links = issue_data.get("git_links", [])
+            description = issue_data.get("description", "") or ""
+            description_urls = _extract_urls_from_text(description)
     except (json.JSONDecodeError, subprocess.TimeoutExpired, IndexError):
         pass
 
@@ -486,58 +524,56 @@ def _discover_from_jira(ticket, base_path, plugin_root, dry_run=False):
     except (json.JSONDecodeError, subprocess.TimeoutExpired):
         pass
 
-    # Combine all discovered URLs (dedup)
-    all_urls = list(dict.fromkeys(git_links + auto_prs))
-    if not all_urls:
+    # Weighted URL sets: remote links/graph PRs are high-signal (weight 2),
+    # description-embedded URLs are lower-signal (weight 1).
+    linked_urls = list(dict.fromkeys(git_links + auto_prs))
+    desc_only_urls = [u for u in description_urls if u not in set(linked_urls)]
+
+    if not linked_urls and not desc_only_urls:
         return {"status": "no_source"}
 
-    # Group by normalized repo URL and count references
+    # Group by normalized repo URL with weighted counts
+    _LINKED_WEIGHT = 2
+    _DESC_WEIGHT = 1
     repo_counts = {}  # normalized_url -> {"url": canonical_url, "count": N, "pr_urls": [...]}
-    for url in all_urls:
+
+    for url in linked_urls:
         repo_url = extract_repo_url(url)
         if not repo_url:
             continue
         normalized = normalize_git_url(repo_url)
         if normalized not in repo_counts:
             repo_counts[normalized] = {"url": repo_url, "count": 0, "pr_urls": []}
-        repo_counts[normalized]["count"] += 1
+        repo_counts[normalized]["count"] += _LINKED_WEIGHT
+        if GITHUB_PR_RE.match(url) or GITLAB_MR_RE.match(url):
+            repo_counts[normalized]["pr_urls"].append(url)
+
+    for url in desc_only_urls:
+        repo_url = extract_repo_url(url)
+        if not repo_url:
+            continue
+        normalized = normalize_git_url(repo_url)
+        if normalized not in repo_counts:
+            repo_counts[normalized] = {"url": repo_url, "count": 0, "pr_urls": []}
+        repo_counts[normalized]["count"] += _DESC_WEIGHT
         if GITHUB_PR_RE.match(url) or GITLAB_MR_RE.match(url):
             repo_counts[normalized]["pr_urls"].append(url)
 
     if not repo_counts:
         return {"status": "no_source"}
 
-    # Sort by count descending
-    ranked = sorted(repo_counts.values(), key=lambda r: r["count"], reverse=True)
+    # Sort by: count descending, then prefer repos with PR URLs, then by URL
+    # for stable ordering. This ensures the "primary" repo is the one with the
+    # strongest signal, with PRs as a tiebreaker over bare repo mentions.
+    ranked = sorted(
+        repo_counts.values(),
+        key=lambda r: (r["count"], len(r["pr_urls"]), r["url"]),
+        reverse=True,
+    )
 
-    if len(ranked) == 1:
-        winner = ranked[0]
-    elif ranked[0]["count"] > ranked[1]["count"]:
-        winner = ranked[0]
-    else:
-        # Tie — fail with candidates
-        tied = [r for r in ranked if r["count"] == ranked[0]["count"]]
-        candidates = ", ".join(r["url"] for r in tied)
-        return {
-            "status": "error",
-            "message": (
-                f"Multiple source repos discovered from JIRA ticket {ticket} "
-                f"with equal reference counts ({ranked[0]['count']} each): {candidates}. "
-                "Pass --source-code-repo <url> to select one."
-            ),
-        }
-
-    # Resolve the winner
-    if winner["pr_urls"]:
-        result = _resolve_multiple_prs(winner["pr_urls"], base_path, dry_run=dry_run)
-    else:
-        result = _resolve_explicit_repos([winner["url"]], [], base_path, dry_run=dry_run)
-
-    # Include all discovered repos in the result for logging
-    if len(ranked) > 1 and result.get("status") == "resolved":
-        result["discovered_repos"] = {normalize_git_url(r["url"]): r["count"] for r in ranked}
-
-    return result
+    # Resolve all discovered repos (first = primary, rest = additional)
+    discovered = [{"repo_url": r["url"], "pr_urls": r["pr_urls"]} for r in ranked]
+    return _resolve_discovered_repos(discovered, base_path, dry_run=dry_run)
 
 
 def _extract_pr_number(pr_url):

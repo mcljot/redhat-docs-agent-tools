@@ -49,8 +49,9 @@ The docs orchestrator (`/docs-orchestrator`) runs a YAML-defined step list. You 
 The orchestrator looks for workflow YAML in this order:
 
 1. `.agent_workspace/docs-<name>.yaml` — if `--workflow <name>` is passed
-2. `.agent_workspace/docs-workflow.yaml` — project-level default (when no `--workflow` is specified)
-3. Plugin default — `skills/docs-orchestrator/defaults/docs-workflow.yaml`
+2. Matching plugin default — `skills/docs-orchestrator/defaults/docs-<name>.yaml` if that project-level file is absent
+3. `.agent_workspace/docs-workflow.yaml` — project-level default (when no `--workflow` is specified)
+4. Plugin default — `skills/docs-orchestrator/defaults/docs-workflow.yaml`
 
 To customize, download the default into your docs repo and edit it:
 
@@ -270,7 +271,7 @@ Multiple `--pr` flags can be passed. The requirements analyst will read the PR d
 
 ### Resuming a workflow
 
-The orchestrator saves progress to `artifacts/<ticket>/workflow/docs-workflow_<ticket>.json`. If a run is interrupted or fails, start the orchestrator again with the same ticket and it will resume from where it left off:
+The orchestrator saves progress to `.agent_workspace/<ticket>/workflow/<workflow-type>_<ticket>.json`. If a run is interrupted or fails, start the orchestrator again with the same ticket and workflow and it will resume from where it left off:
 
 ```bash
 /docs-orchestrator PROJ-123

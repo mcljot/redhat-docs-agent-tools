@@ -2,12 +2,12 @@
 # post-requirements-source-resolve.sh
 #
 # PostToolUse hook (Write|Edit): after the requirements step writes its
-# step-result.json, automatically run resolve_source.py to discover and
-# clone repos from discovered_repos.json, then update the progress file
-# to un-defer (or skip) source-dependent steps.
+# step-result.json, automatically run sync_progress_source.py to discover
+# and sync source repos into the workflow progress file, then un-defer (or
+# skip) source-dependent steps.
 #
 # This makes post-requirements source resolution deterministic — the LLM
-# no longer needs to remember to re-run resolve_source.py.
+# no longer needs to remember to re-run source sync.
 #
 # Exit codes: always 0 (hooks must not block the LLM).
 # All diagnostic output goes to stderr.
@@ -40,16 +40,44 @@ if [ -f "$STAMP" ]; then
   exit 0
 fi
 
-# Find the progress file
-shopt -s nullglob
-PROGRESS_FILES=("${BASE_PATH}"/workflow/docs-workflow_*.json)
-shopt -u nullglob
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
+MARKER="${PROJECT_DIR}/.agent_workspace/.active-workflow"
+PROGRESS_FILE=""
 
-if [ ${#PROGRESS_FILES[@]} -eq 0 ]; then
-  exit 0
+# Prefer the active workflow marker so variant workflows resolve the correct file.
+if [ -f "$MARKER" ]; then
+  CANDIDATE=$(jq -r '.progress_file // empty' "$MARKER" 2>/dev/null)
+  if [ -n "$CANDIDATE" ]; then
+    case "$CANDIDATE" in
+      /*) CANDIDATE_ABS="$CANDIDATE" ;;
+      *) CANDIDATE_ABS="${PROJECT_DIR}/$CANDIDATE" ;;
+    esac
+    case "$CANDIDATE_ABS" in
+      "$BASE_PATH"/workflow/*)
+        if [ -f "$CANDIDATE_ABS" ]; then
+          PROGRESS_FILE="$CANDIDATE_ABS"
+        fi
+        ;;
+    esac
+  fi
 fi
 
-PROGRESS_FILE="${PROGRESS_FILES[0]}"
+if [ -z "$PROGRESS_FILE" ]; then
+  shopt -s nullglob
+  PROGRESS_FILES=("${BASE_PATH}"/workflow/*.json)
+  shopt -u nullglob
+
+  if [ ${#PROGRESS_FILES[@]} -eq 0 ]; then
+    exit 0
+  fi
+
+  if [ ${#PROGRESS_FILES[@]} -gt 1 ]; then
+    echo "post-requirements-source-resolve: multiple progress files found for $BASE_PATH; active marker missing or ambiguous" >&2
+    exit 0
+  fi
+
+  PROGRESS_FILE="${PROGRESS_FILES[0]}"
+fi
 
 # Bail if source is already set (was provided explicitly or resolved pre-flight)
 SOURCE_SET=$(jq -r '.options.source.repo_path // empty' "$PROGRESS_FILE" 2>/dev/null)
@@ -73,9 +101,9 @@ if [ -z "${PLUGIN_ROOT:-}" ]; then
   exit 0
 fi
 
-RESOLVE_SCRIPT="${PLUGIN_ROOT}/skills/docs-orchestrator/scripts/resolve_source.py"
-if [ ! -f "$RESOLVE_SCRIPT" ]; then
-  echo "post-requirements-source-resolve: resolve_source.py not found at $RESOLVE_SCRIPT" >&2
+SYNC_SCRIPT="${PLUGIN_ROOT}/skills/docs-orchestrator/scripts/sync_progress_source.py"
+if [ ! -f "$SYNC_SCRIPT" ]; then
+  echo "post-requirements-source-resolve: sync_progress_source.py not found at $SYNC_SCRIPT" >&2
   exit 0
 fi
 
@@ -84,55 +112,38 @@ echo "post-requirements-source-resolve: requirements completed, resolving source
 RESULT_FILE=$(mktemp)
 trap 'rm -f "$RESULT_FILE"' EXIT
 
-python3 "$RESOLVE_SCRIPT" \
-  --base-path "$BASE_PATH" \
-  --scan-requirements \
-  > "$RESULT_FILE" 2>&2
+TICKET=$(jq -r '.ticket // empty' "$PROGRESS_FILE" 2>/dev/null)
+
+SYNC_ARGS=(
+  --base-path "$BASE_PATH"
+  --progress-file "$PROGRESS_FILE"
+  --scan-requirements
+  --skip-deferred-on-no-source
+)
+
+if [ -n "$TICKET" ]; then
+  SYNC_ARGS+=(--ticket "$TICKET")
+fi
+
+if [ -n "$PLUGIN_ROOT" ]; then
+  SYNC_ARGS+=(--plugin-root "$PLUGIN_ROOT")
+fi
+
+python3 "$SYNC_SCRIPT" "${SYNC_ARGS[@]}" > "$RESULT_FILE" 2>&2
 RESOLVE_EXIT=$?
 
 if [ "$RESOLVE_EXIT" -eq 0 ]; then
-  # Source resolved — update progress file
   REPO_PATH=$(jq -r '.repo_path // empty' "$RESULT_FILE" 2>/dev/null)
-  REPO_URL=$(jq -r '.repo_url // empty' "$RESULT_FILE" 2>/dev/null)
-  REF=$(jq -r '.ref // null' "$RESULT_FILE" 2>/dev/null)
-  SCOPE=$(jq -r '.scope // null' "$RESULT_FILE" 2>/dev/null)
-
   if [ -n "$REPO_PATH" ]; then
-    # Update options.source
-    jq --arg rp "$REPO_PATH" \
-       --arg ru "$REPO_URL" \
-       --argjson ref "$( [ "$REF" = "null" ] && echo 'null' || echo "\"$REF\"")" \
-       --argjson scope "$( [ "$SCOPE" = "null" ] && echo 'null' || echo "\"$SCOPE\"")" \
-       '.options.source = {repo_path: $rp, repo_url: $ru, ref: $ref, scope: $scope}' \
-       "$PROGRESS_FILE" > "${PROGRESS_FILE}.tmp" && mv "${PROGRESS_FILE}.tmp" "$PROGRESS_FILE"
-
-    # Handle additional_repos if present
-    ADDITIONAL=$(jq -r '.additional_repos // empty' "$RESULT_FILE" 2>/dev/null)
-    if [ -n "$ADDITIONAL" ] && [ "$ADDITIONAL" != "null" ]; then
-      jq --argjson add "$(jq '.additional_repos' "$RESULT_FILE")" \
-         '.options.additional_sources = $add' \
-         "$PROGRESS_FILE" > "${PROGRESS_FILE}.tmp" && mv "${PROGRESS_FILE}.tmp" "$PROGRESS_FILE"
-    fi
-
-    # Un-defer: change deferred steps to pending
-    jq '(.steps | to_entries | map(select(.value.status == "deferred")) | .[].key) as $k |
-        .steps[$k].status = "pending"' \
-       "$PROGRESS_FILE" > "${PROGRESS_FILE}.tmp" && mv "${PROGRESS_FILE}.tmp" "$PROGRESS_FILE"
-
     echo "post-requirements-source-resolve: source resolved to $REPO_PATH — deferred steps now pending" >&2
   fi
 
 elif [ "$RESOLVE_EXIT" -eq 2 ]; then
-  # No source found — skip deferred steps
-  jq '(.steps | to_entries | map(select(.value.status == "deferred")) | .[].key) as $k |
-      .steps[$k].status = "skipped"' \
-     "$PROGRESS_FILE" > "${PROGRESS_FILE}.tmp" && mv "${PROGRESS_FILE}.tmp" "$PROGRESS_FILE"
-
   echo "post-requirements-source-resolve: no source repo discovered — deferred steps skipped" >&2
 
 else
   # Error — leave state unchanged
-  echo "post-requirements-source-resolve: resolve_source.py failed (exit $RESOLVE_EXIT), leaving state unchanged" >&2
+  echo "post-requirements-source-resolve: sync_progress_source.py failed (exit $RESOLVE_EXIT), leaving state unchanged" >&2
 fi
 
 # Write stamp regardless of outcome (prevent re-runs)

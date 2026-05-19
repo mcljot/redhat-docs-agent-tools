@@ -30,7 +30,7 @@ bash ${CLAUDE_SKILL_DIR}/scripts/setup-hooks.sh
 When displaying available options to the user (e.g., on skill load or when asking for flags), reproduce the descriptions below **verbatim** — do not summarize or paraphrase them.
 
 - `$1` — JIRA ticket ID (required). If missing, STOP and ask the user.
-- `--workflow <name>` — Use `.agent_workspace/docs-<name>.yaml` instead of `docs-workflow.yaml`. Allows running alternative pipelines (e.g., writing-only, review-only). Falls back to the plugin default at `skills/docs-orchestrator/defaults/docs-workflow.yaml` if no project-level YAML exists
+- `--workflow <name>` — Use `.agent_workspace/docs-<name>.yaml` instead of `docs-workflow.yaml`. Allows running alternative pipelines (e.g., writing-only, review-only). If the project-level file does not exist, fall back to the matching plugin default at `skills/docs-orchestrator/defaults/docs-<name>.yaml`
 - `--pr <url>...` — PR/MR URLs (space-delimited, one or more). Accepts GitHub PRs (`gh` CLI) and GitLab MRs (`glab` CLI). Used both as requirements input (agent reads diffs/descriptions) and for source repo resolution (repo URL and branch derived from the first PR/MR). When multiple PRs from different repos are provided, all repos are resolved and treated equally as source material
 - `--mkdocs` — Use Material for MkDocs format instead of AsciiDoc. Propagates to the writing step (generates `.md` with MkDocs front matter) and style-review step (applies Markdown-appropriate rules). Sets `options.format` to `"mkdocs"` in the progress file
 - `--draft` — Write documentation to the staging area (`.agent_workspace/<ticket>/writing/`) instead of directly into the repo. Uses DRAFT placement mode: no framework detection, no file placement into the target repo. Without this flag, UPDATE-IN-PLACE is the default
@@ -68,11 +68,11 @@ When displaying available options to the user (e.g., on skill load or when askin
 /docs-orchestrator PROJ-123 --workflow quick
 
 # Code-evidence workflow — auto-discovers repo from JIRA, or pass explicitly
-/docs-orchestrator PROJ-123 --workflow code-evidence
+/docs-orchestrator PROJ-123 --workflow workflow-code-evidence
 
 # Code-evidence workflow — explicit repo (overrides auto-discovery)
 /docs-orchestrator PROJ-123 \
-  --workflow code-evidence \
+  --workflow workflow-code-evidence \
   --source-code-repo https://github.com/org/operator
 ```
 
@@ -151,8 +151,9 @@ All fields except `repo` are optional. If `scope` is omitted, the entire reposit
 ### 1. Determine the YAML file
 
 - If `--workflow <name>` was specified → `.agent_workspace/docs-<name>.yaml`
+- If that project-level file doesn't exist → fall back to `skills/docs-orchestrator/defaults/docs-<name>.yaml`
 - Otherwise → `.agent_workspace/docs-workflow.yaml`
-- If the project-level file doesn't exist → fall back to the plugin default at `skills/docs-orchestrator/defaults/docs-workflow.yaml`
+- If that project-level file doesn't exist → fall back to `skills/docs-orchestrator/defaults/docs-workflow.yaml`
 
 ### 2. Read the YAML
 
@@ -378,10 +379,23 @@ Before starting, check for a progress file at `.agent_workspace/<ticket>/workflo
 
 1. Read it and identify which steps have status `"completed"` or `"skipped"`
 2. For each `"completed"` step, verify its output folder still exists on disk. If it has been deleted, reset that step to `"pending"` and reset all downstream dependent steps to `"pending"` as well
-3. Resume from the first step with status `"pending"` or `"failed"`
-4. Before running the resume step, validate its input dependencies are satisfied
-5. Tell the user: "Found existing work for `<ticket>`. Resuming from `<step>`."
-6. If the user provided additional flags on resume (e.g., `--create-jira`), update the progress file options accordingly
+3. If `options.source` is `null`, rehydrate it from on-disk source state **before** choosing the resume step:
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/sync_progress_source.py \
+  --base-path <base_path> \
+  --progress-file <progress_file> \
+  --ticket <TICKET> \
+  --plugin-root ${CLAUDE_PLUGIN_ROOT} \
+  [--scan-requirements --skip-deferred-on-no-source]
+```
+
+Use the bracketed flags only if the `requirements` step has already completed; this re-runs post-requirements source discovery against the persisted workflow artifacts. Then re-read the progress file from disk before continuing. This ensures cached `source.yaml` and any already-cloned repo are reflected in `options.source` on resume.
+
+4. Resume from the first step with status `"pending"` or `"failed"`
+5. Before running the resume step, validate its input dependencies are satisfied
+6. Tell the user: "Found existing work for `<ticket>`. Resuming from `<step>`."
+7. If the user provided additional flags on resume (e.g., `--create-jira`), update the progress file options accordingly
 
 **If no progress file exists**, start from step 1, create a new progress file, and write the active workflow marker.
 
@@ -470,31 +484,33 @@ After each step completes, apply the rules below. When rules reference sidecar f
 
 This section triggers **only** when the `requirements` step completes AND `options.source` is still `null` (i.e., no source was resolved pre-flight).
 
-### 1. Run the script with `--scan-requirements`
+### 1. Run the progress-sync script with `--scan-requirements`
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/resolve_source.py \
+python3 ${CLAUDE_SKILL_DIR}/scripts/sync_progress_source.py \
   --base-path <base_path> \
+  --progress-file <progress_file> \
   --ticket <TICKET> \
   --plugin-root ${CLAUDE_PLUGIN_ROOT} \
-  --scan-requirements
+  --scan-requirements \
+  --skip-deferred-on-no-source
 ```
 
-The script first attempts JIRA ticket discovery (git links and auto-discovered PRs from the ticket graph), then scans `requirements.md` for GitHub/GitLab PR/MR URLs as a fallback. It groups discovered repos, resolves all repos equally (via `gh pr view` or `glab mr view`), clones each into `code-repo/<name>/`, and writes `source.yaml` for the primary repo.
+The sync script delegates source resolution to `resolve_source.py`, then writes the result back into the progress file. Resolution first attempts JIRA ticket discovery (git links and auto-discovered PRs from the ticket graph), then scans `requirements.md` for GitHub/GitLab PR/MR URLs as a fallback. When a repo is found, it clones/verifies it, writes `source.yaml`, records `options.source`, and promotes deferred steps to `pending`.
 
 ### 2. Handle the result
 
 | Exit code | `status` | Action |
 |---|---|---|
-| 0 | `resolved` | Record `options.source` in the progress file (primary repo + any `additional_repos`). Update all `deferred` steps to `pending`. Log all resolved repos |
-| 1 | `error` / `clone_failed` | Log a warning: "Could not clone `<repo_url>`. Code-evidence will be skipped. To retry, run with `--source-code-repo <url-or-local-path>`." Update all `deferred` steps to `skipped` |
+| 0 | `resolved` | The script has already recorded `options.source` in the progress file (primary repo + any `additional_repos`) and updated all `deferred` steps to `pending`. Log all resolved repos |
+| 1 | `error` / `clone_failed` | Log a warning: "Could not clone `<repo_url>`. Code-evidence will be skipped. To retry, run with `--source-code-repo <url-or-local-path>`." Leave the progress file unchanged |
 | 2 | `no_source` | Skip code-evidence (see below) |
 
 ### 3. No source found
 
 When the script returns `no_source`, skip code-evidence without prompting.
 
-Update all `deferred` steps to `skipped` and continue without code-evidence. Log: "No source code repository or PR discovered. Skipping code-evidence. To enable it, re-run with `--source-code-repo <url-or-path>` or `--pr <url>`."
+With `--skip-deferred-on-no-source`, the script has already updated all `deferred` steps to `skipped`. Continue without code-evidence and log: "No source code repository or PR discovered. Skipping code-evidence. To enable it, re-run with `--source-code-repo <url-or-path>` or `--pr <url>`."
 
 ## Technical review iteration
 
