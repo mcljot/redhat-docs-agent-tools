@@ -115,6 +115,7 @@ def test_resolve_discovered_repos_merged_pr_clones_default_branch(tmp_path):
         "https://github.com/org/repo.git",
         tmp_path / "code-repo" / "repo",
         None,
+        pr_url="https://github.com/org/repo/pull/42",
     )
 
     source_yaml = (tmp_path / "source.yaml").read_text()
@@ -148,6 +149,7 @@ def test_resolve_discovered_repos_open_pr_clones_branch(tmp_path):
         "https://github.com/org/repo.git",
         tmp_path / "code-repo" / "repo",
         "feat/active-work",
+        pr_url="https://github.com/org/repo/pull/99",
     )
 
     source_yaml = (tmp_path / "source.yaml").read_text()
@@ -174,6 +176,7 @@ def test_resolve_multiple_prs_merged_clones_default_branch(tmp_path):
         "https://github.com/org/repo.git",
         tmp_path / "code-repo" / "repo",
         None,
+        pr_url="https://github.com/org/repo/pull/42",
     )
 
     source_yaml = (tmp_path / "source.yaml").read_text()
