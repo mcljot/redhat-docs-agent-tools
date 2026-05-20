@@ -15,7 +15,7 @@ runs namespaced commands such as `hello-world:greet`.
 claude plugin marketplace add https://gitlab.cee.redhat.com/aireilly/redhat-docs-agent-tools.git
 
 # Install a plugin
-claude plugin install hello-world@redhat-docs-agent-tools
+claude plugin install docs-tools@redhat-docs-agent-tools
 
 # Refresh marketplace listings and installed plugins from this catalog
 claude plugin marketplace update redhat-docs-agent-tools
@@ -46,7 +46,7 @@ Add repository files to the chat per the [Cursor documentation](https://cursor.c
 ### Available Claude Code plugins
 
 Run `make update` to generate the plugin catalog locally, or browse the
-[live site](https://aireilly.gitlab.cee.redhat.com/redhat-docs-agent-tools/).
+[live site](https://aireilly.pages.redhat.com/redhat-docs-agent-tools/).
 
 ## Documentation
 
@@ -55,7 +55,7 @@ It auto-deploys to GitLab Pages on every merge to main.
 
 ### Live site
 
-[Published documentation](https://aireilly.gitlab.cee.redhat.com/redhat-docs-agent-tools/)
+[Published documentation](https://aireilly.pages.redhat.com/redhat-docs-agent-tools/)
 
 ### Local development
 
