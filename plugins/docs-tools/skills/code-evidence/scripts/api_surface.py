@@ -8,11 +8,41 @@ code-finder`) or invoked via `uv run --with code-finder`.
 Usage:
     python3 api_surface.py --target /path/to/source \
         [--languages python,go] [--include-private] [--no-docstrings]
+        [--summary]
 """
 
 import argparse
 import json
 import sys
+from collections import Counter
+
+
+def _summarize(result):
+    """Print a human-readable summary of the API surface to stdout."""
+    surface = result.get("api_surface", {})
+    type_counts = Counter()
+    names_by_type = {}
+
+    for file_info in surface.values():
+        for entity in file_info.get("entities", []):
+            etype = entity.get("type", "unknown")
+            type_counts[etype] += 1
+            names_by_type.setdefault(etype, []).append(entity.get("name", "?"))
+
+    lines = [
+        f"Files processed: {result.get('files_processed', 0)}",
+        f"Files with API entities: {result.get('files_with_api', 0)}",
+        f"Total entities: {result.get('total_entities', 0)}",
+    ]
+    if type_counts:
+        breakdown = ", ".join(f"{t}={c}" for t, c in type_counts.most_common())
+        lines.append(f"By type: {breakdown}")
+        for etype, names in sorted(names_by_type.items()):
+            preview = names[:10]
+            suffix = f" (+{len(names) - 10} more)" if len(names) > 10 else ""
+            lines.append(f"  {etype}: {', '.join(preview)}{suffix}")
+
+    print("\n".join(lines))
 
 
 def main():
@@ -35,6 +65,11 @@ def main():
         "--no-docstrings",
         action="store_true",
         help="Exclude docstrings from output",
+    )
+    parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="Print a human-readable summary instead of full JSON",
     )
     args = parser.parse_args()
 
@@ -59,8 +94,12 @@ def main():
         include_private=args.include_private,
         include_docstrings=not args.no_docstrings,
     )
-    json.dump(result, sys.stdout, indent=2, default=str)
-    print()
+
+    if args.summary:
+        _summarize(result)
+    else:
+        json.dump(result, sys.stdout, indent=2, default=str)
+        print()
 
 
 if __name__ == "__main__":

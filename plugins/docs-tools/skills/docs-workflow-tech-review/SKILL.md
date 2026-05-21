@@ -139,9 +139,16 @@ If the command fails (non-zero exit), log a warning and continue without grounde
 
 #### 2c. Run API surface extraction
 
+Run two commands: the full JSON output for the reviewer agent, and a `--summary` for the evidence summary block.
+
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/code-evidence/scripts/api_surface.py \
   --target "$REPO_PATH" > "$API_SURFACE_FILE"
+```
+
+```bash
+API_SURFACE_SUMMARY=$(python3 ${CLAUDE_PLUGIN_ROOT}/skills/code-evidence/scripts/api_surface.py \
+  --target "$REPO_PATH" --summary)
 ```
 
 Or with uv fallback if code-finder is not installed.
@@ -157,12 +164,12 @@ Read `$GROUNDED_FILE` and triage the results. For each claim verdict:
 - `partially_supported` — note what part is supported and what isn't.
 - `supported` — no action needed.
 
-Read `$API_SURFACE_FILE` and note the total entity count and key classes/functions. This gives the reviewer a map of what exists in the code.
+Use the `$API_SURFACE_SUMMARY` captured in step 2c for the API surface counts. Do NOT parse `$API_SURFACE_FILE` JSON to compute counts — the `--summary` flag already provides a human-readable breakdown.
 
 Build a `CODE_EVIDENCE_SUMMARY` text block containing:
 - Count of claims by verdict (supported, partially_supported, unsupported, no_evidence_found)
 - List of unsupported and partially_supported claims with their evidence
-- Top-level API surface summary (number of classes, functions, methods)
+- API surface summary (paste `$API_SURFACE_SUMMARY` directly)
 - List of any doc-referenced APIs not found in the API surface
 
 ### 4. Dispatch agent
