@@ -64,7 +64,7 @@ Select the prompt based on `mode` and `format` from the JSON output. In every pr
 >
 > Read the plan from: `<INPUT_FILE>`
 >
-> **[Include only if HAS_EVIDENCE=true]** Code evidence is available at `<EVIDENCE_FILE>`. Read it and use the `source_results` for accurate function signatures, parameter types, and code examples. Use `context_results` for narrative context, installation steps, and architectural patterns. Prefer evidence over assumptions — if the evidence contradicts the plan, follow the evidence.
+> **[Include only if HAS_EVIDENCE=true]** Code evidence is available at `<EVIDENCE_FILE>`. Read it and use the `source_results` for accurate function signatures, parameter types, and code examples. Use `context_results` for narrative context, installation steps, and architectural patterns. Prefer evidence over assumptions — if the evidence contradicts the plan, follow the evidence. Each result includes a `repo_priority` field (`"primary"` or `"secondary"`) and an `adjusted` score. For **primary** evidence: use directly for technical claims. For **secondary** evidence (from companion repos): use for architectural context and cross-references, but mark exact technical details (function signatures, config keys, parameter values) with `[NEEDS VERIFICATION]` unless the `adjusted` score is 0.8 or above.
 >
 > **[Include only if HAS_EVIDENCE_STATUS=true]** Evidence classifications are available at `<EVIDENCE_STATUS>`. Read it and apply these rules per requirement:
 > - **Grounded** requirements have strong code evidence — write with full technical detail
@@ -102,7 +102,7 @@ Select the prompt based on `mode` and `format` from the JSON output. In every pr
 >
 > Read the plan from: `<INPUT_FILE>`
 >
-> **[Include only if HAS_EVIDENCE=true]** Code evidence is available at `<EVIDENCE_FILE>`. Read it and use the `source_results` for accurate function signatures, parameter types, and code examples. Use `context_results` for narrative context, installation steps, and architectural patterns. Prefer evidence over assumptions — if the evidence contradicts the plan, follow the evidence.
+> **[Include only if HAS_EVIDENCE=true]** Code evidence is available at `<EVIDENCE_FILE>`. Read it and use the `source_results` for accurate function signatures, parameter types, and code examples. Use `context_results` for narrative context, installation steps, and architectural patterns. Prefer evidence over assumptions — if the evidence contradicts the plan, follow the evidence. Each result includes a `repo_priority` field (`"primary"` or `"secondary"`) and an `adjusted` score. For **primary** evidence: use directly for technical claims. For **secondary** evidence (from companion repos): use for architectural context and cross-references, but mark exact technical details (function signatures, config keys, parameter values) with `[NEEDS VERIFICATION]` unless the `adjusted` score is 0.8 or above.
 >
 > **[Include only if HAS_EVIDENCE_STATUS=true]** Evidence classifications are available at `<EVIDENCE_STATUS>`. Read it and apply these rules per requirement:
 > - **Grounded** requirements have strong code evidence — write with full technical detail
@@ -140,7 +140,7 @@ Select the prompt based on `mode` and `format` from the JSON output. In every pr
 >
 > Read the plan from: `<INPUT_FILE>`
 >
-> **[Include only if HAS_EVIDENCE=true]** Code evidence is available at `<EVIDENCE_FILE>`. Read it and use the `source_results` for accurate function signatures, parameter types, and code examples. Use `context_results` for narrative context, installation steps, and architectural patterns. Prefer evidence over assumptions — if the evidence contradicts the plan, follow the evidence.
+> **[Include only if HAS_EVIDENCE=true]** Code evidence is available at `<EVIDENCE_FILE>`. Read it and use the `source_results` for accurate function signatures, parameter types, and code examples. Use `context_results` for narrative context, installation steps, and architectural patterns. Prefer evidence over assumptions — if the evidence contradicts the plan, follow the evidence. Each result includes a `repo_priority` field (`"primary"` or `"secondary"`) and an `adjusted` score. For **primary** evidence: use directly for technical claims. For **secondary** evidence (from companion repos): use for architectural context and cross-references, but mark exact technical details (function signatures, config keys, parameter values) with `[NEEDS VERIFICATION]` unless the `adjusted` score is 0.8 or above.
 >
 > **[Include only if HAS_EVIDENCE_STATUS=true]** Evidence classifications are available at `<EVIDENCE_STATUS>`. Read it and apply these rules per requirement:
 > - **Grounded** requirements have strong code evidence — write with full technical detail
@@ -182,7 +182,7 @@ Select the prompt based on `mode` and `format` from the JSON output. In every pr
 >
 > Read the plan from: `<INPUT_FILE>`
 >
-> **[Include only if HAS_EVIDENCE=true]** Code evidence is available at `<EVIDENCE_FILE>`. Read it and use the `source_results` for accurate function signatures, parameter types, and code examples. Use `context_results` for narrative context, installation steps, and architectural patterns. Prefer evidence over assumptions — if the evidence contradicts the plan, follow the evidence.
+> **[Include only if HAS_EVIDENCE=true]** Code evidence is available at `<EVIDENCE_FILE>`. Read it and use the `source_results` for accurate function signatures, parameter types, and code examples. Use `context_results` for narrative context, installation steps, and architectural patterns. Prefer evidence over assumptions — if the evidence contradicts the plan, follow the evidence. Each result includes a `repo_priority` field (`"primary"` or `"secondary"`) and an `adjusted` score. For **primary** evidence: use directly for technical claims. For **secondary** evidence (from companion repos): use for architectural context and cross-references, but mark exact technical details (function signatures, config keys, parameter values) with `[NEEDS VERIFICATION]` unless the `adjusted` score is 0.8 or above.
 >
 > **[Include only if HAS_EVIDENCE_STATUS=true]** Evidence classifications are available at `<EVIDENCE_STATUS>`. Read it and apply these rules per requirement:
 > - **Grounded** requirements have strong code evidence — write with full technical detail

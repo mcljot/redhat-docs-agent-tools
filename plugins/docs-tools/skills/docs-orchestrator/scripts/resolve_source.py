@@ -14,16 +14,14 @@ Modes:
 2. From existing source.yaml:
     python3 resolve_source.py --base-path .agent_workspace/proj-123
 
-3. JIRA ticket discovery (auto-discover repo from ticket git links):
-    python3 resolve_source.py --base-path .agent_workspace/proj-123 \
-        --ticket PROJ-123 --plugin-root /path/to/docs-tools
+3. From discovered_repos.json (written by extract_discovered_repos.py):
+    python3 resolve_source.py --base-path .agent_workspace/proj-123
 
 4. Scan requirements.md for PR URLs (post-requirements discovery):
     python3 resolve_source.py --base-path .agent_workspace/proj-123 --scan-requirements
 
 5. Dry-run check (CI pre-flight — resolve without cloning):
-    python3 resolve_source.py --base-path .agent_workspace/proj-123 \
-        --ticket PROJ-123 --plugin-root /path/to/docs-tools --dry-run
+    python3 resolve_source.py --base-path .agent_workspace/proj-123 --dry-run
 
 Output: JSON to stdout with the resolved source info, or an error status.
 
@@ -405,39 +403,6 @@ def _resolve_discovered_repos(discovered, base_path, dry_run=False):
     return result
 
 
-_JIRA_SMARTLINK_PIPE_RE = re.compile(r"\|[^|\]]*$")
-_URL_CANDIDATE_RE = re.compile(r"https?://(?:github\.com|gitlab\.[^\s/]+)/[^\s\[\]()|<>\"']+")
-
-
-def _clean_jira_url(raw):
-    """Strip Jira smart-link formatting artifacts from a URL string."""
-    url = raw.strip("[]() \t")
-    url = _JIRA_SMARTLINK_PIPE_RE.sub("", url)
-    url = url.rstrip(".,;:!?>)")
-    return url
-
-
-def _extract_urls_from_text(text):
-    """Extract GitHub/GitLab URLs from free-form text (e.g. Jira descriptions).
-
-    Handles Jira smart-link formatting and deduplicates results.
-    Returns a list of cleaned URL strings that match known Git hosts.
-    """
-    if not text:
-        return []
-    candidates = _URL_CANDIDATE_RE.findall(text)
-    seen = set()
-    urls = []
-    for raw in candidates:
-        cleaned = _clean_jira_url(raw)
-        if not cleaned or cleaned in seen:
-            continue
-        if extract_repo_url(cleaned) is not None:
-            seen.add(cleaned)
-            urls.append(cleaned)
-    return urls
-
-
 def extract_repo_url(link_url):
     """Extract a normalized repo URL from a GitHub/GitLab link.
 
@@ -470,110 +435,6 @@ def extract_repo_url(link_url):
         return f"https://github.com/{slug}"
 
     return None
-
-
-def _discover_from_jira(ticket, base_path, plugin_root, dry_run=False):
-    """Discover source repo(s) from JIRA ticket links and description URLs.
-
-    Calls jira_reader.py to fetch the ticket's remote links and description,
-    extracts repo URLs from both, groups by repo with weighted scoring
-    (remote links count double vs description mentions), and selects the
-    primary repo.
-
-    Returns a result dict (same contract as resolve()).
-    """
-    jira_script = Path(plugin_root) / "skills" / "jira-reader" / "scripts" / "jira_reader.py"
-    if not jira_script.exists():
-        return {
-            "status": "error",
-            "message": f"jira_reader.py not found at {jira_script}",
-        }
-
-    # Fetch git_links and description from --issue
-    git_links = []
-    description_urls = []
-    try:
-        result = subprocess.run(  # noqa: S603
-            ["python3", str(jira_script), "--issue", ticket],  # noqa: S607
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        if result.returncode == 0:
-            issue_data = json.loads(result.stdout)
-            if isinstance(issue_data, list):
-                issue_data = issue_data[0]
-            git_links = issue_data.get("git_links", [])
-            description = issue_data.get("description", "") or ""
-            description_urls = _extract_urls_from_text(description)
-    except (json.JSONDecodeError, subprocess.TimeoutExpired, IndexError):
-        pass
-
-    # Fetch auto_discovered_urls.pull_requests from --graph
-    auto_prs = []
-    try:
-        result = subprocess.run(  # noqa: S603
-            ["python3", str(jira_script), "--graph", ticket],  # noqa: S607
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        if result.returncode == 0:
-            graph_data = json.loads(result.stdout)
-            auto_prs = graph_data.get("auto_discovered_urls", {}).get("pull_requests", [])
-    except (json.JSONDecodeError, subprocess.TimeoutExpired):
-        pass
-
-    # Weighted URL sets: remote links/graph PRs are high-signal (weight 2),
-    # description-embedded URLs are lower-signal (weight 1).
-    linked_urls = list(dict.fromkeys(git_links + auto_prs))
-    desc_only_urls = [u for u in description_urls if u not in set(linked_urls)]
-
-    if not linked_urls and not desc_only_urls:
-        return {"status": "no_source"}
-
-    # Group by normalized repo URL with weighted counts
-    _LINKED_WEIGHT = 2
-    _DESC_WEIGHT = 1
-    repo_counts = {}  # normalized_url -> {"url": canonical_url, "count": N, "pr_urls": [...]}
-
-    for url in linked_urls:
-        repo_url = extract_repo_url(url)
-        if not repo_url:
-            continue
-        normalized = normalize_git_url(repo_url)
-        if normalized not in repo_counts:
-            repo_counts[normalized] = {"url": repo_url, "count": 0, "pr_urls": []}
-        repo_counts[normalized]["count"] += _LINKED_WEIGHT
-        if GITHUB_PR_RE.match(url) or GITLAB_MR_RE.match(url):
-            repo_counts[normalized]["pr_urls"].append(url)
-
-    for url in desc_only_urls:
-        repo_url = extract_repo_url(url)
-        if not repo_url:
-            continue
-        normalized = normalize_git_url(repo_url)
-        if normalized not in repo_counts:
-            repo_counts[normalized] = {"url": repo_url, "count": 0, "pr_urls": []}
-        repo_counts[normalized]["count"] += _DESC_WEIGHT
-        if GITHUB_PR_RE.match(url) or GITLAB_MR_RE.match(url):
-            repo_counts[normalized]["pr_urls"].append(url)
-
-    if not repo_counts:
-        return {"status": "no_source"}
-
-    # Sort by: count descending, then prefer repos with PR URLs, then by URL
-    # for stable ordering. This ensures the "primary" repo is the one with the
-    # strongest signal, with PRs as a tiebreaker over bare repo mentions.
-    ranked = sorted(
-        repo_counts.values(),
-        key=lambda r: (r["count"], len(r["pr_urls"]), r["url"]),
-        reverse=True,
-    )
-
-    # Resolve all discovered repos (first = primary, rest = additional)
-    discovered = [{"repo_url": r["url"], "pr_urls": r["pr_urls"]} for r in ranked]
-    return _resolve_discovered_repos(discovered, base_path, dry_run=dry_run)
 
 
 def _extract_pr_number(pr_url):
@@ -981,30 +842,22 @@ def resolve(args):
     if pr_urls:
         return _resolve_multiple_prs(pr_urls, base_path, dry_run=dry_run)
 
-    # --- Priority 4: JIRA ticket discovery ---
-    ticket = getattr(args, "ticket", None)
-    plugin_root = getattr(args, "plugin_root", None)
-    if ticket and plugin_root:
-        result = _discover_from_jira(ticket, base_path, plugin_root, dry_run=dry_run)
-        if result["status"] != "no_source":
-            return result
-
-    # --- Priority 4b: discovered_repos.json (from graph walk) ---
+    # --- Priority 4: discovered_repos.json (from requirements-step graph walk) ---
     discovered = _read_discovered_repos(base_path)
     if discovered:
         result = _resolve_discovered_repos(discovered, base_path, dry_run=dry_run)
         if result["status"] != "no_source":
             return result
 
-    # --- Priority 5: Scan requirements for PRs ---
+    # --- Priority 5: Scan requirements.md for PRs ---
     if args.scan_requirements:
         repos = _scan_requirements_for_prs(base_path)
 
         if not repos:
             return {"status": "no_source"}
 
-        # Collect first PR URL from each discovered repo
-        all_pr_urls = [prs[0]["url"] for prs in repos.values()]
+        sorted_repos = sorted(repos.values(), key=len, reverse=True)
+        all_pr_urls = [prs[0]["url"] for prs in sorted_repos]
         return _resolve_multiple_prs(all_pr_urls, base_path, dry_run=dry_run)
 
     # --- Priority 6: No source ---
@@ -1031,14 +884,6 @@ def main():
         help="PR/MR URL(s), space-delimited",
     )
     parser.add_argument(
-        "--ticket",
-        help="JIRA ticket ID for auto-discovery of source repo from git links",
-    )
-    parser.add_argument(
-        "--plugin-root",
-        help="Plugin root directory (for locating jira_reader.py)",
-    )
-    parser.add_argument(
         "--scan-requirements",
         action="store_true",
         help="Scan requirements.md for PR URLs (post-requirements discovery)",
@@ -1048,10 +893,18 @@ def main():
         action="store_true",
         help="Check if a source repo can be resolved without cloning or writing files",
     )
+    parser.add_argument(
+        "--priority",
+        choices=["primary", "secondary"],
+        default="primary",
+        help="Repo priority level (default: primary). Secondary repos skip source.yaml overwrite",
+    )
     args = parser.parse_args()
 
     result = resolve(args)
 
+    if args.priority == "secondary":
+        result["priority"] = "secondary"
     if args.dry_run:
         result["dry_run"] = True
 

@@ -46,8 +46,6 @@ def _write_progress(progress_file, progress):
 def sync_progress_source(
     base_path,
     progress_file,
-    ticket=None,
-    plugin_root=None,
     repo_values=None,
     pr_urls=None,
     scan_requirements=False,
@@ -58,8 +56,6 @@ def sync_progress_source(
     Args:
         base_path: Workflow base path (e.g. .agent_workspace/proj-123)
         progress_file: Path to the workflow progress JSON file
-        ticket: Optional JIRA ticket key for JIRA-based discovery
-        plugin_root: Optional docs-tools plugin root for locating jira_reader.py
         repo_values: Optional explicit repo value(s) to pass through
         pr_urls: Optional explicit PR/MR URLs to pass through
         scan_requirements: Whether to enable requirements.md fallback scanning
@@ -80,8 +76,6 @@ def sync_progress_source(
         base_path=str(base_path),
         repo=repo_values,
         pr=resolved_prs,
-        ticket=ticket,
-        plugin_root=plugin_root,
         scan_requirements=scan_requirements,
         dry_run=False,
     )
@@ -126,14 +120,6 @@ def main():
         help="Workflow progress JSON file to update",
     )
     parser.add_argument(
-        "--ticket",
-        help="Optional JIRA ticket key for JIRA-based source discovery",
-    )
-    parser.add_argument(
-        "--plugin-root",
-        help="Optional docs-tools plugin root for locating jira_reader.py",
-    )
-    parser.add_argument(
         "--repo",
         nargs="+",
         help="Optional explicit source repo value(s) to pass through",
@@ -159,8 +145,6 @@ def main():
         result = sync_progress_source(
             base_path=args.base_path,
             progress_file=args.progress_file,
-            ticket=args.ticket,
-            plugin_root=args.plugin_root,
             repo_values=args.repo,
             pr_urls=args.pr,
             scan_requirements=args.scan_requirements,

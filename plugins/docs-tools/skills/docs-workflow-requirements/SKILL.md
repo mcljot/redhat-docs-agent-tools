@@ -74,14 +74,15 @@ If the discovery JSON has an `error` field set, STOP and report the error (likel
 
 ### 3. Extract discovered repos
 
-After the discoverer agent completes, extract repo/PR URLs from the JIRA graph data it collected. Pipe the discovery JSON through the extraction script:
+After the discoverer agent completes, extract repo/PR URLs from the JIRA graph data it collected. Pipe the graph JSON through the extraction script, and merge any PRs the discoverer found via description/comment text scanning:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/jira-reader/scripts/jira_reader.py --graph <TICKET> | \
-  python3 ${CLAUDE_SKILL_DIR}/scripts/extract_discovered_repos.py --output-dir "$OUTPUT_DIR"
+  python3 ${CLAUDE_SKILL_DIR}/scripts/extract_discovered_repos.py --output-dir "$OUTPUT_DIR" \
+    --merge-discovery "$DISCOVERY_FILE"
 ```
 
-This produces `discovered_repos.json` in the output directory, which `resolve_source.py` reads at Priority 4b for automatic repo discovery. If the script fails, log a warning and continue — repo discovery is optional.
+This produces `discovered_repos.json` in the output directory, which `resolve_source.py` reads at Priority 4 for automatic repo discovery. The `--merge-discovery` flag reads `discovery.json` to capture PR URLs found by the discoverer agent through text scanning (JIRA description, comments, linked tickets) that aren't in the graph's formal `git_links`. If the script fails, log a warning and continue — repo discovery is optional.
 
 ### 4. Parse discovery output
 
@@ -298,5 +299,5 @@ Verify that `<OUTPUT_FILE>` and `<OUTPUT_DIR>/step-result.json` exist.
 - **Parallel execution:** All pass-2 agents are dispatched in a single message for parallel execution
 - **Error isolation:** A failed deep-analysis agent does not block other requirements — the merge step uses skeleton data as a fallback
 - **Output contract:** The assembled `requirements.md` is identical in format to the previous single-pass output. Downstream consumers (scope-req-audit, planning, orchestrator) see no change
-- **Repo discovery:** After discovery, the repo extraction script produces `discovered_repos.json` from the JIRA graph. This enables `resolve_source.py` Priority 4b to auto-discover and clone repos without user flags
-- **Discovery JSON:** The `discovery.json` file is retained in the output directory as a debugging artifact. It is not consumed by downstream steps
+- **Repo discovery:** After discovery, the repo extraction script produces `discovered_repos.json` from the JIRA graph and discovery.json. This enables `resolve_source.py` Priority 4 to auto-discover and clone repos without user flags
+- **Discovery JSON:** The `discovery.json` file is retained in the output directory. It is read by `extract_discovered_repos.py` (via `--merge-discovery`) to capture PR URLs found through text scanning that aren't in the JIRA graph's formal git links

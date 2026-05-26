@@ -1,7 +1,7 @@
 ---
 name: docs-workflow-code-evidence
 description: Retrieve code evidence from a source repository to ground documentation in actual implementation. Indexes using AST chunking and hybrid search, then retrieves relevant code snippets for each topic in the documentation plan. Uses two-pass retrieval — source-scoped for API accuracy, unfiltered for README/narrative context. Supports glob-based scope filtering for whole-repo or subdirectory-scoped documentation. Repo must be available (cloned by orchestrator or provided via --repo). Requires uv for automatic code-finder dependency management.
-argument-hint: <ticket> --base-path <path> --repo <path> [--scope-include <globs>] [--scope-exclude <globs>] [--reindex] [--limit N]
+argument-hint: <ticket> --base-path <path> --repo <path> [--secondary-repos-file <path>] [--secondary-weight <float>] [--scope-include <globs>] [--scope-exclude <globs>] [--reindex] [--limit N]
 allowed-tools: Read, Write, Glob, Grep, Bash
 dependencies:
   python:
@@ -26,6 +26,8 @@ The writer typically works from the **documentation repository**, not the code r
 - `$1` — JIRA ticket ID (required)
 - `--base-path <path>` — Base output path (e.g., `.agent_workspace/proj-123`)
 - `--repo <path> [<path>...]` — Path(s) to source code repositories (required — provided by the orchestrator after clone/verify). When multiple repos are provided, each is indexed and searched independently; results are merged per topic with `repo` attribution
+- `--secondary-repos-file <path>` — JSON file specifying secondary repos with per-repo metadata (requirement IDs, scope, weight). Each secondary repo is indexed independently and searched only for queries relevant to its associated requirements. Results include `repo_priority: "secondary"` and an `adjusted` score (combined * weight)
+- `--secondary-weight <float>` — Default relevance multiplier for secondary repo results (default: 0.8). Individual repos can override this via the `weight` field in the secondary-repos file
 - `--scope-include <globs>` — Comma-separated glob patterns to include (e.g., `src/controllers/**,pkg/api/v1/**,README.md`). Scopes both source directory detection and search results. If omitted, the entire repo is in scope.
 - `--scope-exclude <globs>` — Comma-separated glob patterns to exclude (e.g., `**/vendor/**,**/*_test.go`). Applied as post-retrieval filters since code-finder does not support exclude globs natively.
 - `--reindex` — Force re-indexing even if a cached index exists
@@ -156,6 +158,15 @@ uv run --with code-finder python3 ${CLAUDE_PLUGIN_ROOT}/skills/code-evidence/scr
 ```
 
 If `--reindex` is specified, add `--reindex` — it is applied to the first query only; subsequent queries reuse the freshly built index.
+
+If `--secondary-repos-file` was provided, add it to the command:
+
+```bash
+  --secondary-repos-file "${OUTPUT_DIR}/secondary-repos.json" \
+  --secondary-weight <SECONDARY_WEIGHT>
+```
+
+The orchestrator writes this file from `options.additional_sources` in the progress file. Each entry specifies the repo path, associated requirement IDs, scope, and optional weight override. Secondary repos are indexed independently and searched with a relevance multiplier (default 0.8).
 
 The script outputs a JSON array of results, one per query entry per repo:
 
