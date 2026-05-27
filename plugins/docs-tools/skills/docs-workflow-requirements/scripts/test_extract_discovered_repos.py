@@ -27,12 +27,16 @@ class TestSortRanking:
     def test_prefers_repos_with_prs(self):
         """Repo with fewer refs but more PRs should rank first."""
         graph = _minimal_graph()
+        config_issue = {
+            "git_links": ["https://github.com/org/config-repo"],
+            "auto_discovered_urls": {},
+        }
         graph["children"]["issues"] = [
-            {"key": "T-2", "git_links": ["https://github.com/org/config-repo"], "auto_discovered_urls": {}},
-            {"key": "T-3", "git_links": ["https://github.com/org/config-repo"], "auto_discovered_urls": {}},
-            {"key": "T-4", "git_links": ["https://github.com/org/config-repo"], "auto_discovered_urls": {}},
-            {"key": "T-5", "git_links": ["https://github.com/org/config-repo"], "auto_discovered_urls": {}},
-            {"key": "T-6", "git_links": ["https://github.com/org/config-repo"], "auto_discovered_urls": {}},
+            {"key": "T-2", **config_issue},
+            {"key": "T-3", **config_issue},
+            {"key": "T-4", **config_issue},
+            {"key": "T-5", **config_issue},
+            {"key": "T-6", **config_issue},
             {
                 "key": "T-7",
                 "git_links": [
@@ -42,7 +46,11 @@ class TestSortRanking:
                 ],
                 "auto_discovered_urls": {},
             },
-            {"key": "T-8", "git_links": ["https://github.com/org/impl-repo"], "auto_discovered_urls": {}},
+            {
+                "key": "T-8",
+                "git_links": ["https://github.com/org/impl-repo"],
+                "auto_discovered_urls": {},
+            },
         ]
 
         result = extract_repos_from_graph(graph)

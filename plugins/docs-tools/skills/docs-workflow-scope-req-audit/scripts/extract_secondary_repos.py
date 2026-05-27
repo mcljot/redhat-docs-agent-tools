@@ -82,11 +82,11 @@ def _fetch_pr_file_paths(repo_url, pr_number):
     repo_slug = m.group(1)
     try:
         result = subprocess.run(  # noqa: S603
-            [
+            [  # noqa: S607
                 "gh",
                 "pr",
                 "view",
-                str(pr_number),  # noqa: S607
+                str(pr_number),
                 "--repo",
                 repo_slug,
                 "--json",
