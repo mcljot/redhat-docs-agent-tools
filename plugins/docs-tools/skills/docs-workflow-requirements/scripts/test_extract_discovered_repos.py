@@ -92,10 +92,12 @@ class TestDiscoveryMerge:
     @pytest.fixture()
     def discovery_file(self, tmp_path):
         """Write a discovery.json and return the path."""
+
         def _write(data):
             path = tmp_path / "discovery.json"
             path.write_text(json.dumps(data))
             return str(path)
+
         return _write
 
     def test_adds_new_repos(self, discovery_file):
@@ -104,14 +106,16 @@ class TestDiscoveryMerge:
         result = extract_repos_from_graph(graph)
         assert result["total_repos"] == 0
 
-        discovery_path = discovery_file({
-            "sources_consulted": {
-                "pull_requests": [
-                    {"url": "https://github.com/org/new-repo/pull/42"},
-                ],
-            },
-            "requirements": [],
-        })
+        discovery_path = discovery_file(
+            {
+                "sources_consulted": {
+                    "pull_requests": [
+                        {"url": "https://github.com/org/new-repo/pull/42"},
+                    ],
+                },
+                "requirements": [],
+            }
+        )
 
         repo_groups = _rebuild_repo_groups(result)
         merge_discovery_prs(repo_groups, discovery_path)
@@ -129,15 +133,17 @@ class TestDiscoveryMerge:
         result = extract_repos_from_graph(graph)
         assert len(result["repos"][0]["pr_urls"]) == 1
 
-        discovery_path = discovery_file({
-            "sources_consulted": {
-                "pull_requests": [
-                    {"url": "https://github.com/org/repo/pull/1"},
-                    {"url": "https://github.com/org/repo/pull/2"},
-                ],
-            },
-            "requirements": [],
-        })
+        discovery_path = discovery_file(
+            {
+                "sources_consulted": {
+                    "pull_requests": [
+                        {"url": "https://github.com/org/repo/pull/1"},
+                        {"url": "https://github.com/org/repo/pull/2"},
+                    ],
+                },
+                "requirements": [],
+            }
+        )
 
         repo_groups = _rebuild_repo_groups(result)
         merge_discovery_prs(repo_groups, discovery_path)
@@ -158,12 +164,14 @@ class TestDiscoveryMerge:
         graph = _minimal_graph(auto_prs=[pr_url])
         result = extract_repos_from_graph(graph)
 
-        discovery_path = discovery_file({
-            "sources_consulted": {
-                "pull_requests": [{"url": pr_url}],
-            },
-            "requirements": [],
-        })
+        discovery_path = discovery_file(
+            {
+                "sources_consulted": {
+                    "pull_requests": [{"url": pr_url}],
+                },
+                "requirements": [],
+            }
+        )
 
         repo_groups = _rebuild_repo_groups(result)
         merge_discovery_prs(repo_groups, discovery_path)
@@ -173,18 +181,20 @@ class TestDiscoveryMerge:
 
     def test_reads_per_requirement_sources(self, discovery_file):
         """PRs in per-requirement sources (type=pr) are extracted."""
-        discovery_path = discovery_file({
-            "sources_consulted": {"pull_requests": []},
-            "requirements": [
-                {
-                    "id": "REQ-001",
-                    "sources": [
-                        {"type": "pr", "url": "https://github.com/org/repo/pull/99"},
-                        {"type": "jira", "url": "https://jira.example.com/PROJ-1"},
-                    ],
-                },
-            ],
-        })
+        discovery_path = discovery_file(
+            {
+                "sources_consulted": {"pull_requests": []},
+                "requirements": [
+                    {
+                        "id": "REQ-001",
+                        "sources": [
+                            {"type": "pr", "url": "https://github.com/org/repo/pull/99"},
+                            {"type": "jira", "url": "https://jira.example.com/PROJ-1"},
+                        ],
+                    },
+                ],
+            }
+        )
 
         urls = _extract_prs_from_discovery(discovery_path)
         assert "https://github.com/org/repo/pull/99" in urls
@@ -203,16 +213,20 @@ class TestEndToEnd:
         assert result["total_repos"] == 0
 
         discovery_path = tmp_path / "discovery.json"
-        discovery_path.write_text(json.dumps({
-            "sources_consulted": {
-                "pull_requests": [
-                    {"url": "https://github.com/org/impl-repo/pull/10"},
-                    {"url": "https://github.com/org/impl-repo/pull/20"},
-                    {"url": "https://github.com/org/config-repo/pull/1"},
-                ],
-            },
-            "requirements": [],
-        }))
+        discovery_path.write_text(
+            json.dumps(
+                {
+                    "sources_consulted": {
+                        "pull_requests": [
+                            {"url": "https://github.com/org/impl-repo/pull/10"},
+                            {"url": "https://github.com/org/impl-repo/pull/20"},
+                            {"url": "https://github.com/org/config-repo/pull/1"},
+                        ],
+                    },
+                    "requirements": [],
+                }
+            )
+        )
 
         repo_groups = _rebuild_repo_groups(result)
         merge_discovery_prs(repo_groups, str(discovery_path))
