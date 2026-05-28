@@ -13,10 +13,26 @@ Batch mode (one import, one index load, many queries):
     python3 find_evidence.py --repo /path/to/repo \
         --queries-file queries.json [--reindex]
 
+Secondary repos (targeted search with priority weighting):
+    python3 find_evidence.py --repo /path/to/primary \
+        --queries-file queries.json \
+        --secondary-repos-file secondary-repos.json \
+        [--secondary-weight 0.8]
+
 queries.json schema:
     [
       {"query": "auth middleware", "limit": 5, "filter_paths": ["src/auth"]},
       {"query": "README overview",  "limit": 3}
+    ]
+
+secondary-repos.json schema:
+    [
+      {
+        "repo_path": "/path/to/secondary-repo",
+        "requirement_ids": ["REQ-002", "REQ-004"],
+        "scope": {"include": ["pkg/controller/"], "exclude": null},
+        "weight": 0.8
+      }
     ]
 """
 
@@ -41,11 +57,20 @@ def _resolve_filter_paths(repo_path, filter_paths):
     return [str((repo_root / p).resolve()) for p in filter_paths]
 
 
-def _format_result(query, filter_paths, repo_path, index_info, results):
+def _format_result(
+    query,
+    filter_paths,
+    repo_path,
+    index_info,
+    results,
+    repo_priority="primary",
+    weight=1.0,
+):
     """Format searcher results into the evidence retrieval output dict."""
     return {
         "query": query,
         "repo_path": repo_path,
+        "repo_priority": repo_priority,
         "result_count": len(results),
         "index_info": index_info,
         "results": [
@@ -67,7 +92,9 @@ def _format_result(query, filter_paths, repo_path, index_info, results):
                     "vector": round(r.vector_score, 4),
                     "bm25": round(r.bm25_score, 4),
                     "combined": round(r.combined_score, 4),
+                    "adjusted": round(r.combined_score * weight, 4),
                 },
+                "repo_priority": repo_priority,
             }
             for i, r in enumerate(results)
         ],
@@ -108,6 +135,16 @@ def main():
         action="store_true",
         help="Force re-indexing (applied to first query only in batch mode)",
     )
+    parser.add_argument(
+        "--secondary-repos-file",
+        help="JSON file specifying secondary repos with per-repo metadata",
+    )
+    parser.add_argument(
+        "--secondary-weight",
+        type=float,
+        default=0.8,
+        help="Relevance multiplier for secondary repo results (default: 0.8)",
+    )
     args = parser.parse_args()
 
     if not args.query and not args.queries_file:
@@ -133,6 +170,18 @@ def main():
             if not isinstance(entry, dict) or "query" not in entry:
                 print(f"Error: entry {i} must be an object with a 'query' field", file=sys.stderr)
                 sys.exit(1)
+
+    secondary_repos = None
+    if args.secondary_repos_file:
+        try:
+            with open(args.secondary_repos_file) as f:
+                secondary_repos = json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            print(f"Error reading secondary repos file: {e}", file=sys.stderr)
+            sys.exit(1)
+        if not isinstance(secondary_repos, list):
+            print("Error: secondary repos file must contain a JSON array", file=sys.stderr)
+            sys.exit(1)
 
     try:
         from claude_context.skills._index_manager import ensure_index
@@ -184,6 +233,43 @@ def main():
             results.append(
                 {"repo": repo, "query": query, "filter_paths": filter_paths, "result": result}
             )
+
+    # Secondary repos — index each independently, run subset of queries
+    if secondary_repos and queries:
+        for sec in secondary_repos:
+            sec_path = str(Path(sec["repo_path"]).resolve())
+            sec_weight = sec.get("weight", args.secondary_weight)
+            sec_scope = sec.get("scope") or {}
+            sec_include = sec_scope.get("include")
+
+            sec_searcher, sec_index_info = ensure_index(sec_path, reindex=False)
+
+            for entry in queries:
+                query = entry["query"]
+                limit = entry.get("limit", args.limit)
+                filter_paths = sec_include if sec_include else entry.get("filter_paths")
+                resolved = _resolve_filter_paths(sec_path, filter_paths)
+
+                raw = sec_searcher.search(query=query, limit=limit, filter_paths=resolved)
+                result = _format_result(
+                    query,
+                    filter_paths,
+                    sec_path,
+                    sec_index_info,
+                    raw,
+                    repo_priority="secondary",
+                    weight=sec_weight,
+                )
+                results.append(
+                    {
+                        "repo": sec["repo_path"],
+                        "query": query,
+                        "filter_paths": filter_paths,
+                        "result": result,
+                        "repo_priority": "secondary",
+                        "requirement_ids": sec.get("requirement_ids", []),
+                    }
+                )
 
     json.dump(results, sys.stdout, indent=2, default=str)
     print()

@@ -1,6 +1,6 @@
 workflow:
   name: docs-workflow-code-evidence
-  description: Code-evidence-grounded documentation workflow. Adds scope-req-audit and code-evidence steps to classify requirements by implementation status and ground documentation in actual source code. Source repo is resolved via explicit --source-code-repo, JIRA auto-discovery, or PR-derived URLs. Fails if no repo can be resolved.
+  description: Strict code-evidence variant. Same steps as the default workflow but with a workflow-level requires gate — fails immediately at pre-flight if no repo can be resolved. The default workflow (docs-workflow.yaml) defers discovery until after requirements and offers --no-code-evidence as an opt-out. Use this variant when a source repo is mandatory and there should be no escape hatch.
 
   requires:
     - has_source_repo

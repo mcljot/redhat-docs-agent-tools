@@ -74,11 +74,11 @@ mkdir -p "$OUTPUT_DIR"
 >
 > - **Grounded** requirements: create full module specifications as normal. Use the `key_files` for each grounded requirement as content source references in the module spec — these are the actual source files where the feature is implemented. The code-evidence step will use them for targeted retrieval
 > - **Partial** requirements: create module specifications but note what evidence was found and what is missing — flag for SME review. Include available `key_files` as partial source references
-> - **Absent** requirements: **STOP. Do NOT create module specifications for absent requirements.** These requirements have no code evidence in the indexed repository — the feature may live in a different repo, be unimplemented, or be out of scope. Creating modules for them risks fabrication. Instead, list each absent requirement in a "Deferred requirements (no code evidence)" section at the end of the plan with: (a) the requirement ID and title, (b) the `action` text from the evidence status, (c) which repository the implementation likely lives in (from the evidence status or discovered repos)
+> - **Absent** requirements: check the `secondary_repos` array in the evidence status. If a secondary repo was cloned for this requirement (its ID appears in a `secondary_repos[].requirements` entry), **promote it to partial** — create a module specification flagged as "secondary source" with a note that evidence comes from a companion repo. The code-evidence step will search this secondary repo with lower-priority weighting. If no secondary repo covers the requirement, **STOP. Do NOT create module specifications.** List it in a "Deferred requirements (no code evidence)" section at the end of the plan with: (a) the requirement ID and title, (b) the `action` text from the evidence status, (c) which repository the implementation likely lives in (from the evidence status or discovered repos)
 >
-> If `discovered_repos` lists repos that weren't indexed, note them in the deferred section as potential sources for resolving absent requirements.
+> If `discovered_repos` lists repos that weren't indexed and no `secondary_repos` were cloned, note them in the deferred section as potential sources for resolving absent requirements.
 >
-> **Self-check before writing the plan:** Count your module specifications. If the count exceeds the number of grounded + partial requirements, you have created modules for absent requirements — go back and move them to the deferred section.
+> **Self-check before writing the plan:** Count your module specifications. If the count exceeds the number of grounded + partial + promoted-from-absent requirements, you have created modules for unresolvable absent requirements — go back and move them to the deferred section.
 
 ### 3. Verify output
 

@@ -1,7 +1,7 @@
 ---
 name: docs-workflow-start
 description: Interactive guided setup for the docs workflow. Only invoke this skill when the user explicitly requests docs-workflow-start (e.g., /docs-workflow-start). Do NOT invoke this skill when the user requests docs-orchestrator — that skill runs directly. When invoked with no CLI switches, uses AskUserQuestion to gather configuration. Supports full workflow, individual steps with auto-resolved prerequisites, and resuming previous runs. When switches are provided, passes through directly to docs-orchestrator.
-argument-hint: "[<ticket>] [--workflow <name>] [--pr <url>...] [--source-code-repo <url-or-path>...] [--mkdocs] [--draft] [--docs-repo-path <path>] [--create-jira <PROJECT>]"
+argument-hint: "[<ticket>] [--workflow <name>] [--pr <url>...] [--source-code-repo <url-or-path>...] [--no-source-repo] [--auto-discover-repos] [--max-secondary-repos <N>] [--mkdocs] [--draft] [--docs-repo-path <path>] [--create-jira <PROJECT>]"
 allowed-tools: Read, Write, Glob, Grep, Bash, Skill, AskUserQuestion
 ---
 
@@ -19,8 +19,11 @@ Same argument set as docs-orchestrator:
 - `--mkdocs` — Use Material for MkDocs format instead of AsciiDoc. Propagates to the writing step (generates `.md` with MkDocs front matter) and style-review step (applies Markdown-appropriate rules). Sets `options.format` to `"mkdocs"` in the progress file
 - `--draft` — Write documentation to the staging area (`.agent_workspace/<ticket>/writing/`) instead of directly into the repo. Uses DRAFT placement mode: no framework detection, no file placement into the target repo. Without this flag, UPDATE-IN-PLACE is the default
 - `--docs-repo-path <path>` — Target documentation repository for UPDATE-IN-PLACE mode. The docs-writer explores this directory for framework detection (Antora, MkDocs, Docusaurus, etc.) and writes files there instead of the current working directory. Propagates to `writing` and `create-merge-request` steps (mapped to their internal `--repo-path` flag). **Precedence**: if both `--docs-repo-path` and `--draft` are passed, `--docs-repo-path` wins — log a warning and ignore `--draft`
-- `--source-code-repo <url-or-path>...` — Source code repository/repositories for code evidence and requirements enrichment (space-delimited, one or more). Accepts remote URLs (https://, git@, ssh:// — each shallow-cloned to `.agent_workspace/<ticket>/code-repo/<repo_name>/`) or local paths (used directly). The first repo is treated as primary; additional repos are returned as `additional_repos` in the result. Passed to requirements, code-evidence, and writing steps (mapped to their internal `--repo` flag). Without `--pr`, the entire repo is the subject matter; with `--pr`, the PR branch is checked out on the primary repo so code-evidence reflects the PR's state. Takes highest priority in source resolution, overriding `source.yaml` and PR-derived URLs
+- `--source-code-repo <url-or-path>...` — Source code repository/repositories for scope audit and requirements enrichment (space-delimited, one or more). Accepts remote URLs (https://, git@, ssh:// — each shallow-cloned to `.agent_workspace/<ticket>/code-repo/<repo_name>/`) or local paths (used directly). The first repo is treated as primary; additional repos are returned as `additional_repos` in the result. Passed to requirements, scope-req-audit, writing, and technical-review steps (mapped to their internal `--repo` flag). Without `--pr`, the entire repo is the subject matter; with `--pr`, the PR branch is checked out on the primary repo so the scope audit reflects the PR's state. Takes highest priority in source resolution, overriding `source.yaml` and PR-derived URLs
 - `--create-merge-request` — Create a branch, commit, push, and open a merge request or pull request after reviews complete. Activates the `create-merge-request` workflow step (guarded by `when: create_merge_request`). Off by default
+- `--no-source-repo` — Skip source repo resolution and all source-dependent steps (scope-req-audit). The workflow runs without source grounding. Use for tickets with no associated source code repository, or pass on resume after the workflow stops due to no repo being found
+- `--auto-discover-repos` — Skip the confirmation prompt when secondary repos are discovered by scope-req-audit. Useful for CI/automation
+- `--max-secondary-repos <N>` — Maximum number of secondary repos to clone after scope-req-audit (default: 3)
 
 ## Determine mode
 
@@ -79,7 +82,8 @@ You MUST call the AskUserQuestion tool now with ALL 4 questions at once. Do not 
 |--------|-------------|
 | Yes — I have a PR URL | A pull request or merge request URL |
 | Yes — I have a repo URL or path | A repository URL or local directory path |
-| No source code | Proceed without code-evidence retrieval |
+| Auto-discover from JIRA (Recommended) | The workflow will attempt to discover repos from the JIRA ticket's links and description. If none are found, the workflow will stop and ask you to provide a repo or skip code evidence |
+| No source code | Skip source-dependent steps entirely (uses `--no-source-repo`) |
 
 **Q3: Where should the documentation be written?**
 
@@ -107,7 +111,7 @@ You MUST call the AskUserQuestion tool now with 1 question. Set `multiSelect: tr
 | Option | Description |
 |--------|-------------|
 | requirements | Analyze JIRA ticket and extract documentation requirements |
-| code-evidence | Retrieve code evidence from source repository |
+| scope-req-audit | Classify requirements by code evidence status |
 | writing | Write documentation from an existing plan |
 | technical-review | Review existing documentation for technical accuracy |
 
@@ -118,7 +122,7 @@ For steps not listed (planning, style-review, create-merge-request), the user ca
 After receiving the answer, determine which configuration questions are relevant:
 
 - **Format?** — include if any of these steps are selected: writing, style-review
-- **Source code?** — include if code-evidence is selected
+- **Source code?** — include if scope-req-audit is selected
 - **Placement?** — include if any of these steps are selected: writing, create-merge-request
 - **Create MR/PR?** — include if create-merge-request is selected
 
@@ -178,6 +182,8 @@ Build the args string from collected answers:
 | Material for MkDocs | `--mkdocs` |
 | PR URL(s) | `--pr <url>` (repeat for each URL) |
 | Repo URL or path | `--source-code-repo <url-or-path>` |
+| No source code | `--no-source-repo` |
+| Auto-discover from JIRA | _(no flag — default behavior)_ |
 | Draft — staging area only | `--draft` |
 | Target docs repo path | `--docs-repo-path <path>` |
 | Create JIRA = Yes | `--create-jira <PROJECT>` |
@@ -302,7 +308,6 @@ Skill: <step.skill>, args: "<ticket> --base-path <BASE_PATH> <step-specific-flag
 |------|---------------------------------------|
 | requirements | `[--pr <url>]... [--repo <repo_path>]` |
 | planning | _(none)_ |
-| code-evidence | `--repo <repo_path> [--scope-include <globs>] [--scope-exclude <globs>]` |
 | writing | `--format <adoc\|mkdocs> [--draft] [--repo <repo_path>] [--repo-path <path>]` |
 | style-review | `--format <adoc\|mkdocs>` |
 | technical-review | _(none)_ |
@@ -326,4 +331,4 @@ After all steps complete, display a summary:
 > - writing: .agent_workspace/proj-123/writing/
 >
 > **Skipped steps:**
-> - code-evidence: no source repository configured
+> - scope-req-audit: no source repository configured

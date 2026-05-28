@@ -34,3 +34,24 @@ def test_code_evidence_workflow_keeps_code_grounding_steps():
 
     assert "scope-req-audit" in step_names
     assert "code-evidence" in step_names
+
+
+def test_default_workflow_includes_scope_req_audit_not_code_evidence():
+    """Default workflow has scope-req-audit (conditional) but not code-evidence."""
+    path = DEFAULTS_DIR / "docs-workflow.yaml"
+    text = path.read_text()
+    step_names = _step_names(path)
+
+    assert "scope-req-audit" in step_names
+    assert "code-evidence" not in step_names
+
+    assert "when: has_source_repo" in text
+
+
+def test_default_is_strict_subset_of_code_evidence_variant():
+    """Default workflow steps are a strict subset of the code-evidence variant."""
+    default_steps = set(_step_names(DEFAULTS_DIR / "docs-workflow.yaml"))
+    ce_steps = set(_step_names(DEFAULTS_DIR / "docs-workflow-code-evidence.yaml"))
+
+    assert default_steps < ce_steps
+    assert ce_steps - default_steps == {"code-evidence"}

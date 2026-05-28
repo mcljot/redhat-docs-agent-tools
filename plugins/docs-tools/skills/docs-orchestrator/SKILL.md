@@ -2,7 +2,7 @@
 name: docs-orchestrator
 description: Documentation workflow orchestrator. Reads the step list from .agent_workspace/docs-workflow.yaml (or the plugin default). Runs steps sequentially, manages progress state, handles iteration and confirmation gates. Claude is the orchestrator — the YAML is a step list, not a workflow engine.
 
-argument-hint: <ticket> [--workflow <name>] [--pr <url>...] [--source-code-repo <url-or-path>...] [--mkdocs] [--draft] [--docs-repo-path <path>] [--create-jira <PROJECT>] [--create-merge-request]
+argument-hint: <ticket> [--workflow <name>] [--pr <url>...] [--source-code-repo <url-or-path>...] [--no-source-repo] [--auto-discover-repos] [--max-secondary-repos <N>] [--mkdocs] [--draft] [--docs-repo-path <path>] [--create-jira <PROJECT>] [--create-merge-request]
 
 allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, AskUserQuestion
 ---
@@ -35,9 +35,12 @@ When displaying available options to the user (e.g., on skill load or when askin
 - `--mkdocs` — Use Material for MkDocs format instead of AsciiDoc. Propagates to the writing step (generates `.md` with MkDocs front matter) and style-review step (applies Markdown-appropriate rules). Sets `options.format` to `"mkdocs"` in the progress file
 - `--draft` — Write documentation to the staging area (`.agent_workspace/<ticket>/writing/`) instead of directly into the repo. Uses DRAFT placement mode: no framework detection, no file placement into the target repo. Without this flag, UPDATE-IN-PLACE is the default
 - `--docs-repo-path <path>` — Target documentation repository for UPDATE-IN-PLACE mode. The docs-writer explores this directory for framework detection (Antora, MkDocs, Docusaurus, etc.) and writes files there instead of the current working directory. Propagates to `writing` and `create-merge-request` steps (mapped to their internal `--repo-path` flag). **Precedence**: if both `--docs-repo-path` and `--draft` are passed, `--docs-repo-path` wins — log a warning and ignore `--draft`
-- `--source-code-repo <url-or-path>...` — Source code repository/repositories for code evidence and requirements enrichment (space-delimited, one or more). Accepts remote URLs (https://, git@, ssh:// — each shallow-cloned to `.agent_workspace/<ticket>/code-repo/<repo_name>/`) or local paths (used directly). The first repo is treated as primary; additional repos are returned as `additional_repos` in the result. Passed to requirements, code-evidence, writing, and technical-review steps (mapped to their internal `--repo` flag). Without `--pr`, the entire repo is the subject matter; with `--pr`, the PR branch is checked out on the primary repo so code-evidence reflects the PR's state. Takes highest priority in source resolution, overriding `source.yaml` and PR-derived URLs
+- `--source-code-repo <url-or-path>...` — Source code repository/repositories for scope audit and requirements enrichment (space-delimited, one or more). Accepts remote URLs (https://, git@, ssh:// — each shallow-cloned to `.agent_workspace/<ticket>/code-repo/<repo_name>/`) or local paths (used directly). The first repo is treated as primary; additional repos are returned as `additional_repos` in the result. Passed to requirements, scope-req-audit, writing, and technical-review steps (mapped to their internal `--repo` flag). Without `--pr`, the entire repo is the subject matter; with `--pr`, the PR branch is checked out on the primary repo so the scope audit reflects the PR's state. Takes highest priority in source resolution, overriding `source.yaml` and PR-derived URLs
 - `--create-jira <PROJECT>` — Create a linked JIRA ticket in the specified project after the planning step completes. Runs the standalone `docs-workflow-create-jira` workflow (use `--workflow workflow-create-jira`). Requires `JIRA_API_TOKEN` to be set
 - `--create-merge-request` — Create a branch, commit, push, and open a merge request or pull request after reviews complete. Activates the `create-merge-request` workflow step (guarded by `when: create_merge_request`). Off by default
+- `--no-source-repo` — Skip source repo resolution and all source-dependent steps (scope-req-audit). The workflow runs without source grounding. Use for tickets with no associated source code repository, or pass on resume after the workflow stops due to no repo being found
+- `--auto-discover-repos` — Skip the confirmation prompt when secondary repos are discovered by scope-req-audit. Useful for CI/automation where interactive prompts are not available. Has no effect if no secondary repos are found
+- `--max-secondary-repos <N>` — Maximum number of secondary repos to clone after scope-req-audit (default: 3). Repos are ranked by the number of associated requirements
 
 ### Examples
 
@@ -78,19 +81,21 @@ When displaying available options to the user (e.g., on skill load or when askin
 
 ## Resolve source repository
 
-After parsing arguments and before running steps, resolve the source code repository if one is configured. This makes the repo available to all downstream steps that need it (requirements, code-evidence, writing).
+After parsing arguments and before running steps, resolve the source code repository if one is configured. This makes the repo available to all downstream steps that need it (requirements, scope-req-audit, writing).
+
+**If `--no-source-repo` was passed:** Skip source resolution entirely. Mark all steps with `when: has_source_repo` as `skipped` immediately. Record `options.no_source_repo: true` in the progress file. Proceed directly to [Load and evaluate the workflow](#load-and-evaluate-the-workflow).
+
+**Backward compatibility:** If resuming an existing progress file that has `no_code_evidence: true`, treat it as `no_source_repo: true`.
 
 All clone, verify, PR-resolution, and source.yaml logic is handled by the `resolve_source.py` script. The orchestrator calls the script and acts on the JSON result.
 
 ### Pre-flight resolution
 
-Run the script with whatever source information is available from CLI args. Always pass `--ticket` and `--plugin-root` so the script can attempt JIRA-based discovery if explicit sources are absent:
+Run the script with whatever source information is available from CLI args:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/resolve_source.py \
   --base-path <base_path> \
-  --ticket <TICKET> \
-  --plugin-root ${CLAUDE_PLUGIN_ROOT} \
   [--repo <url-or-path>...] \
   [--pr <url>...]
 ```
@@ -100,7 +105,7 @@ The script checks sources in priority order:
 1. **CLI `--source-code-repo` flag** — clone or verify the path
 2. **Per-ticket `source.yaml`** — read and apply existing config
 3. **PR-derived** — resolve repo URL and branch from `--pr` via `gh pr view` or `glab mr view`
-4. **JIRA ticket discovery** — query the ticket's `git_links` and auto-discovered PR URLs, extract repo URLs, and select the primary repo by reference count. If multiple repos tie, return an error listing candidates
+4. **`discovered_repos.json`** — from the requirements-step graph walk (via `extract_discovered_repos.py`)
 5. **No source** — exit code 2, defer resolution until after requirements
 
 The script outputs JSON to stdout:
@@ -175,9 +180,10 @@ The `has_source_repo` precondition supports two modes:
 
 - `when: create_merge_request` → run this step only if `--create-merge-request` was passed
 - `when: has_source_repo` → evaluation depends on timing:
+  - If `--no-source-repo` was passed → mark as `skipped` immediately (source resolution was skipped entirely)
   - If a source repo was already resolved pre-flight (via `--source-code-repo`, `--pr`, or `source.yaml`) → step runs normally (`pending`)
   - If no source is resolved yet but post-requirements discovery is possible (case 4 above) → mark the step `deferred` (not `skipped`). The orchestrator re-evaluates after requirements completes
-  - After post-requirements resolution: `deferred` steps become `pending` (source found) or `skipped` (no source found)
+  - After post-requirements resolution: `deferred` steps become `pending` (source found) or the workflow stops (see [No source found](#3-no-source-found))
 - Steps with no `when` always run
 - Steps that don't meet their `when` condition and cannot be deferred are marked `skipped` in the progress file
 
@@ -247,10 +253,6 @@ Use this absolute `BASE_PATH` for the progress file's `base_path` field and for 
   planning/
     plan.md
     step-result.json                 (sidecar: module_count)
-  code-evidence/                     (if source repo is available)
-    evidence.json
-    summary.md
-    step-result.json                 (sidecar: topic_count, snippet_count, repo_path)
   writing/
     _index.md
     step-result.json                 (sidecar: files, mode, format)
@@ -298,7 +300,10 @@ The `workflow_type` field and filename prefix match the YAML's `workflow.name`. 
     "create_merge_request": false,
     "pr_urls": [],
     "source": null,
-    "additional_sources": []
+    "additional_sources": [],
+    "no_source_repo": false,
+    "auto_discover_repos": false,
+    "max_secondary_repos": 3
   },
   "step_order": ["requirements", "scope-req-audit", "planning", "writing", ...],
   "steps": {
@@ -385,8 +390,6 @@ Before starting, check for a progress file at `.agent_workspace/<ticket>/workflo
 python3 ${CLAUDE_SKILL_DIR}/scripts/sync_progress_source.py \
   --base-path <base_path> \
   --progress-file <progress_file> \
-  --ticket <TICKET> \
-  --plugin-root ${CLAUDE_PLUGIN_ROOT} \
   [--scan-requirements --skip-deferred-on-no-source]
 ```
 
@@ -425,7 +428,6 @@ Build the args string for the step skill. The orchestrator maps its user-facing 
 3. **From orchestrator context**: Step-specific args from parsed CLI flags:
    - `requirements`: `[--pr <url>]... [--repo <repo_path>]`
    - `scope-req-audit`: `--repo <repo_path> [--grounded-threshold <float>] [--absent-threshold <float>]`
-   - `code-evidence`: `--repo <repo_path> [--scope-include <globs>] [--scope-exclude <globs>] [--reindex]` — scope globs come from `source.yaml` or `options.source.scope` in the progress file
    - `writing`: `--format <adoc|mkdocs> [--draft] [--repo <repo_path>] [--repo-path <path>]`
    - `technical-review`: `[--repo <repo_path>]`
    - `style-review`: `--format <adoc|mkdocs>`
@@ -462,14 +464,11 @@ After each step completes, apply the rules below. When rules reference sidecar f
 - Log: `"scope-req-audit completed: N grounded, N partial, N absent — recommendation: <recommendation>"`
 - If `discovered_repos_count` > 0, also log: `"(N discovered repos not indexed)"`
 - Fall back to reading `evidence-status.json` if sidecar result is missing
+- If `secondary_repos_count` > 0, run [Post-scope-req-audit secondary repo resolution](#post-scope-req-audit-secondary-repo-resolution)
 
 **planning**
 - Log: `"Planning completed: N modules"`
 - If `module_count` is 0, **warn**: `"Planning produced 0 modules — the plan may be empty. Review plan.md before continuing."` Ask the user whether to proceed or stop. If the user chooses to stop: mark the planning step as `failed` in the progress file, set the workflow status to `"failed"`, delete the active workflow marker (`.agent_workspace/.active-workflow`), log `"Planning stopped by user after 0 modules — workflow cancelled."`, and halt without running subsequent steps
-
-**code-evidence**
-- Log: `"Code evidence retrieved: N topics, N snippets"`
-- If `snippet_count` is 0, **warn**: `"No code snippets found — the writing step will have no code evidence to ground documentation in."`
 
 **writing**
 - If `result.files` is empty or missing, **warn**: `"Writing step produced no files."` Mark the `create-merge-request` step as `skipped` with `skip_reason: "no_files"` and record `result.commit_sha: null`, `result.branch: null`, `result.pushed: false`, `result.url: null`, `result.action: "skipped"`, `result.platform: "unknown"`, `result.skipped: true`. Log: `"Skipping create-merge-request: no files to commit."`
@@ -490,13 +489,11 @@ This section triggers **only** when the `requirements` step completes AND `optio
 python3 ${CLAUDE_SKILL_DIR}/scripts/sync_progress_source.py \
   --base-path <base_path> \
   --progress-file <progress_file> \
-  --ticket <TICKET> \
-  --plugin-root ${CLAUDE_PLUGIN_ROOT} \
   --scan-requirements \
   --skip-deferred-on-no-source
 ```
 
-The sync script delegates source resolution to `resolve_source.py`, then writes the result back into the progress file. Resolution first attempts JIRA ticket discovery (git links and auto-discovered PRs from the ticket graph), then scans `requirements.md` for GitHub/GitLab PR/MR URLs as a fallback. When a repo is found, it clones/verifies it, writes `source.yaml`, records `options.source`, and promotes deferred steps to `pending`.
+The sync script delegates source resolution to `resolve_source.py`, then writes the result back into the progress file. Resolution checks `discovered_repos.json` (written by `extract_discovered_repos.py` during the requirements step), then scans `requirements.md` for GitHub/GitLab PR/MR URLs as a fallback. When a repo is found, it clones/verifies it, writes `source.yaml`, records `options.source`, and promotes deferred steps to `pending`.
 
 ### 2. Handle the result
 
@@ -504,13 +501,82 @@ The sync script delegates source resolution to `resolve_source.py`, then writes 
 |---|---|---|
 | 0 | `resolved` | The script has already recorded `options.source` in the progress file (primary repo + any `additional_repos`) and updated all `deferred` steps to `pending`. Log all resolved repos |
 | 1 | `error` / `clone_failed` | Log a warning: "Could not clone `<repo_url>`. Code-evidence will be skipped. To retry, run with `--source-code-repo <url-or-local-path>`." Leave the progress file unchanged |
-| 2 | `no_source` | Skip code-evidence (see below) |
+| 2 | `no_source` | Skip source-dependent steps (see below) |
 
 ### 3. No source found
 
-When the script returns `no_source`, skip code-evidence without prompting.
+When the script returns `no_source`, behavior depends on `--no-source-repo`:
 
-With `--skip-deferred-on-no-source`, the script has already updated all `deferred` steps to `skipped`. Continue without code-evidence and log: "No source code repository or PR discovered. Skipping code-evidence. To enable it, re-run with `--source-code-repo <url-or-path>` or `--pr <url>`."
+**If `--no-source-repo` was passed:** With `--skip-deferred-on-no-source`, the script has already updated all `deferred` steps to `skipped`. Continue without source grounding and log: "No source code repository or PR discovered. Skipping source-dependent steps (--no-source-repo). To enable them, re-run with `--source-code-repo <url-or-path>` or `--pr <url>`."
+
+**If `--no-source-repo` was NOT passed (default):** **STOP** the workflow. Progress is saved — requirements are completed and the progress file is preserved. Log:
+
+> "No source code repository or PR could be discovered from the JIRA ticket. The workflow requires a source repo by default for scope auditing. Options: (1) re-run with `--source-code-repo <url-or-path>`, (2) re-run with `--pr <url>`, (3) link PRs to the JIRA ticket and re-run, (4) resume with `--no-source-repo` to skip source-dependent steps."
+
+The stop is advisory: the user can resume the same workflow in a new session with `--no-source-repo` to skip past it. On resume, the orchestrator reads the saved progress file (requirements already completed), marks all `deferred` steps as `skipped`, records `options.no_source_repo: true`, and continues from the next pending step (planning).
+
+## Post-scope-req-audit secondary repo resolution
+
+This section triggers **only** when the `scope-req-audit` step completes AND `secondary_repos` in `evidence-status.json` is non-empty. It clones discovered secondary repos so downstream steps (writing, technical review) can reference them.
+
+### 1. Read secondary repos
+
+Read `<base_path>/scope-req-audit/evidence-status.json` and extract the `secondary_repos` array. Each entry has `url`, `requirements`, `pr_refs`, `priority`, and `suggested_scope`.
+
+### 2. Confirm with user (unless `--auto-discover-repos`)
+
+If `--auto-discover-repos` was **not** passed, present the discovered repos and ask:
+
+```
+Scope audit found N absent/partial requirements across M unindexed repos:
+- <org>/<repo> (REQ-002, REQ-004) — N PRs
+- <org>/<repo> (REQ-003, REQ-006) — N PRs
+
+Index these repos as secondary sources? [Y/n]
+```
+
+Use AskUserQuestion with Yes (default) and No options. If the user declines, skip this section — log `"Skipping secondary repo indexing."` and continue to planning.
+
+If `--auto-discover-repos` **was** passed, skip the prompt and proceed directly.
+
+### 3. Clone secondary repos
+
+For each confirmed secondary repo, clone it using `resolve_source.py`:
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/resolve_source.py \
+  --base-path <base_path> \
+  --repo <repo_url> \
+  --priority secondary
+```
+
+The `--priority secondary` flag tells the script to:
+- Shallow-clone (`--depth 1`) to `.agent_workspace/<ticket>/code-repo/<repo_name>/`
+- Return the result without overwriting the primary `source.yaml`
+- Include `priority: secondary` in the result JSON
+
+If the clone fails for a repo, log a warning and continue with the remaining repos.
+
+### 4. Record in progress file
+
+For each successfully cloned secondary repo, append to `options.additional_sources` in the progress file:
+
+```json
+{
+  "repo_path": "<cloned_path>",
+  "repo_url": "<repo_url>",
+  "ref": null,
+  "scope": {"include": <suggested_scope or null>, "exclude": null},
+  "priority": "secondary",
+  "requirements": ["REQ-002", "REQ-004"]
+}
+```
+
+Log: `"Cloned N secondary repos: <repo_names>. Code evidence will search them for <N> requirements."`
+
+### 5. Bounded cost
+
+Maximum 3 secondary repos per run (or the value of `--max-secondary-repos`). If more are discovered, the extraction script already caps at this limit, sorted by requirement count.
 
 ## Technical review iteration
 
@@ -549,7 +615,7 @@ After all steps complete (or are skipped):
 2. Delete the active workflow marker: remove `.agent_workspace/.active-workflow`
 3. Display a summary:
    - List all output folders with paths
-   - Note any warnings (tech review didn't reach `HIGH`, planning had 0 modules, code-evidence had 0 snippets, etc.)
+   - Note any warnings (tech review didn't reach `HIGH`, planning had 0 modules, etc.)
    - Show MR/PR URL from `steps.create-merge-request.result.url` if present
    - Show JIRA URL from `steps.create-jira.result.jira_url` (with key `result.jira_key`) if present
    - Show module count from `steps.planning.result.module_count` and file count from `steps.writing.result.files` length

@@ -92,9 +92,9 @@ Use Read, Glob, and Grep to verify and enrich the requirement against the actual
 
 3. **Extract project metadata.** Read the repo root for: primary language (from file extensions or build files), build system (`Makefile`, `go.mod`, `pyproject.toml`, `package.json`), and major directory structure. Add as a `repo_metadata` field in your output. Multiple agents may extract this in parallel — the merge step deduplicates
 
-4. **Note code references.** If you find specific files, functions, or types that implement the requirement, add them to `references` with `"type": "code"`. These feed directly into the code-evidence step's query seeding
+4. **Note code references.** If you find specific files, functions, or types that implement the requirement, add them to `references` with `"type": "code"`. These help the planner scope modules and the writer ground documentation in actual implementations
 
-Keep this lightweight — read a few targeted files, don't scan the entire repo. The code-evidence step does thorough retrieval later.
+Keep this lightweight — read a few targeted files, don't scan the entire repo. The writer has direct repo access for deeper exploration.
 
 ### 3. Web search expansion
 

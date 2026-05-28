@@ -230,6 +230,16 @@ Write the merged classification results to `$EVIDENCE_STATUS_FILE`:
       "source": "README.md",
       "relevance": "..."
     }
+  ],
+  "secondary_repos": [
+    {
+      "url": "https://github.com/org/companion-repo",
+      "source": "gap_classification",
+      "requirements": ["REQ-002", "REQ-004"],
+      "pr_refs": ["#262", "#317"],
+      "priority": "secondary",
+      "suggested_scope": ["pkg/controller/", "pkg/mutator/"]
+    }
   ]
 }
 ```
@@ -276,7 +286,48 @@ Write a human-readable summary to `$SUMMARY_FILE`:
 - [https://github.com/org/companion-sdk](https://github.com/org/companion-sdk) — referenced in README.md
 ```
 
-### 8. Write step-result.json
+### 8. Extract secondary repo references
+
+After writing evidence-status.json, run the secondary repo extraction script to identify repos referenced in gap classification actions:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/docs-workflow-scope-req-audit/scripts/extract_secondary_repos.py \
+  --evidence-status "$EVIDENCE_STATUS_FILE" \
+  --primary-repo "$REPO_PATH" \
+  --fetch-pr-paths \
+  --max-repos 3
+```
+
+The script parses `recommended_action` fields from partial/absent requirements, extracts GitHub/GitLab repo URLs, groups requirements by target repo, and optionally fetches PR file paths to derive `suggested_scope` directories.
+
+Read the JSON array output and merge it into `evidence-status.json` as a `secondary_repos` field:
+
+```json
+{
+  "secondary_repos": [
+    {
+      "url": "https://github.com/org/companion-repo",
+      "source": "gap_classification",
+      "requirements": ["REQ-002", "REQ-004"],
+      "pr_refs": ["#262", "#317"],
+      "priority": "secondary",
+      "suggested_scope": ["pkg/controller/", "pkg/mutator/"]
+    }
+  ]
+}
+```
+
+If the script returns an empty array, set `secondary_repos: []` in evidence-status.json. The field must always be present so downstream consumers (orchestrator, planning) can check it without guarding against missing keys.
+
+Also update `summary.md` to include a "Secondary Repos (from gap analysis)" section if any were found:
+
+```markdown
+## Secondary Repos (from gap analysis)
+
+- [https://github.com/org/companion-repo](https://github.com/org/companion-repo) — REQ-002, REQ-004 (3 PRs, scope: pkg/controller/, pkg/mutator/)
+```
+
+### 9. Write step-result.json
 
 Write the sidecar to `${OUTPUT_DIR}/step-result.json`:
 
@@ -292,6 +343,7 @@ Write the sidecar to `${OUTPUT_DIR}/step-result.json`:
   "absent": <absent count>,
   "total": <total count>,
   "discovered_repos_count": <length of discovered_repos list>,
+  "secondary_repos_count": <length of secondary_repos list>,
   "context_size_bytes": <total_bytes>
 }
 ```
@@ -301,8 +353,9 @@ After writing the sidecar, sum the byte sizes of all output files in the step's 
 - `recommendation`: the `recommendation` field from `evidence-status.json`
 - `grounded`, `partial`, `absent`, `total`: the counts from `evidence-status.json`'s `summary` object
 - `discovered_repos_count`: length of the `discovered_repos` array
+- `secondary_repos_count`: length of the `secondary_repos` array
 
-### 9. Verify output
+### 10. Verify output
 
 Verify that `$EVIDENCE_STATUS_FILE`, `$SUMMARY_FILE`, and `${OUTPUT_DIR}/step-result.json` exist.
 
@@ -325,5 +378,5 @@ If `evidence-status.json` does not exist (step was skipped or not configured), t
 - **Model choice:** Subagents use `model: haiku` since the task is mechanical (run script, parse JSON, apply thresholds). The gap classification requires minimal language understanding
 - **Intermediate artifacts:** The previous version wrote a `queries.json` file to the output directory. This file is no longer produced — each subagent builds its query internally. The file was not consumed by any downstream step
 - The thresholds (0.5 grounded, 0.25 absent) are based on empirical data from the comparison report — known-good matches scored 0.87+, known-absent items scored below 0.2
-- This step queries the primary source repo only. Multi-repo querying is a follow-on enhancement
-- The `discovered_repos` section helps bridge the multi-repo gap by surfacing companion repos that the user could add via `--source-code-repo` in a re-run
+- This step queries the primary source repo only. The `secondary_repos` output enables the orchestrator to clone and index companion repos for the code-evidence step
+- `discovered_repos` (step 2) surfaces repos found in README/docs. `secondary_repos` (step 8) surfaces repos referenced in gap classification actions — these are more targeted because they're tied to specific absent/partial requirements

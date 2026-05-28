@@ -138,9 +138,33 @@ The default workflow includes a **create-merge-request** step that is off by def
 
 Without the flag, the workflow ends at style-review and leaves the files as uncommitted changes in the repo, so you can create your own branch and MR manually.
 
-### Code-evidence workflow
+### Source repo in the default workflow
 
-The `workflow-code-evidence` variant adds two code-analysis steps to the standard pipeline: **scope-req-audit** (classifies each JIRA requirement as grounded, partial, or absent in the codebase) and **code-evidence** (retrieves relevant code snippets for each topic in the documentation plan). This workflow requires a source code repository — the orchestrator fails at load time if neither `--source-code-repo` nor `--pr` is provided.
+The default workflow includes **scope-req-audit** as a conditional step. Source repo discovery is attempted automatically from JIRA links, description URLs, and PR references. If a repo is found, scope-req-audit runs:
+
+1. **requirements** — analyze documentation requirements from the JIRA ticket
+2. **scope-req-audit** — classify each requirement as grounded, partial, or absent by querying the source repo
+3. **planning** — create the documentation plan, scoping modules based on evidence status
+4. **writing** — write documentation with access to the source repo for grounding
+5. **technical-review** — verify technical accuracy against the source code
+6. **style-review** — check style guide compliance
+7. **create-merge-request** _(optional, pass `--create-merge-request` to enable)_
+
+If no repo can be discovered after both pre-flight and post-requirements resolution, the workflow **stops** with instructions. You can then resume with one of:
+
+```bash
+# Provide a repo explicitly
+/docs-orchestrator PROJ-123 --source-code-repo https://github.com/org/operator
+
+# Or skip source-dependent steps entirely
+/docs-orchestrator PROJ-123 --no-source-repo
+```
+
+The `--no-source-repo` flag skips source resolution and all source-dependent steps (scope-req-audit). The workflow runs without source grounding, producing documentation from the JIRA ticket and plan only.
+
+### Strict code-evidence variant
+
+The `workflow-code-evidence` variant is a strict-mode alternative: it adds `requires: has_source_repo` at the workflow level, failing immediately at pre-flight if no repo can be resolved (no opt-out). Use it when a source repo is mandatory:
 
 ```bash
 /docs-orchestrator PROJ-123 \
@@ -148,25 +172,24 @@ The `workflow-code-evidence` variant adds two code-analysis steps to the standar
   --source-code-repo https://github.com/org/operator
 ```
 
-The workflow runs the following steps in order:
+### Multi-repo evidence retrieval
 
-1. **requirements** — analyze documentation requirements from the JIRA ticket
-2. **scope-req-audit** — query the code-finder index to classify each requirement as grounded, partial, or absent
-3. **planning** — create the documentation plan, scoping modules based on evidence status
-4. **code-evidence** — retrieve code snippets (function signatures, class definitions, configuration) for each plan topic
-5. **writing** — write documentation grounded in the retrieved code evidence
-6. **technical-review** — verify technical accuracy against the source code
-7. **style-review** — check style guide compliance
-8. **create-merge-request** _(optional, pass `--create-merge-request` to enable)_ — create a branch (if needed), commit, push, and open a merge request or pull request
+When a feature spans multiple repositories, the scope-req-audit step identifies secondary repos from gap classification (absent/partial requirements whose `recommended_action` references a companion repo). The orchestrator then:
 
-Compared to the default workflow, the code-evidence variant produces documentation with fewer technical review issues because the writer has actual function signatures and implementation details to work from, rather than generating from the JIRA description alone.
+1. Presents discovered repos to the user for confirmation (or auto-confirms with `--auto-discover-repos`)
+2. Shallow-clones confirmed repos as secondary sources
+3. Makes them available to downstream steps (writing, technical review)
+4. The planner promotes absent requirements to partial when secondary evidence is available
+5. The writer uses secondary evidence for context but marks exact technical details with `[NEEDS VERIFICATION]` below 0.8 adjusted score
 
-To use this workflow without the plugin default, download it into your docs repo:
+Maximum 3 secondary repos per run (configurable with `--max-secondary-repos`). Repos are ranked by the number of associated requirements.
 
 ```bash
-mkdir -p .agent_workspace
-curl -sL https://gitlab.cee.redhat.com/aireilly/redhat-docs-agent-tools/-/raw/main/plugins/docs-tools/skills/docs-orchestrator/defaults/docs-workflow-code-evidence.yaml \
-   -o .agent_workspace/docs-workflow-code-evidence.yaml
+# Auto-discover secondary repos without prompting (CI mode)
+/docs-orchestrator PROJ-123 --auto-discover-repos
+
+# Limit to 2 secondary repos with custom weight
+/docs-orchestrator PROJ-123 --max-secondary-repos 2 --secondary-weight 0.7
 ```
 
 ## Starting a docs workflow
@@ -234,19 +257,7 @@ When documenting a feature that lives in a source code repository, pass `--repo`
 /docs-orchestrator PROJ-123 --repo https://github.com/org/repo
 ```
 
-The code-evidence step runs automatically when `--repo` is provided. It:
-
-1. Clones the repository (or uses it if it's a local path)
-2. Indexes the codebase using tree-sitter AST chunking
-3. Extracts search queries from the documentation plan
-4. Runs two-pass retrieval per query — source-scoped (function signatures, types) and unfiltered (READMEs, examples, docs)
-5. Writes `artifacts/<ticket>/code-evidence/evidence.json` for the writer and `summary.md` for human review
-
-Without `--repo`, the code-evidence step is skipped and the writer works from the JIRA ticket and documentation plan only.
-
-!!! tip
-
-    Code-evidence is most effective when the JIRA ticket has a detailed description. A well-described ticket combined with source code evidence produces documentation with significantly fewer technical review issues.
+When a source repo is available, the scope-req-audit step classifies each requirement against the codebase, and the writing step gets direct repo access for grounding. Without a source repo, the default workflow stops after requirements and asks the user to provide a repo or pass `--no-source-repo` to proceed without source grounding.
 
 ### Including PR context
 
@@ -262,8 +273,12 @@ Multiple `--pr` flags can be passed. The requirements analyst will read the PR d
 
 | Flag | Description |
 |------|-------------|
-| `--repo <url-or-path>` | Source code repository for code-evidence grounding |
+| `--repo <url-or-path>` | Source code repository for scope audit and grounding |
 | `--pr <url>` | PR/MR URL to include in requirements analysis (repeatable) |
+| `--no-source-repo` | Skip source resolution and all source-dependent steps |
+| `--auto-discover-repos` | Skip confirmation when secondary repos are discovered |
+| `--max-secondary-repos <N>` | Maximum secondary repos to clone (default: 3) |
+| `--secondary-weight <float>` | Relevance multiplier for secondary repo results (default: 0.8) |
 | `--mkdocs` | Generate Material for MkDocs Markdown instead of AsciiDoc |
 | `--repo-path <path>` | Write files to a specific repo path (e.g., an external clone) |
 | `--create-jira <PROJECT>` | Create a linked JIRA ticket in the specified project |
