@@ -1,0 +1,102 @@
+:_mod-docs-content-type: PROCEDURE
+[id="deleting-model-cache_{context}"]
+= Delete a model cache
+
+[role="_abstract"]
+You can delete a `LocalModelCache` or `LocalModelNamespaceCache` resource to remove cached models from node-local storage and reclaim disk space.
+The deletion process includes a cleanup sequence managed by finalizers that removes model files, download jobs, and PersistentVolumes.
+
+.Prerequisites
+
+* You have the appropriate permissions to delete the model cache resource.
+* You know which inference services, if any, reference the model cache.
+
+.Procedure
+
+. Identify any inference services that reference the model cache.
++
+For a cluster-scoped `LocalModelCache`:
++
+[source,terminal]
+----
+$ oc get localmodelcache <cache_name> -o jsonpath='{.status.inferenceServices}'
+----
++
+For a namespace-scoped `LocalModelNamespaceCache`:
++
+[source,terminal]
+----
+$ oc get localmodelnamespacecache <cache_name> -n <namespace> -o jsonpath='{.status.inferenceServices}'
+----
++
+Replace `<cache_name>` with the name of the model cache and `<namespace>` with the namespace of the cache resource.
+
+. If any inference services reference the cache, delete or update them to remove the dependency:
++
+[source,terminal]
+----
+$ oc delete inferenceservice <isvc_name> -n <namespace>
+----
++
+Replace `<isvc_name>` and `<namespace>` with the name and namespace of the inference service.
++
+[IMPORTANT]
+====
+The validating webhook blocks deletion of a model cache while any `InferenceService` or `LLMInferenceService` references it.
+If you attempt to delete a cache that is in use, you receive an error message identifying the referencing inference service.
+====
+
+. Delete the model cache resource.
++
+For a cluster-scoped `LocalModelCache`:
++
+[source,terminal]
+----
+$ oc delete localmodelcache <cache_name>
+----
++
+For a namespace-scoped `LocalModelNamespaceCache`:
++
+[source,terminal]
+----
+$ oc delete localmodelnamespacecache <cache_name> -n <namespace>
+----
+
+. The following cleanup sequence runs automatically after deletion:
++
+.. The LocalModel controller removes the model entry from the `LocalModelNode` resource on each target node.
+.. The LocalModelNode agent on each node detects the removal and deletes the cached model files from local disk.
+.. The agent cleans up any remaining download jobs for the model.
+.. For cluster-scoped caches, PersistentVolumes and PersistentVolumeClaims are garbage-collected through owner references.
+.. For namespace-scoped caches, PersistentVolumes are explicitly deleted because Kubernetes does not support owner references from namespaced resources to cluster-scoped PVs.
+.. The controller removes the finalizer from the cache resource, completing the deletion.
+
+.Verification
+
+. Verify that the cache resource is deleted:
++
+[source,terminal]
+----
+$ oc get localmodelcache <cache_name>
+----
++
+The command should return a `NotFound` error.
+
+. Verify that PersistentVolumes for the cache are deleted:
++
+[source,terminal]
+----
+$ oc get pv | grep <cache_name>
+----
++
+No PVs should be listed for the deleted cache.
+
+. Verify that download jobs are cleaned up:
++
+[source,terminal]
+----
+$ oc get jobs -n kserve-localmodel-jobs -l model=<cache_name>
+----
++
+Replace `<cache_name>` with the name of the deleted model cache.
+No jobs should be listed.

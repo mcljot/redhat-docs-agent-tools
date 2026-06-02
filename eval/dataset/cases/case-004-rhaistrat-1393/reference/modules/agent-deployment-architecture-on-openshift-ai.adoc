@@ -1,0 +1,86 @@
+:_mod-docs-content-type: CONCEPT
+[id="agent-deployment-architecture-on-openshift-ai_{context}"]
+= Agent deployment architecture on Red Hat OpenShift AI
+
+[role="_abstract"]
+You can understand the Kubernetes architecture used by LangGraph agent deployments on {product-name} to verify that deployments match your cluster policies and to troubleshoot deployment issues.
+The architecture separates agent-side resources (created by the shared Helm chart) from platform-side resources (provisioned by the cluster administrator).
+
+[discrete]
+== Architecture overview
+
+A deployed LangGraph agent consists of an agent container that connects to one or more platform services.
+The agent container runs your application code and exposes an OpenAI-compatible API.
+Platform services provide model inference, vector storage, and state persistence.
+
+The following components make up a complete agent deployment:
+
+Agent container (Helm chart)::
+The shared Helm chart at `charts/agent/` creates a Deployment, Service, Route, and Secret for the agent.
+These resources are created by running `make deploy` from the agent directory.
+The Deployment runs the agent container as a non-root user (`runAsNonRoot: true`) with a restricted security context.
+The container image defaults to UID 1001, but OpenShift can assign a different UID based on namespace security context constraints.
+
+Model serving endpoint::
+The agent connects to an LLM inference endpoint through the `BASE_URL` environment variable.
+In production, this is typically a vLLM or llm-d endpoint served by an `InferenceService` custom resource.
+
+Vector database (Agentic RAG only)::
+The Agentic RAG agent connects to a Milvus or PGVector instance for document retrieval.
+In local development, the agent uses Milvus Lite (a file-based embedded database).
+
+State store (Database Memory only)::
+The Database Memory agent connects to a PostgreSQL instance for conversation persistence.
+The `POSTGRES_PASSWORD` is stored as a Kubernetes Secret.
+
+[discrete]
+== Agent-side and platform-side resources
+
+The following table distinguishes between resources created by the agent Helm chart and resources provisioned by the platform administrator.
+
+.Resource ownership
+[cols="1,1,3", options="header"]
+|===
+|Category
+|Owner
+|Resources
+
+|Agent container
+|Agent Helm chart (`make deploy`)
+|Deployment, Service, Route, Secret
+
+|Model serving
+|Platform administrator
+|`InferenceService` (vLLM/llm-d) or `LlamaStackDistribution` CR
+
+|Vector storage
+|Platform administrator
+|Milvus Deployment, PersistentVolumeClaim
+
+|State persistence
+|Platform administrator
+|PostgreSQL Deployment or managed database service
+|===
+
+The agent Helm chart does not create or manage model serving, vector database, or PostgreSQL resources.
+These are platform-side concerns provisioned separately by the cluster administrator.
+
+[NOTE]
+====
+For detailed information about deploying `InferenceService` and `LlamaStackDistribution` custom resources, see the link:https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/working_with_llama_stack/deploying-llama-stack-server_rag[{product-name} Llama Stack deployment guide].
+====
+
+[discrete]
+== Network topology
+
+The agent container connects to platform services by using internal cluster DNS names or OpenShift Routes.
+All connections from the agent to platform services use the environment variables configured in the `.env` file:
+
+* `BASE_URL` points to the model serving endpoint (for example, `https://vllm-service.my-namespace.svc.cluster.local:8000/v1`).
+* `POSTGRES_HOST` points to the PostgreSQL service (for example, `postgres-service.my-namespace.svc.cluster.local`).
+* The agent's own Service is exposed externally through an OpenShift Route with edge TLS termination.
+
+.Additional resources
+
+* xref:shared-helm-chart-parameters-and-makefile-targets_{context}[Shared Helm chart parameters and Makefile targets]
+* link:https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.4/html/working_with_llama_stack/deploying-llama-stack-server_rag[Deploying a Llama Stack server on {product-name}]

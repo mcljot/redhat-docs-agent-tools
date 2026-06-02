@@ -1,0 +1,29 @@
+:_mod-docs-content-type: ASSEMBLY
+include::_attributes/attributes.adoc[]
+:context: configuring-llama-stack-api-providers
+[id="configuring-llama-stack-api-providers"]
+= Configure Llama Stack API providers for your deployment
+
+[role="_abstract"]
+You can select and configure the API providers that power inference, embeddings, and vector storage in your Llama Stack server.
+Starting with {product-name} {product-version}, the default runtime configuration is optimized for production use with remote providers.
+Inline providers for embeddings and vector storage are available as dependency-only providers that you can re-enable using a custom `config.yaml` file.
+
+Match your provider configuration to your deployment requirements, whether you need remote providers for production workloads or dependency-only inline providers for development and testing.
+
+.Prerequisites
+
+* A Llama Stack distribution image based on {product-name} {product-version} or later is deployed.
+* You have access to the {product-name} cluster with the Llama Stack operator installed, or you are running a standalone Llama Stack container.
+* You are familiar with the Llama Stack deployment procedures from the earlier release.
+* You know which API providers your current deployment uses.
+
+include::modules/con-llama-stack-provider-configuration-architecture.adoc[leveloffset=+1]
+
+include::modules/ref-llama-stack-api-provider-support.adoc[leveloffset=+1]
+
+include::modules/proc-re-enabling-inline-providers-custom-config.adoc[leveloffset=+1]
+
+.Additional resources
+
+* For information about the removal of inline provider environment variable toggles, see the {product-name} {product-version} release notes.

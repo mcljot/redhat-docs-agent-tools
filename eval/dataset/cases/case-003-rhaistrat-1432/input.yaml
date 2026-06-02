@@ -1,0 +1,13 @@
+ticket: RHAISTRAT-1432
+source_repo:
+  - url: https://github.com/opendatahub-io/eval-hub
+    sha: cd61d9f02d43b8f7b7ea266dd1e91607c9882174
+  - url: https://github.com/opendatahub-io/eval-hub-sdk
+    sha: 09a7978fb0f0a1b52f8c71396c444fc0642117f9
+workflow: docs-workflow
+options:
+  format: adoc
+  draft: true
+ground_truth:
+  tier: regression-baseline
+  source: "Best-scoring benchmark arm"

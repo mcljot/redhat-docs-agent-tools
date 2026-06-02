@@ -1,0 +1,27 @@
+:_mod-docs-content-type: ASSEMBLY
+:context: caching-models-for-faster-inference
+[id="caching-models-for-faster-inference"]
+= Cache models for faster inference
+
+[role="_abstract"]
+As a data scientist, you can create model cache definitions to pre-download models to local node storage so that your inference services start quickly without downloading models at startup.
+You can create cluster-scoped caches that are available to any namespace, or namespace-scoped caches for multi-tenant isolation.
+
+.Prerequisites
+
+* A cluster administrator has enabled model caching and created at least one `LocalModelNodeGroup`. See xref:setting-up-model-caching-infrastructure[Set up model caching infrastructure].
+* You have access to create resources in your target namespace.
+
+include::modules/proc-caching-model-locally.adoc[leveloffset=+1]
+
+include::modules/ref-localmodelcache-fields.adoc[leveloffset=+1]
+
+include::modules/proc-configuring-model-cache-credentials.adoc[leveloffset=+1]
+
+include::modules/proc-deploying-inference-service-with-cached-model.adoc[leveloffset=+1]
+
+include::modules/proc-creating-namespace-scoped-model-cache.adoc[leveloffset=+1]
+
+include::modules/ref-localmodelnamespacecache-fields.adoc[leveloffset=+1]
+
+include::modules/proc-deleting-model-cache.adoc[leveloffset=+1]

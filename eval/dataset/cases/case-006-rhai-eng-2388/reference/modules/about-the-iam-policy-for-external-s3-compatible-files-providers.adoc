@@ -1,0 +1,74 @@
+:_module-type: REFERENCE
+
+[id="about-the-iam-policy-for-external-s3-compatible-files-providers_{context}"]
+= About the IAM policy for external S3-compatible files providers
+
+[role="_abstract"]
+The `remote::s3` provider requires a minimum set of permissions on the S3 bucket that it uses. Grant only the permissions required for `/v1/files` operations, and avoid using credentials that provide access to multiple buckets or accounts. The following examples show least-privilege IAM policies that you can use as a starting point for AWS S3 deployments. Adapt the policies to your S3-compatible backend's access control mechanism as required.
+
+*Required permissions*
+
+The `remote::s3` provider requires the following permissions on the bucket:
+
+[source,json,subs="+quotes"]
+----
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::__<bucket_name>__",
+        "arn:aws:s3:::__<bucket_name>__/*"
+      ]
+    }
+  ]
+}
+----
+
+In the previous policy, replace `<bucket_name>` with the name of the S3 bucket that the `remote::s3` provider uses.
+
+*Additional permission for automatic bucket creation*
+
+If `S3_AUTO_CREATE_BUCKET` is set to `true`, the provider also requires the `s3:CreateBucket` permission. {org-name} recommends pre-creating the bucket administratively rather than granting this additional permission to the workload.
+
+[source,json,subs="+quotes"]
+----
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:ListBucket",
+        "s3:CreateBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::__<bucket_name>__",
+        "arn:aws:s3:::__<bucket_name>__/*"
+      ]
+    }
+  ]
+}
+----
+
+*Additional security guidance*
+
+When you configure the `remote::s3` provider, apply the following recommended security practices:
+
+* Store access credentials in Kubernetes secrets, and restrict access to the project where the `LlamaStackDistribution` resource is deployed.
+* Use TLS to secure communication with the S3 endpoint. For S3 endpoints that use private CAs, configure the Llama Stack server to trust the CA by using the operator's TLS configuration. For more information, see link:{rhoaidocshome}{default-format-url}/working_with_llama_stack/llama-stack-adv-examples_rag#configuring-a-ca-bundle-for-llama-stack_rag[Configuring a CA bundle for Llama Stack].
+* For production deployments, use IAM roles for service accounts (IRSA) instead of static access keys. IAM roles provide short-lived credentials and remove the need to store long-lived secrets in the cluster.
+* Rotate access keys regularly when static credentials are used.
+* Apply a bucket policy that restricts access to the specific principal that runs the Llama Stack workload.
+* Llama Stack enforces access policies at the file metadata layer. File visibility and access through the `/v1/files` API is governed by the access policies that you configure on the Llama Stack server, in addition to the IAM permissions and bucket policies that you configure on the S3 backend.
+* The `remote::s3` provider does not enable server-side encryption on uploaded objects. If you require encryption at rest, configure default server-side encryption on the S3 bucket.

@@ -1,0 +1,11 @@
+ticket: RHAIENG-2388
+source_repo:
+  url: https://github.com/opendatahub-io/llama-stack-distribution
+  sha: f7624eeb8a79
+workflow: docs-workflow
+options:
+  format: adoc
+  draft: true
+ground_truth:
+  tier: gold-standard
+  source: "GitLab MR 2697, authored by chtyler"

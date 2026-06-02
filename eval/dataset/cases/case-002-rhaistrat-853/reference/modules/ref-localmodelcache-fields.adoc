@@ -1,0 +1,144 @@
+:_mod-docs-content-type: REFERENCE
+[id="localmodelcache-fields_{context}"]
+= LocalModelCache field reference
+
+[role="_abstract"]
+The `LocalModelCache` custom resource defines a cluster-scoped model cache.
+You can use this reference to look up field names, types, and validation rules when writing `LocalModelCache` manifests.
+
+* API group: `serving.kserve.io`
+* API version: `v1alpha1`
+* Scope: Cluster
+
+[discrete]
+== Spec fields
+
+.`LocalModelCacheSpec` fields
+[cols="2,2,1,3", options="header"]
+|===
+|Field
+|Type
+|Required
+|Description
+
+|`sourceModelUri`
+|String
+|Yes
+|The URI of the model to download and cache. This field is immutable after creation. Supported URI schemes include `hf://`, `s3://`, and `oci://`. Must be unique across all `LocalModelCache` resources in the cluster.
+
+|`modelSize`
+|`resource.Quantity` (for example, `20Gi`)
+|Yes
+|The expected size of the model. Used to validate that the model does not exceed the storage limit of the target node groups.
+
+|`nodeGroups`
+|List of strings
+|Yes (minimum 1 item)
+|A list of `LocalModelNodeGroup` names that define which nodes receive the cached model. At least one node group must be specified.
+
+|`serviceAccountName`
+|String
+|No
+|The service account to use for credential lookup when downloading from private registries. If not set, the `default` service account is used.
+
+|`storage`
+|`LocalModelStorageSpec`
+|No
+|Storage credential configuration for the download job. See the storage spec fields table.
+|===
+
+.`LocalModelStorageSpec` fields
+[cols="2,2,1,3", options="header"]
+|===
+|Field
+|Type
+|Required
+|Description
+
+|`key`
+|String
+|No
+|The storage key in the credential secret to use for this model download.
+
+|`parameters`
+|`map[string]string`
+|No
+|Additional parameters to override default storage credentials and configuration.
+|===
+
+[discrete]
+== Validation rules
+
+* `sourceModelUri` is immutable. Any attempt to change this field after creation is rejected.
+* `nodeGroups` must contain at least one item.
+* `sourceModelUri` must be unique across all `LocalModelCache` resources. The validating webhook rejects creation of a second `LocalModelCache` with the same URI.
+* Deletion is blocked by the validating webhook if any `InferenceService` or `LLMInferenceService` currently references the cache.
+
+[discrete]
+== Status fields
+
+.`LocalModelCacheStatus` fields
+[cols="2,2,3", options="header"]
+|===
+|Field
+|Type
+|Description
+
+|`nodeStatus`
+|`map[string]NodeStatus`
+|A map from node name to the download status on that node.
+
+|`copies`
+|`ModelCopies`
+|Aggregate counts of model availability across nodes.
+
+|`inferenceServices`
+|List of `NamespacedName`
+|Inference services that currently use this cached model.
+
+|`llmInferenceServices`
+|List of `NamespacedName`
+|LLM inference services that currently use this cached model.
+|===
+
+.`NodeStatus` enum values
+[cols="1,3", options="header"]
+|===
+|Value
+|Description
+
+|`NodeNotReady`
+|The node is not yet available for downloading.
+
+|`NodeDownloadPending`
+|The download job has been created but has not started.
+
+|`NodeDownloading`
+|The download is in progress.
+
+|`NodeDownloaded`
+|The model has been successfully cached on this node.
+
+|`NodeDownloadError`
+|The download failed on this node.
+|===
+
+.`ModelCopies` fields
+[cols="1,1,3", options="header"]
+|===
+|Field
+|Type
+|Description
+
+|`available`
+|Integer
+|The number of nodes where the model is successfully cached.
+
+|`total`
+|Integer
+|The total number of nodes where the model is expected to be cached, including nodes that are not ready.
+
+|`failed`
+|Integer
+|The number of nodes where the download has failed.
+|===

@@ -1,0 +1,31 @@
+:_mod-docs-content-type: ASSEMBLY
+:context: setting-up-model-caching-infrastructure
+[id="setting-up-model-caching-infrastructure"]
+= Set up model caching infrastructure
+
+[role="_abstract"]
+As a cluster administrator, you can enable and configure model caching to pre-download large language models to node-local storage.
+Model caching reduces inference service cold-start times from approximately 15-20 minutes to approximately 1 minute, improving responsiveness during autoscaling events.
+Setting up model caching requires enabling the feature in the cluster configuration, labeling nodes, and creating node groups with storage specifications.
+
+.Prerequisites
+
+* You have `cluster-admin` privileges on the OpenShift cluster.
+* Red Hat OpenShift AI 3.5 or later is installed.
+* KServe is deployed on the cluster.
+* Target nodes have local storage available for model caching.
+
+include::modules/con-model-cache-overview.adoc[leveloffset=+1]
+
+include::modules/proc-enabling-model-caching.adoc[leveloffset=+1]
+
+include::modules/ref-model-cache-configmap-parameters.adoc[leveloffset=+1]
+
+include::modules/proc-creating-model-cache-node-group.adoc[leveloffset=+1]
+
+include::modules/ref-localmodelnodegroup-fields.adoc[leveloffset=+1]
+
+.Next steps
+
+* xref:caching-model-locally_caching-models-for-faster-inference[Creating a model cache]
+* xref:configuring-model-cache-credentials_caching-models-for-faster-inference[Configuring credentials for model downloads]

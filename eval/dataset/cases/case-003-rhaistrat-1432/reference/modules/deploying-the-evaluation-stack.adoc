@@ -1,0 +1,134 @@
+:_mod-docs-content-type: PROCEDURE
+[id="deploying-the-evaluation-stack_{context}"]
+= Deploy the evaluation stack
+
+[role="_abstract"]
+You can deploy the evaluation stack on your OpenShift cluster by creating an EvalHub custom resource (CR).
+The TrustyAI Operator reconciles the CR and creates the necessary deployments, services, and configuration.
+
+.Prerequisites
+
+* {product-name} {product-version} is installed on your OpenShift cluster.
+* The TrustyAI component is set to `Managed` in the `DataScienceCluster` resource.
+* You have `cluster-admin` privileges or sufficient permissions to create resources in the target namespace.
+* An MLflow instance is accessible from the cluster (optional, for experiment tracking).
+
+.Procedure
+
+. Ensure that the TrustyAI component is managed by your `DataScienceCluster` resource:
++
+[source,yaml]
+----
+apiVersion: datasciencecluster.opendatahub.io/v1
+kind: DataScienceCluster
+metadata:
+  name: default-dsc
+spec:
+  components:
+    trustyai:
+      managementState: Managed
+----
+
+. Create a YAML file for the EvalHub CR.
++
+The `spec.database` field is mandatory.
+Choose `sqlite` for development or `postgresql` for production deployments.
++
+--
+For a development deployment with SQLite:
+
+[source,yaml]
+----
+apiVersion: trustyai.opendatahub.io/v1alpha1
+kind: EvalHub
+metadata:
+  name: evalhub
+  namespace: <your_namespace> <1>
+spec:
+  replicas: 1
+  database:
+    type: sqlite <2>
+  env:
+    - name: MLFLOW_TRACKING_URI
+      value: "http://mlflow:5000" <3>
+----
+<1> Replace `<your_namespace>` with the namespace where you want to deploy the evaluation stack.
+<2> SQLite uses an in-memory database suitable for development and testing. Data does not persist across pod restarts.
+<3> Optional. Set the MLflow tracking URI if you want to enable experiment tracking.
+--
++
+--
+For a production deployment with PostgreSQL:
+
+.. Create a Kubernetes Secret containing the PostgreSQL connection string:
++
+[source,terminal]
+----
+$ oc create secret generic evalhub-db-credentials \
+    --from-literal=db-url='postgres://<username>:<password>@<host>:5432/<database>' \
+    -n <your_namespace>
+----
+
+.. Create the EvalHub CR that references the database Secret:
++
+[source,yaml]
+----
+apiVersion: trustyai.opendatahub.io/v1alpha1
+kind: EvalHub
+metadata:
+  name: evalhub
+  namespace: <your_namespace>
+spec:
+  replicas: 1
+  database:
+    type: postgresql
+    secretRef: evalhub-db-credentials <1>
+  env:
+    - name: MLFLOW_TRACKING_URI
+      value: "http://mlflow:5000"
+----
+<1> The Secret must contain a `db-url` key with the PostgreSQL connection string.
+--
+
+. Apply the EvalHub CR to your cluster:
++
+[source,terminal]
+----
+$ oc apply -f evalhub-cr.yaml
+----
+
+. Wait for the EvalHub pod to reach the `Running` state:
++
+[source,terminal]
+----
+$ oc get pods -n <your_namespace> -l app=evalhub
+----
+
+.Verification
+
+. Check the health of the evaluation stack:
++
+[source,terminal]
+----
+$ curl -k https://$(oc get route evalhub -n <your_namespace> -o jsonpath='{.spec.host}')/api/v1/health
+----
++
+.Expected output
+[source,json]
+----
+{"status":"healthy"}
+----
+
+. Verify that providers are loaded by listing them:
++
+[source,terminal]
+----
+$ curl -k https://$(oc get route evalhub -n <your_namespace> -o jsonpath='{.spec.host}')/api/v1/evaluations/providers
+----
++
+The response should include provider entries for `lm_evaluation_harness`, `lighteval`, `garak`, `guidellm`, and `ibm-clear`.
+
+.Troubleshooting
+
+If you are upgrading from an Early Access release, CRs that do not include the mandatory `spec.database` field will fail to reconcile.
+Add the `spec.database` section with a `type` value of either `sqlite` or `postgresql` and reapply the CR.

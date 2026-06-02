@@ -1,0 +1,192 @@
+:_module-type: PROCEDURE
+
+[id="using-the-v1-files-endpoint-with-external-s3-compatible-storage_{context}"]
+= Using the /v1/files endpoint with external S3-compatible storage
+
+[role="_abstract"]
+After you configure the `remote::s3` provider, you can manage files by using the OpenAI-compatible `/v1/files` endpoint. File content is stored in your S3 bucket, and file metadata is stored in the Llama Stack PostgreSQL metadata store.
+
+.Prerequisites
+
+* You have configured the `remote::s3` provider for the `/v1/files` endpoint. For more information, see link:{rhoaidocshome}{default-format-url}/working_with_llama_stack/llama-stack-adv-examples_rag#configuring-external-s3-compatible-providers-for-the-files-endpoint_rag[Configuring an external S3-compatible provider for the /v1/files endpoint].
+* The Llama Stack pod is running and the `remote::s3` provider has initialized successfully.
+* You have the `curl` command-line tool installed in the environment from which you run the procedure.
+* You have the service or route URL for the Llama Stack API endpoint, without the `/v1` suffix.
+* You have the API token required to access the Llama Stack endpoint, if your deployment requires authentication.
+
+.Procedure
+
+. Open a terminal session in an environment that can reach the Llama Stack API. The Llama Stack service is reachable in the following ways:
++
+--
+In-cluster access::
+Run the commands from a pod in the same project as the Llama Stack service, or from a workbench that has network access to the Llama Stack service. The Llama Stack Operator names the service `<distribution-name>-service`. Use that name with port 8321, for example:
++
+[source,terminal]
+----
+LLAMA_STACK_URL="http://llamastack-service:8321"
+----
+
+External access::
+Expose the Llama Stack service by creating a route, and then run the commands from your local workstation. Use the route URL, for example:
++
+[source,terminal]
+----
+LLAMA_STACK_URL="https://llamastack-route.example.com"
+----
+--
++
+For more information about the correct base URL format and how to find the URL for your deployment, see link:{rhoaidocshome}{default-format-url}/working_with_llama_stack/overview-of-llama-stack#openai-compatibility-for-rag-apis-in-llama-stack_llama-stack[OpenAI compatibility for RAG APIs in Llama Stack].
+
+. Set the `LLAMA_STACK_URL` environment variable to the URL of your Llama Stack service or route, without the `/v1` suffix. The example commands in this procedure append `/v1` as part of the endpoint path.
+
+. If your deployment requires authentication, set the `LLAMA_STACK_TOKEN` environment variable to your API token:
++
+[source,terminal,subs="+quotes"]
+----
+$ export LLAMA_STACK_TOKEN="__<api_token>__"
+----
+
+. Upload a file. The `purpose` form field is required:
++
+[source,terminal,subs="+quotes"]
+----
+$ curl -X POST \
+  "${LLAMA_STACK_URL}/v1/files" \
+  -H "Authorization: Bearer ${LLAMA_STACK_TOKEN}" \
+  -F purpose="assistants" \
+  -F file="@__<path_to_file>__"
+----
++
+In the previous command, replace `<path_to_file>` with the local path to the file that you want to upload.
++
+The output is similar to the following example:
++
+[source,json]
+----
+{
+  "object": "file",
+  "id": "file-53b3fd75ca2c421c9a292ac63ff924ce",
+  "bytes": 16,
+  "created_at": 1778608944,
+  "expires_at": null,
+  "filename": "test.txt",
+  "purpose": "assistants"
+}
+----
++
+Note the value of the `id` field. You use this identifier in subsequent operations to refer to the file. The `expires_at` field is `null` for files that do not expire, which is the default behavior for files uploaded with `purpose="assistants"`.
+
+. List files:
++
+[source,terminal]
+----
+$ curl -X GET \
+  "${LLAMA_STACK_URL}/v1/files" \
+  -H "Authorization: Bearer ${LLAMA_STACK_TOKEN}"
+----
++
+The output is similar to the following example:
++
+[source,json]
+----
+{
+  "data": [
+    {
+      "object": "file",
+      "id": "file-53b3fd75ca2c421c9a292ac63ff924ce",
+      "bytes": 16,
+      "created_at": 1778608944,
+      "expires_at": null,
+      "filename": "test.txt",
+      "purpose": "assistants"
+    }
+  ],
+  "has_more": false,
+  "first_id": "file-53b3fd75ca2c421c9a292ac63ff924ce",
+  "last_id": "file-53b3fd75ca2c421c9a292ac63ff924ce",
+  "object": "list"
+}
+----
++
+When no files are present, the `data` array is empty and the `first_id` and `last_id` fields contain empty strings.
+
+. Retrieve file metadata:
++
+[source,terminal,subs="+quotes"]
+----
+$ curl -X GET \
+  "${LLAMA_STACK_URL}/v1/files/__<file_id>__" \
+  -H "Authorization: Bearer ${LLAMA_STACK_TOKEN}"
+----
++
+In the previous command, replace `<file_id>` with the identifier of the file, which is returned by the upload or list operation.
++
+The output is similar to the following example:
++
+[source,json]
+----
+{
+  "object": "file",
+  "id": "file-53b3fd75ca2c421c9a292ac63ff924ce",
+  "bytes": 16,
+  "created_at": 1778608944,
+  "expires_at": null,
+  "filename": "test.txt",
+  "purpose": "assistants"
+}
+----
+
+. Retrieve file content:
++
+[source,terminal,subs="+quotes"]
+----
+$ curl -X GET \
+  "${LLAMA_STACK_URL}/v1/files/__<file_id>__/content" \
+  -H "Authorization: Bearer ${LLAMA_STACK_TOKEN}" \
+  -o __<output_path>__
+----
++
+In the previous command, replace `<output_path>` with the local path where the downloaded file content is saved.
++
+The endpoint returns the raw bytes of the file. The command does not produce console output when you use the `-o` option. Confirm that the file was downloaded successfully by checking that the output file exists and has the expected size:
++
+[source,terminal,subs="+quotes"]
+----
+$ ls -l __<output_path>__
+----
++
+The reported file size matches the `bytes` value returned by the metadata operation.
+
+. Delete a file:
++
+[source,terminal,subs="+quotes"]
+----
+$ curl -X DELETE \
+  "${LLAMA_STACK_URL}/v1/files/__<file_id>__" \
+  -H "Authorization: Bearer ${LLAMA_STACK_TOKEN}"
+----
++
+The output is similar to the following example:
++
+[source,json]
+----
+{
+  "id": "file-53b3fd75ca2c421c9a292ac63ff924ce",
+  "object": "file",
+  "deleted": true
+}
+----
++
+The `deleted` field is set to `true`, confirming that Llama Stack has removed both the file metadata and the underlying S3 object.
+
+.Verification
+
+* Uploaded files appear in the response from the list operation, with an entry in the `data` array whose `id` field matches the `id` returned by the upload operation, and whose `filename`, `bytes`, and `purpose` fields match the values that you supplied at upload time.
+* Delete operations return a response with `"deleted": true`, and a subsequent list operation does not include the deleted file in the `data` array. The corresponding object is also removed from the underlying S3 bucket.
+* The Llama Stack pod logs record each operation as an HTTP access entry. For example, a successful upload appears in the logs as `"POST /v1/files HTTP/1.1" 200`.
+
+[role="_additional-resources"]
+.Additional resources
+
+* To make uploaded files available for retrieval-augmented generation (RAG) workflows, you must associate the file with a vector store by using the `/v1/vector_stores/{vector_store_id}/files` endpoint. For more information, see link:{rhoaidocshome}{default-format-url}/working_with_llama_stack/llama-stack-adv-examples_rag#ingesting-content-into-a-llama-model_rag[Ingesting content into a Llama model].

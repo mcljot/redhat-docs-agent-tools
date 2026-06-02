@@ -1,0 +1,14 @@
+:self-managed:
+include::_artifacts/document-attributes-global.adoc[]
+
+= Working with model registries
+:doctype: book
+:toc: left
+:compat-mode:
+:context: working-model-registry
+
+[role='_abstract']
+As a data scientist or AI engineer in {productname-short}, you can register, store, version, deploy, and track models by using a model registry. 
+
+include::upstream-modules/overview-of-model-registries.adoc[leveloffset=+1]
+include::assemblies/working-with-model-registries.adoc[leveloffset=+1]

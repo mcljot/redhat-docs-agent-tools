@@ -1,0 +1,160 @@
+:_mod-docs-content-type: PROCEDURE
+[id="configuring-multi-tenant-evaluation_{context}"]
+= Configure multi-tenant evaluation
+
+[role="_abstract"]
+You can configure the evaluation stack for multi-tenant operation so that multiple teams can submit and manage evaluations independently on a shared cluster.
+Tenant isolation ensures that each team can only access evaluation resources within their assigned namespace.
+
+.Prerequisites
+
+* The evaluation stack is deployed. See xref:deploying-the-evaluation-stack_{context}[Deploy the evaluation stack].
+* You have `cluster-admin` privileges or sufficient permissions to create namespaces and role bindings.
+
+.Procedure
+
+. Create a namespace for each team that needs evaluation capabilities:
++
+[source,terminal]
+----
+$ oc create namespace <team_namespace>
+----
+
+. Label the namespace as an evaluation stack tenant:
++
+[source,terminal]
+----
+$ oc label namespace <team_namespace> \
+    evalhub.trustyai.opendatahub.io/tenant=true
+----
++
+The tenant label enables the evaluation stack to scope resources (evaluations, collections, and providers) to the labeled namespace.
+
+. Create RBAC role bindings to control what users can do within the tenant namespace.
++
+--
+The evaluation stack uses Kubernetes SubjectAccessReview (SAR) checks against the following resources in the `trustyai.opendatahub.io` API group:
+
+.Evaluation stack RBAC resources
+[cols="1,2", options="header"]
+|===
+|Resource
+|Description
+
+|`evaluations`
+|Evaluation jobs: submit, view, cancel, and delete.
+
+|`collections`
+|Benchmark collections: list, create, update, and delete.
+
+|`providers`
+|Evaluation providers: list and create.
+
+|`status-events`
+|Job status events: create (used by adapters to report progress).
+
+|===
+
+Create a `Role` that grants evaluation permissions:
+
+[source,yaml]
+----
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: evalhub-user
+  namespace: <team_namespace>
+rules:
+  - apiGroups: ["trustyai.opendatahub.io"]
+    resources: ["evaluations"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+  - apiGroups: ["trustyai.opendatahub.io"]
+    resources: ["collections"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+  - apiGroups: ["trustyai.opendatahub.io"]
+    resources: ["providers"]
+    verbs: ["get", "list"]
+----
+
+Bind the role to a user or group:
+
+[source,yaml]
+----
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: evalhub-user-binding
+  namespace: <team_namespace>
+subjects:
+  - kind: User
+    name: <username>
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: evalhub-user
+  apiGroup: rbac.authorization.k8s.io
+----
+
+Apply the role and binding:
+
+[source,terminal]
+----
+$ oc apply -f evalhub-role.yaml
+$ oc apply -f evalhub-rolebinding.yaml
+----
+--
+
+. Communicate the tenant namespace and base URL to team members.
++
+Team members configure their CLI with the assigned tenant:
++
+[source,terminal]
+----
+$ evalhub config set base_url <evalhub_url>
+$ evalhub config set token <auth_token>
+$ evalhub config set tenant <team_namespace>
+----
+
+.Verification
+
+. Verify tenant-scoped access by listing jobs as a team member:
++
+[source,terminal]
+----
+$ evalhub eval status
+----
++
+The output shows only evaluation jobs within the configured tenant namespace.
+
+. Verify isolation by confirming that a user in one tenant cannot see jobs from another tenant:
++
+[source,terminal]
+----
+$ evalhub --profile team-a eval status
+$ evalhub --profile team-b eval status
+----
++
+Each profile shows only the evaluation jobs for the corresponding tenant.
+
+.Additional resources
+
+* xref:deploying-the-evaluation-stack_{context}[Deploy the evaluation stack]
+* xref:installing-the-evaluation-stack-client-tools_{context}[Install the evaluation stack client tools]
+
+[discrete]
+[id="tenant-header-in-api-requests_{context}"]
+== Tenant header in API requests
+
+When using the REST API directly, include the `X-Tenant` header to specify the tenant namespace:
+
+[source,terminal]
+----
+$ curl -X GET "https://<evalhub_url>/api/v1/evaluations/jobs" \
+    -H "Authorization: Bearer <token>" \
+    -H "X-Tenant: <team_namespace>"
+----
+
+The evaluation stack uses the `X-Tenant` header to determine the namespace for authorization checks and resource scoping.
+All API operations that manage evaluations, collections, or providers require this header when multi-tenant mode is active.
+
+The Python SDK and CLI set this header automatically based on the configured `tenant` value.

@@ -1,0 +1,37 @@
+:_module-type: ASSEMBLY
+
+ifdef::context[:parent-context: {context}]
+
+:context: model-registry
+
+[id="working-with-model-registries_{context}"]
+= Working with model registries
+
+[role='_abstract']
+include::upstream-modules/registering-a-model.adoc[leveloffset=+1]
+include::upstream-modules/registering-a-model-version.adoc[leveloffset=+1]
+
+include::modules/registering-model-as-oci-image.adoc[leveloffset=+1]
+include::modules/monitoring-model-transfer-jobs.adoc[leveloffset=+1]
+include::modules/retrying-failed-model-transfer-job.adoc[leveloffset=+1]
+include::modules/deleting-model-transfer-job.adoc[leveloffset=+1]
+
+include::upstream-modules/viewing-registered-models.adoc[leveloffset=+1]
+include::upstream-modules/viewing-registered-model-versions.adoc[leveloffset=+1]
+
+include::upstream-modules/editing-model-metadata-in-a-model-registry.adoc[leveloffset=+1]
+include::upstream-modules/editing-model-version-metadata-in-a-model-registry.adoc[leveloffset=+1]
+
+include::upstream-modules/deploying-a-model-version-from-a-model-registry.adoc[leveloffset=+1]
+
+== Editing the deployment properties of a deployed model version from a model registry
+
+You can edit model version deployment properties from a model registry for models that were deployed from the registry. For example, you can change the deployment name, model framework, and source model location details.
+
+include::upstream-modules/editing-the-deployment-properties-of-a-model-deployed-by-using-the-model-serving-platform.adoc[leveloffset=+2]
+include::upstream-modules/deleting-a-deployed-model-version-from-a-model-registry.adoc[leveloffset=+1]
+
+include::upstream-modules/archiving-a-model.adoc[leveloffset=+1]
+include::upstream-modules/archiving-a-model-version.adoc[leveloffset=+1]
+include::upstream-modules/restoring-a-model.adoc[leveloffset=+1]
+include::upstream-modules/restoring-a-model-version.adoc[leveloffset=+1]

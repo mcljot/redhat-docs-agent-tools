@@ -1,0 +1,138 @@
+# Pipeline evaluation configuration for docs-orchestrator
+# Uses agent-eval-harness (https://github.com/opendatahub-io/agent-eval-harness)
+
+name: docs-pipeline-eval
+description: "Evaluate docs-orchestrator pipeline output against gold standard and baseline documentation"
+skill: docs-tools:docs-orchestrator
+
+execution:
+  mode: case
+  arguments: "{ticket} --draft"
+  timeout: 3600
+  max_budget_usd: 50
+  # env:
+  #   ANTHROPIC_API_KEY: $ANTHROPIC_API_KEY
+
+runner:
+  type: claude-code
+  # effort: high
+
+models:
+  skill: claude-opus-4-6
+  judge: claude-opus-4-7
+  # subagent: claude-opus-4-6
+
+permissions:
+  allow:
+    - "Read"
+    - "Write"
+    - "Edit"
+    - "Bash"
+    - "Glob"
+    - "Grep"
+    - "Skill"
+    - "Agent"
+    - "AskUserQuestion"
+  deny:
+    - "mcp__*"
+
+dataset:
+  path: eval/dataset/cases
+  schema: >
+    Each case directory contains input.yaml with fields: ticket (JIRA ID),
+    source_repo (url + sha), workflow, options (format, draft), and
+    ground_truth (tier, source). The reference/ subdirectory contains the
+    target AsciiDoc files (assemblies and modules) to compare against.
+
+inputs:
+  - tool: AskUserQuestion
+    match: "*"
+    answer_from: input
+    fields: [ticket]
+    fallback: "Pick the first option or answer 'yes'"
+
+outputs:
+  - type: file
+    path: .agent_workspace/{ticket}/writing
+    schema: >
+      AsciiDoc files: assembly_*.adoc at top level, modules/ subdirectory
+      with con-*.adoc, proc-*.adoc, ref-*.adoc files. Also _index.md
+      manifest and step-result.json sidecar.
+
+traces:
+  stdout: true
+  stderr: true
+  events: false
+  metrics: true
+
+judges:
+  # --- Inline checks ---
+
+  - name: files_exist
+    type: check
+    check: |
+      import glob
+      adoc_files = glob.glob(f"{outputs['path']}/**/*.adoc", recursive=True)
+      (len(adoc_files) >= 1, f"Found {len(adoc_files)} AsciiDoc files")
+
+  - name: step_results_valid
+    type: check
+    check: |
+      import json, os
+      base = os.path.dirname(outputs['path'])
+      steps = ['requirements', 'planning', 'writing']
+      missing = []
+      for step in steps:
+        sr = os.path.join(base, step, 'step-result.json')
+        if not os.path.exists(sr):
+          missing.append(step)
+        else:
+          data = json.load(open(sr))
+          if 'schema_version' not in data or 'step' not in data:
+            missing.append(f"{step} (invalid)")
+      (len(missing) == 0, f"Missing/invalid: {missing}" if missing else "All step results valid")
+
+  - name: pipeline_complete
+    type: check
+    check: |
+      import json, glob
+      progress_files = glob.glob(f"{os.path.dirname(outputs['path'])}/workflow/*.json")
+      if not progress_files:
+        (False, "No progress file found")
+      else:
+        data = json.load(open(progress_files[0]))
+        status = data.get('status', 'unknown')
+        (status == 'completed', f"Pipeline status: {status}")
+
+  # --- LLM judges ---
+
+  - name: doc_quality
+    type: prompt
+    prompt: |
+      You are evaluating AI-generated AsciiDoc documentation for a Red Hat product feature.
+
+      Score the documentation on a 1-5 scale:
+      1 - Unusable: major errors, fabricated content, or missing critical sections
+      2 - Poor: significant gaps in coverage or accuracy
+      3 - Acceptable: covers the basics correctly but lacks depth or polish
+      4 - Good: comprehensive, accurate, well-structured, minor issues only
+      5 - Excellent: production-ready quality, matches what a senior tech writer would produce
+
+      Consider: technical accuracy, completeness relative to the JIRA ticket scope,
+      modular documentation structure (concept/procedure/reference separation),
+      and absence of fabricated commands, flags, or API details.
+
+  - name: pairwise
+    type: prompt
+    prompt_file: eval/config/pairwise-judge.md
+
+thresholds:
+  files_exist:
+    min_pass_rate: 1.0
+  step_results_valid:
+    min_pass_rate: 1.0
+  pipeline_complete:
+    min_pass_rate: 1.0
+  doc_quality:
+    min_mean: 3.0
+  # pairwise: no threshold — informational only

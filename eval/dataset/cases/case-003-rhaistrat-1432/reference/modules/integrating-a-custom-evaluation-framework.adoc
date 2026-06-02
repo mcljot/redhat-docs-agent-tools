@@ -1,0 +1,188 @@
+:_mod-docs-content-type: PROCEDURE
+[id="integrating-a-custom-evaluation-framework_{context}"]
+= Integrate a custom evaluation framework
+
+[role="_abstract"]
+You can integrate a custom evaluation framework into the evaluation stack by implementing the `FrameworkAdapter` interface and packaging your adapter as a container.
+This enables you to run proprietary or custom benchmarks through the same unified interface as the built-in frameworks.
+
+.Prerequisites
+
+* You understand the evaluation stack architecture and job lifecycle. See xref:about-the-evaluation-stack_{context}[About the evaluation stack].
+* Python development experience and familiarity with container builds.
+* Container build tools (Podman or Docker) are available.
+* The evaluation stack is deployed and accessible.
+
+.Procedure
+
+. Install the EvalHub SDK:
++
+[source,terminal]
+----
+$ pip install eval-hub-sdk
+----
+
+. Create a Python file for your adapter that implements the `FrameworkAdapter` interface:
++
+[source,python]
+----
+from evalhub.adapter import (
+    FrameworkAdapter,
+    JobSpec,
+    JobCallbacks,
+    JobResults,
+    JobStatus,
+    JobPhase,
+    JobStatusUpdate,
+    EvaluationResult,
+    MessageInfo,
+)
+
+
+class MyFrameworkAdapter(FrameworkAdapter):
+    def run_benchmark_job(
+        self, config: JobSpec, callbacks: JobCallbacks
+    ) -> JobResults:
+        """Run a benchmark evaluation job."""
+
+        # Report initialization status
+        callbacks.report_status(
+            JobStatusUpdate(
+                status=JobStatus.RUNNING,
+                phase=JobPhase.INITIALIZING,
+                progress=0.0,
+                message=MessageInfo(
+                    message="Loading benchmark and model",
+                    message_code="initializing",
+                ),
+            )
+        )
+
+        # Implement your evaluation logic here
+        score = run_your_evaluation(config.model, config.benchmark_id)
+
+        # Return results
+        return JobResults(
+            id=config.id,
+            benchmark_id=config.benchmark_id,
+            benchmark_index=config.benchmark_index,
+            model_name=config.model.name,
+            results=[
+                EvaluationResult(
+                    metric_name="accuracy",
+                    metric_value=score,
+                    metric_type="float",
+                )
+            ],
+            num_examples_evaluated=100,
+            duration_seconds=elapsed,
+        )
+----
++
+The `run_benchmark_job()` method is the single method you must implement.
+It receives a `JobSpec` containing the job configuration loaded from a ConfigMap, and a `JobCallbacks` instance for reporting status updates and persisting artifacts.
+
+. Create an entrypoint script:
++
+[source,python]
+----
+from my_adapter import MyFrameworkAdapter
+from evalhub.adapter import DefaultCallbacks
+
+# Initialize adapter (loads settings and job spec internally)
+adapter = MyFrameworkAdapter()
+
+# Create callbacks from adapter (auto-configures sidecar, OCI proxy)
+callbacks = DefaultCallbacks.from_adapter(adapter)
+
+# Run adapter
+results = adapter.run_benchmark_job(adapter.job_spec, callbacks)
+
+# Report final results to the evaluation stack
+callbacks.report_results(results)
+----
+
+. Create a container image for your adapter by using a UBI9 base image:
++
+[source,dockerfile]
+----
+FROM registry.access.redhat.com/ubi9/python-312
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY my_adapter.py .
+COPY entrypoint.py .
+
+CMD ["python", "entrypoint.py"]
+----
+
+. Build and push the container image:
++
+[source,terminal]
+----
+$ podman build -t <registry>/<repository>/my-adapter:latest .
+$ podman push <registry>/<repository>/my-adapter:latest
+----
+
+. Register your custom provider with the evaluation stack by adding a provider YAML configuration.
++
+Create a file named `my-provider.yaml`:
++
+[source,yaml]
+----
+id: my-custom-provider
+name: My Custom Provider
+description: Custom evaluation framework for domain-specific benchmarks
+runtime:
+  k8s:
+    image: <registry>/<repository>/my-adapter:latest
+    entrypoint:
+      - python
+      - entrypoint.py
+    cpu_request: 100m
+    memory_request: 128Mi
+    cpu_limit: 500m
+    memory_limit: 2Gi
+benchmarks:
+  - id: my-benchmark
+    name: My Custom Benchmark
+    description: Evaluates domain-specific capabilities
+    category: custom
+    metrics:
+      - accuracy
+    primary_score:
+      metric: accuracy
+      lower_is_better: false
+    pass_criteria:
+      threshold: 0.80
+----
+
+.Verification
+
+After registering the provider, verify that it appears in the provider list:
+
+[source,terminal]
+----
+$ evalhub providers list
+----
+
+Submit a test evaluation using your custom provider:
+
+[source,terminal]
+----
+$ evalhub eval run \
+    --name test-custom-adapter \
+    --model-url http://vllm:8000/v1 \
+    --model-name my-model \
+    --provider my-custom-provider \
+    -b my-benchmark \
+    --wait
+----
+
+.Additional resources
+
+* link:https://github.com/eval-hub/eval-hub-contrib[EvalHub community adapter examples]
+* xref:about-the-evaluation-stack_{context}[About the evaluation stack]

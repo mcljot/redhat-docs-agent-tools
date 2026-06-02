@@ -1,0 +1,37 @@
+:_mod-docs-content-type: PROCEDURE
+[id="delete-model-catalog-source_{context}"]
+= Delete a model catalog source
+
+[role="_abstract"]
+You can delete a previously added catalog source to remove all of its models from the model catalog.
+
+[NOTE]
+====
+You cannot delete the default catalog sources.
+====
+
+.Prerequisites
+
+* You have logged in to the {productname-short} dashboard as an administrator.
+
+* You have added a model catalog source.
+
+.Procedure
+
+. In the {productname-short} dashboard, click *Settings* -> *Model resources and operations* -> *Model catalog settings*.
+
+. In the list of sources, find the source that you want to delete.
+
+. Click the action menu (&#8942;) for the catalog source, and then click *Delete*.
+
+. In the *Delete a source* dialog, enter the source name to confirm the deletion. 
+
+. Click *Delete* to confirm the deletion.
+
+.Verification
+
+. On the *Model catalog settings* page, verify that the deleted catalog source no longer displays in the list.
+
+. Click *AI hub* -> *Catalog*.
+
+. Verify that models from the deleted catalog source are no longer available in the catalog.

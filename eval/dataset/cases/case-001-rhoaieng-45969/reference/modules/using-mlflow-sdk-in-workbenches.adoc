@@ -1,0 +1,82 @@
+:_mod-docs-content-type: PROCEDURE
+
+[id="using-mlflow-sdk-in-workbenches_{context}"]
+= Use the MLflow SDK in a workbench notebook
+
+[role="_abstract"]
+After MLflow integration is enabled for your workbench, you can use the MLflow Python SDK to create experiments, log parameters and metrics, and track runs.
+The required environment variables are already configured, so the SDK connects to the tracking server automatically.
+
+.Prerequisites
+
+* A cluster administrator has enabled the MLflow Operator component in the `DataScienceCluster` custom resource (CR).
+For more information, see xref:enabling-mlflow-component_{context}[Enable the MLflow Operator component].
+* An MLflow CR has been created in the namespace.
+* The workbench notebook resource has the `opendatahub.io/mlflow-instance` annotation.
+For more information, see xref:enabling-mlflow-integration-for-workbenches_{context}[Enable MLflow integration for a workbench].
+* The workbench is started and the MLflow environment variables are injected.
+* The `mlflow` Python package is installed in the workbench.
+Starting with {productname-short} 3.4, all workbench images except the minimal image include the MLflow SDK.
+For older images or custom images, install the package by running `pip install mlflow` in a notebook cell.
++
+[NOTE]
+====
+If you need only basic tracking functionality, you can install the `mlflow-skinny` package instead for a smaller footprint.
+The `mlflow-skinny` package contains the core tracking and logging features but does not include model serving integrations or the full MLflow CLI.
+====
+
+.Procedure
+
+. Open a notebook in the workbench.
+
+. Verify that the MLflow environment variables are available:
++
+[source,python]
+----
+import os
+print(os.environ.get("MLFLOW_TRACKING_URI"))
+print(os.environ.get("MLFLOW_K8S_INTEGRATION"))
+print(os.environ.get("MLFLOW_TRACKING_AUTH"))
+----
++
+All three variables display their configured values.
+
+. Import the MLflow SDK and set an experiment:
++
+[source,python]
+----
+import mlflow
+
+mlflow.set_experiment("my-experiment")
+----
++
+The `set_experiment()` call returns an `Experiment` object and prints the experiment ID.
+If you see a `ConnectionError`, verify that the `MLFLOW_TRACKING_URI` environment variable is set correctly by re-running the check in step 2.
+
+. Start a run and log parameters and metrics:
++
+[source,python]
+----
+with mlflow.start_run():
+    mlflow.log_param("learning_rate", 0.01)
+    mlflow.log_param("epochs", 10)
+    mlflow.log_metric("accuracy", 0.95)
+    mlflow.log_metric("loss", 0.05)
+----
++
+You can log any number of parameters, metrics, and tags within a run.
+If `start_run()` raises a `ConnectionError` or an authentication or authorization error, verify that the MLflow tracking server is running and that the workbench `RoleBinding` resource exists.
+
+. View the experiment results in the MLflow UI, which is accessible from the {productname-short} dashboard.
+
+.Verification
+
+* Confirm that the experiment and run are displayed in the MLflow UI.
+Navigate to the MLflow tracking server URL in your browser or through the {productname-short} dashboard and verify that the logged parameters and metrics are visible.
+
+[NOTE]
+====
+Artifact-serving configuration with S3 connection types is not supported.
+You can log parameters, metrics, and tags, but `mlflow.log_artifact()` functionality that relies on an S3-backed artifact store requires additional configuration.
+For more information, see xref:mlflow-workbench-integration-overview_{context}[MLflow workbench integration].
+====

@@ -1,0 +1,57 @@
+:_mod-docs-content-type: PROCEDURE
+
+[id="troubleshooting-mlflow-annotation-removal_{context}"]
+= Resolve MLflow annotation removal rejection
+
+[role="_abstract"]
+If you try to remove the `opendatahub.io/mlflow-instance` annotation from a running workbench, the API request is rejected by a validating webhook.
+You can resolve this issue by stopping the workbench before removing the annotation.
+
+The validating webhook checks that the `kubeflow-resource-stopped` annotation is present on the notebook resource before it allows removal of the MLflow annotation.
+The webhook validates the annotation state, not the actual pod state.
+If the pod was stopped without setting the stop annotation, for example by deleting the pod directly, the webhook still rejects the annotation removal.
+
+.Prerequisites
+
+* The workbench has the `opendatahub.io/mlflow-instance` annotation.
+* You received a webhook error when trying to remove the annotation.
+* You have installed the {openshift-cli}.
+
+.Procedure
+
+. Stop the workbench. You can stop the workbench from the {productname-short} dashboard or by applying the stop annotation:
++
+[source,terminal]
+----
+$ oc annotate notebook -n __<namespace>__ __<notebook_name>__ kubeflow-resource-stopped=true
+----
++
+The value of the `kubeflow-resource-stopped` annotation is not significant for this purpose.
+The validating webhook checks only for the presence of the annotation key.
+
+. Wait for the notebook pod to stop fully:
++
+[source,terminal]
+----
+$ oc get pods -n __<namespace>__ -l notebook-name=__<notebook_name>__
+----
++
+The command produces no output when the pod has stopped.
+
+. Remove the MLflow annotation:
++
+[source,terminal]
+----
+$ oc annotate notebook -n __<namespace>__ __<notebook_name>__ opendatahub.io/mlflow-instance-
+----
+
+.Verification
+
+* Confirm that the annotation has been removed:
++
+[source,terminal]
+----
+$ oc get notebook -n __<namespace>__ __<notebook_name>__ -o jsonpath='{.metadata.annotations.opendatahub\.io/mlflow-instance}'
+----
++
+The command produces no output, confirming the annotation is removed.

@@ -1,0 +1,94 @@
+:_module-type: PROCEDURE
+
+[id="configuring-external-s3-provider-for-files-endpoint_{context}"]
+= Configuring the external S3-compatible provider for the /v1/files endpoint
+
+[role="_abstract"]
+To use external S3-compatible object storage as the backend for the Llama Stack `/v1/files` endpoint, update your `LlamaStackDistribution` custom resource (CR) to enable the `remote::s3` provider and supply the required configuration through environment variables.
+
+.Prerequisites
+
+* You have deployed a Llama Stack server and configured a PostgreSQL database for Llama Stack metadata storage. For more information, see link:{rhoaidocshome}{default-format-url}/working_with_llama_stack/deploying-a-llama-stack-server[Deploying a Llama Stack server]. Metadata for the `remote::s3` provider is stored in this same PostgreSQL instance automatically.
+* You have created a secret that contains your S3 credentials. For more information, see link:{rhoaidocshome}{default-format-url}/working_with_llama_stack/llama-stack-adv-examples_rag#creating-secrets-for-the-external-s3-compatible-files-provider_rag[Creating secrets for the external S3-compatible files provider].
+* If your S3 endpoint uses a TLS certificate signed by a private certificate authority (CA), you have configured the Llama Stack server to trust that CA. For more information, see link:{rhoaidocshome}{default-format-url}/working_with_llama_stack/llama-stack-adv-examples_rag#configuring-a-ca-bundle-for-llama-stack_rag[Configuring a CA bundle for Llama Stack].
+* You have the S3 configuration details including: the external S3 endpoint URL, the bucket name, and the region value.
+* The S3 bucket exists. Bucket creation is the responsibility of a storage administrator. For development environments where automatic bucket creation is acceptable, see the optional `S3_AUTO_CREATE_BUCKET` field in the configuration example.
+* You have permission to edit custom resources in your project.
+
+.Procedure
+
+. Log in to the {productname-short} web console as a cluster administrator.
+
+. From the *Project* list, select the project that contains your `LlamaStackDistribution` CR.
+
+. Update your `LlamaStackDistribution` CR to enable the `remote::s3` files provider and reference the secret that you created.
+
+.. Click *Home* -> *Search*.
+
+.. From the *Resources* list, search for `LlamaStackDistribution` and select it. The cluster also exposes a `LlamaStackOperator` resource, which is an internal {productname-short} resource that is managed by the {productname-long} Operator. Do not select `LlamaStackOperator`.
+
+.. From the list of `LlamaStackDistribution` instances, click the name of the instance that you want to update.
+
+.. Click the *YAML* tab.
+
+.. Update the resource to include the following fields, and then click *Save*:
++
+[source,yaml]
+----
+apiVersion: llamastack.io/v1alpha1
+kind: LlamaStackDistribution
+metadata:
+  name: my-llamastack
+  namespace: my-llamastack-namespace
+spec:
+  server:
+    containerSpec:
+      env:
+        - name: ENABLE_S3 <1>
+          value: "true"
+        - name: S3_BUCKET_NAME <2>
+          value: "<bucket_name>"
+        - name: AWS_DEFAULT_REGION <3>
+          value: "<region>"
+        - name: S3_ENDPOINT_URL <4>
+          value: "<s3_endpoint_url>"
+        - name: S3_AUTO_CREATE_BUCKET <5>
+          value: "false"
+        - name: AWS_ACCESS_KEY_ID <6>
+          valueFrom:
+            secretKeyRef:
+              name: s3-files-credentials
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: s3-files-credentials
+              key: AWS_SECRET_ACCESS_KEY
+    name: llama-stack
+    port: 8321
+  distribution:
+    name: rh-dev
+----
+<1> Enables the `remote::s3` files provider.
+<2> Specifies the name of the S3 bucket where files are stored. S3 bucket names must be globally unique.
+<3> Specifies the region for the S3 bucket, for example, `us-east-1`. For non-AWS backends, set this value to match the region configuration of your backend, if it requires one. The default of `us-east-1` is appropriate for many S3-compatible backends, including MinIO.
+<4> Optional: Specifies the S3 endpoint URL for S3-compatible backends other than AWS S3. Omit this field when using AWS S3. Set this field for MinIO, Ceph Object Gateway, OCI Object Storage, or other S3-compatible backends.
+<5> Optional: When set to `"true"`, allows the provider to create the bucket if it does not exist. Requires the `s3:CreateBucket` IAM permission. Leave unset or set to `"false"` in production environments.
+<6> Specifies the S3 credentials, sourced from the secret that you created. Omit `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` if the Llama Stack service account uses an IAM role.
+
+[NOTE]
+====
+For production deployments, {org-name} recommends authenticating to AWS S3 by using IAM roles for service accounts (IRSA) rather than static access keys. When you use an IAM role, omit the `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` environment variables, and bind the IAM role to the service account used by the Llama Stack pod.
+====
+
+[NOTE]
+====
+The `remote::s3` provider reads the same `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` environment variables as the `remote::bedrock` inference provider. If you have configured both providers and require different credentials for each, use IAM roles for service accounts or a non-AWS S3-compatible backend.
+====
+
+.Verification
+
+* The Llama Stack pod restarts and reaches the `Running` state.
+* The pod logs show the resolved Llama Stack configuration containing a Files provider entry with `provider_id: s3` and `provider_type: remote::s3`. You can also confirm provider registration by sending a `GET` request to the `/v1/providers` endpoint of the Llama Stack API and verifying that an entry with `"api": "files"` and `"provider_id": "s3"` appears in the response.
+* If the configured bucket does not exist and `S3_AUTO_CREATE_BUCKET` is set to `false`, the Llama Stack pod enters `CrashLoopBackOff`. The pod logs include the following error: `RuntimeError: S3 bucket '<bucket_name>' does not exist. Either create the bucket manually or set 'auto_create_bucket: true' in your configuration.`
+* File operations against the `/v1/files` endpoint complete successfully, confirming that Llama Stack can communicate with the S3-compatible backend. For more information, see link:{rhoaidocshome}{default-format-url}/working_with_llama_stack/llama-stack-adv-examples_rag#using-the-v1-files-endpoint-with-external-s3-compatible-storage_rag[Using the /v1/files endpoint with external S3-compatible storage].

@@ -1,0 +1,178 @@
+:_mod-docs-content-type: PROCEDURE
+[id="deploying-a-langgraph-agent-to-openshift_{context}"]
+= Deploy a LangGraph agent to Red Hat OpenShift AI
+
+[role="_abstract"]
+You can deploy any LangGraph agent template to {product-name} by changing the environment configuration in the `.env` file and running Makefile targets.
+The application code does not change between local development and production deployment -- only the provider endpoints and credentials are different.
+
+.Prerequisites
+
+* The `oc` CLI is installed and you are logged in to your OpenShift cluster.
+* Helm 3 is installed.
+* Podman or Docker is installed if you plan to build the container image locally (Option A). Not required for in-cluster builds (Option B).
+* A model serving endpoint is available on your OpenShift cluster (for example, a vLLM `InferenceService`).
+* You have tested the agent locally. See xref:running-a-langgraph-agent-locally_{context}[Run a LangGraph agent locally].
+
+.Procedure
+
+. Navigate to the agent directory and ensure your `.env` file exists:
++
+[source,terminal]
+----
+$ cd agents/langgraph/<agent_name>
+$ make init
+----
+
+. Log in to OpenShift:
++
+In the following command, replace `<token>` and `<cluster-api-url>` with your cluster credentials:
++
+[source,terminal]
+----
+$ oc login --token=<token> --server=https://<cluster-api-url>
+----
+
+. Update the `.env` file with production endpoint values:
++
+In the following example, replace the placeholder values with your production endpoint details:
++
+[source,ini]
+----
+API_KEY=<your-api-key>
+BASE_URL=https://<model-endpoint>/v1
+MODEL_ID=<your-model-id>
+CONTAINER_IMAGE=<registry>/<namespace>/<image-name>:<tag>
+----
++
+--
+Where:
+
+`API_KEY`:: The API key for your model serving endpoint.
+`BASE_URL`:: The URL of your vLLM or llm-d model serving endpoint. The agent appends `/v1` automatically if the URL does not already end with it.
+`MODEL_ID`:: The model identifier available on your endpoint.
+`CONTAINER_IMAGE`:: The full container image path where the agent image is pushed and pulled from. For example, `quay.io/your-username/langgraph-react-agent:latest`.
+--
++
+[NOTE]
+====
+Only the environment variables change between local and production deployment.
+The agent code remains the same because all agents use the `ChatOpenAI` client with a configurable `BASE_URL`.
+====
+
+. Build the container image using one of the following options:
++
+--
+Option A: Build locally and push to a container registry::
++
+This option requires Podman or Docker and a container registry account.
++
+[source,terminal]
+----
+$ make build
+$ make push
+----
++
+The Makefile auto-detects Podman or Docker, preferring Podman.
+
+Option B: Build in-cluster by using an OpenShift BuildConfig::
++
+This option requires only the `oc` CLI.
+No local container runtime or registry account is needed.
++
+[source,terminal]
+----
+$ make build-openshift
+----
++
+After the build completes, set `CONTAINER_IMAGE` in your `.env` file to the internal registry URL:
++
+In the following example, replace `<namespace>` and `<agent-name>` with your project name and agent name:
++
+[source,ini]
+----
+CONTAINER_IMAGE=image-registry.openshift-image-registry.svc:5000/<namespace>/<agent-name>:latest
+----
+--
+
+. Optional: Preview the rendered Helm manifests before deploying:
++
+[source,terminal]
+----
+$ make dry-run
+----
++
+Secrets are redacted in the output.
+
+. Deploy the agent to OpenShift:
++
+[source,terminal]
+----
+$ make deploy
+----
++
+The `make deploy` target runs `helm upgrade --install` with your `.env` values.
+Sensitive values such as `API_KEY` are passed as Kubernetes Secrets.
+For the Database Memory agent, `POSTGRES_PASSWORD` is also passed as a Secret.
+When MLflow tracing is configured, `MLFLOW_TRACKING_TOKEN` is passed as a Secret.
+If any required environment variables are missing, the command fails with a clear error listing which variables need to be set.
+
+.Verification
+
+. Optional: Verify that the Helm release was created:
++
+In the following command, replace `<agent-name>` with the agent's name from `agent.yaml`:
++
+[source,terminal]
+----
+$ helm list | grep <agent-name>
+----
+
+. Verify the pods are running:
++
+In the following command, replace `<agent-name>` with the agent's name from `agent.yaml`:
++
+[source,terminal]
+----
+$ oc get pods -l app=<agent-name>
+----
+
+. Retrieve the route URL:
++
+[source,terminal]
+----
+$ oc get route <agent-name> -o jsonpath='{.spec.host}'
+----
+
+. Test the agent's health endpoint:
++
+In the following command, replace `<route-url>` with the route URL from the previous step:
++
+[source,terminal]
+----
+$ curl https://<route-url>/health
+----
+
+. Send a test request to the deployed agent:
++
+[source,terminal]
+----
+$ curl -X POST https://<route-url>/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"messages": [{"role": "user", "content": "Hello!"}], "stream": false}'
+----
+
+.Troubleshooting
+
+* If `make deploy` fails with a missing variable error, check your `.env` file against the required variables listed in `agent.yaml`.
+* If the pod does not start, check the pod logs with `oc logs deployment/<agent-name>`.
+* If the route is not accessible, verify that the OpenShift Route was created with `oc get route`.
+
+.Next steps
+
+* xref:configuring-human-in-the-loop-approval-for-agent-tool-calls_{context}[Configure human-in-the-loop approval for agent tool calls]
+* xref:configuring-persistent-agent-memory-with-postgresql_{context}[Configure persistent agent memory with PostgreSQL]
+
+.Additional resources
+
+* xref:shared-helm-chart-parameters-and-makefile-targets_{context}[Shared Helm chart parameters and Makefile targets]

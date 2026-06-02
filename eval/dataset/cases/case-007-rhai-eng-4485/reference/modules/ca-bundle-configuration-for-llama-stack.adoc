@@ -1,0 +1,161 @@
+:_mod-docs-content-type: REFERENCE
+
+[id="ca-bundle-configuration-for-llama-stack_{context}"]
+= CA bundle configuration for Llama Stack
+
+[role="_abstract"]
+Use this reference to look up the supported `subfields` of `spec.server.tlsConfig.caBundle` on a `LlamaStackDistribution` custom resource (CR), the alternative configuration patterns, the validation rules and limits that the Llama Stack Operator enforces, the conditions that cause CA bundle validation to fail, and the bundle path that client code can use to establish trusted TLS connections from inside the Llama Stack server pod.
+
+== caBundle subfields
+
+The `spec.server.tlsConfig.caBundle` field accepts the following `subfields`:
+
+`configMapName`::
+Required. The name of the source config map that contains the CA certificates.
+
+`configMapNamespace`::
+Optional. The namespace of the source config map. If you omit this field, the Llama Stack Operator reads the config map from the namespace of the `LlamaStackDistribution` CR. Cross-namespace references require that the Llama Stack Operator service account has read access to the source config map.
+
+`configMapKeys`::
+Optional. A list of keys in the source config map that contain CA bundles. The Llama Stack Operator reads every listed key and concatenates the certificates into a single bundle. If you omit this field, the Llama Stack Operator reads only the default key, `ca-bundle.crt`. Set `configMapKeys` when the source config map holds CA data under one or more keys with names other than the default, for example, `odh-trusted-ca-bundle`, which holds CA data under both `ca-bundle.crt` and `odh-ca-bundle.crt`.
+
+== Configuration examples
+
+ifndef::disconnected[]
+The following examples show the alternative patterns for referencing a source config map. For the best pattern, which uses the `odh-trusted-ca-bundle` config map, see link:{rhoaidocshome}{default-format-url}/installing_and_uninstalling_openshift_ai_self-managed/working-with-certificates_certs#configuring-a-ca-bundle-for-llama-stack_certs[Configuring a CA bundle for Llama Stack].
+endif::[]
+ifdef::disconnected[]
+The following examples show the alternative patterns for referencing a source config map. For the best pattern, which uses the `odh-trusted-ca-bundle` config map, see link:{rhoaidocshome}{default-format-url}/installing_and_uninstalling_openshift_ai_self-managed_in_a_disconnected_environment/working-with-certificates_certs#configuring-a-ca-bundle-for-llama-stack_certs[Configuring a CA bundle for Llama Stack].
+endif::[]
+
+*Referencing a dedicated config map*
+
+To use a config map that contains certificates that are specific to the Llama Stack server, create the config map in the same namespace as the `LlamaStackDistribution` CR and reference it by name. The following example references a dedicated config map that contains a single CA bundle in the default `ca-bundle.crt` key:
+
+[source,yaml]
+----
+apiVersion: llamastack.io/v1alpha1
+kind: LlamaStackDistribution
+metadata:
+  name: my-llamastack
+  namespace: my-llamastack-namespace
+spec:
+  replicas: 1
+  server:
+    distribution:
+      name: rh-dev
+    containerSpec:
+      port: 8321
+    tlsConfig:
+      caBundle:
+        configMapName: external-llm-ca <1>
+----
+<1> Specifies the name of the dedicated config map that you created. Because no `configMapKeys` value is set, the Llama Stack Operator reads the default key, `ca-bundle.crt`.
+
+To create a dedicated config map, run the following command, in which `__<ca-bundle-configmap>__` is the name of the config map to create, `__<path/to/ca-bundle.crt>__` is the path to a file on your local file system that contains one or more PEM-encoded CA certificates, and `__<namespace>__` is the namespace that contains your `LlamaStackDistribution` CR:
+
+[subs="+quotes"]
+----
+$ oc create configmap __<ca-bundle-configmap>__ \
+  --from-file=ca-bundle.crt=__<path/to/ca-bundle.crt>__ \
+  -n __<namespace>__
+----
+
+To include multiple CA certificates in the dedicated config map, concatenate their PEM blocks in the file before you create the config map.
+
+*Referencing a config map in a different namespace*
+
+To reference a config map in a namespace other than the namespace of the `LlamaStackDistribution` CR, set the `configMapNamespace` field. Cross-namespace references require that the Llama Stack Operator service account has read access to the source config map. The following example references a config map named `enterprise-ca-bundle` in the `security-system` namespace:
+
+[source,yaml]
+----
+spec:
+  server:
+    tlsConfig:
+      caBundle:
+        configMapName: enterprise-ca-bundle <1>
+        configMapNamespace: security-system <2>
+----
+<1> Specifies the name of the source config map.
+<2> Specifies the namespace that contains the source config map.
+
+== Validation rules
+
+The Llama Stack Operator processes only PEM blocks of type `CERTIFICATE`. PEM blocks of other types, such as `PRIVATE KEY`, are ignored without error. Each block must parse as a valid X.509 certificate. The combined bundle must contain at least one valid `CERTIFICATE` block; if no valid certificates are found, the Llama Stack Operator does not create the managed config map and reports a validation failure on the CR status.
+
+== Limits
+
+The Llama Stack Operator enforces the following limits:
+
+.CA bundle limits
+[cols="1,1,2",options="header"]
+|===
+| Limit | Value | Description
+
+| Maximum bundle size
+| 10 MB
+| The total size of the concatenated PEM bundle that the Llama Stack Operator generates from the selected keys. Bundles that exceed this size are rejected.
+
+| Maximum certificate count
+| 1000
+| The maximum number of valid X.509 `CERTIFICATE` blocks that the Llama Stack Operator processes. Bundles that contain more certificates are rejected.
+
+| Accepted PEM block type
+| `CERTIFICATE`
+| Only PEM blocks of type `CERTIFICATE` are processed. Blocks of any other type are ignored without error.
+|===
+
+The standard 1 MB Kubernetes config map size limit applies to the source config map. The 10 MB limit applies to the concatenated bundle that the Llama Stack Operator builds from the selected keys.
+
+== CA bundle validation failure conditions
+
+When a CA bundle validation error occurs, the Llama Stack Operator does not deploy the Llama Stack server pod with an invalid bundle. Instead, the Llama Stack Operator surfaces the error on the `status.conditions` field of the `LlamaStackDistribution` CR.
+
+A `LlamaStackDistribution` CR publishes the following condition types:
+
+`DeploymentReady`::
+Set to `"True"` when the Llama Stack server deployment has been created and rolled out successfully. CA bundle validation errors cause the Llama Stack Operator to set this condition to `"False"`, with a `message` field that describes the underlying error.
+
+`ServiceReady`::
+Set to `"True"` when the Llama Stack server service is available.
+
+`HealthCheck`::
+Set to `"True"` when the Llama Stack server passes its readiness checks.
+
+The CR also publishes a `status.phase` field that summarizes the overall lifecycle state of the `LlamaStackDistribution` instance, with values such as `Initializing`, `Ready`, and `Failed`.
+
+The following conditions cause a CA bundle validation failure:
+
+* The referenced config map does not exist in the specified namespace.
+* The selected key does not exist in the source config map.
+* The selected keys do not contain any valid X.509 `CERTIFICATE` PEM blocks.
+* The concatenated bundle exceeds the 10 MB size limit.
+* The concatenated bundle contains more than 1000 certificates.
+* The Llama Stack Operator service account does not have read access to the source config map.
+
+After you correct the source config map or the CR reference, the Llama Stack Operator reconciles the change automatically and updates the managed config map.
+
+== Using the CA bundle from client code
+
+After the Llama Stack Operator mounts the CA bundle into the Llama Stack server pod, the bundle is available to client code that runs inside the pod at the following path:
+
+[source]
+----
+/etc/ssl/certs/ca-bundle/ca-bundle.crt
+----
+
+The Llama Stack Operator also sets the `SSL_CERT_FILE` environment variable on the server container to point to this path. Most Python HTTP libraries, including `httpx` and `requests`, honor `SSL_CERT_FILE` automatically and use the bundle without further configuration.
+
+If your client code uses a library that does not honor `SSL_CERT_FILE`, pass the bundle path explicitly. For example, the Llama Stack Python client accepts a custom certificate bundle through its TLS configuration:
+
+[source,python]
+----
+from llama_stack_client import LlamaStackClient
+import httpx
+
+http_client = httpx.Client(verify="/etc/ssl/certs/ca-bundle/ca-bundle.crt")
+client = LlamaStackClient(
+    base_url="https://my-llamastack.my-llamastack-namespace.svc:8321",
+    http_client=http_client,
+)
+----

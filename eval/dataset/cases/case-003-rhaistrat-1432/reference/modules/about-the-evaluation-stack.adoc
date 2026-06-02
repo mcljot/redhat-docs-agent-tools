@@ -1,0 +1,116 @@
+:_mod-docs-content-type: CONCEPT
+[id="about-the-evaluation-stack_{context}"]
+= About the evaluation stack
+
+[role="_abstract"]
+The evaluation stack provides a unified control plane for running AI model evaluations across multiple frameworks on {product-name}.
+You can use the evaluation stack to assess models for accuracy, safety, fairness, and inference performance through a single interface, rather than managing separate evaluation tools for each dimension.
+
+[IMPORTANT]
+====
+The evaluation stack is a Technology Preview feature only.
+Technology Preview features are not supported with Red Hat production service level agreements (SLAs) and might not be functionally complete.
+Red Hat does not recommend using them in production.
+These features provide early access to upcoming product capabilities, enabling customers to test functionality and provide feedback during the development process.
+
+For more information about the support scope of Red Hat Technology Preview features, see link:https://access.redhat.com/support/offerings/techpreview[Technology Preview Features Support Scope].
+====
+
+[discrete]
+== Architecture
+
+The evaluation stack consists of several components that work together to orchestrate model evaluations:
+
+Server:: A Go-based REST API service that handles evaluation job requests, manages benchmark and provider configurations, and coordinates job execution.
+The server exposes endpoints under `/api/v1` for submitting jobs, listing providers and benchmarks, and managing collections.
+It uses a pluggable storage layer supporting both SQLite for development and PostgreSQL for production deployments.
+
+SDK and CLI:: A Python client library and command-line interface for interacting with the evaluation stack.
+The SDK provides both synchronous and asynchronous clients, while the CLI offers commands for job submission, status monitoring, result retrieval, and configuration management.
+
+Adapter containers:: Each evaluation framework runs as a containerized adapter that implements the `FrameworkAdapter` interface.
+Adapters receive job specifications via a ConfigMap mount and report status and results through a sidecar container.
+
+Kubernetes jobs:: Evaluation jobs run as Kubernetes Job resources.
+Each job pod contains an adapter container and a sidecar container that handles service communication, authentication, and OCI artifact persistence.
+
+[discrete]
+== Supported evaluation frameworks
+
+The evaluation stack includes the following evaluation providers:
+
+.Evaluation providers
+[cols="1,2,1", options="header"]
+|===
+|Provider
+|Description
+|Focus area
+
+|LM Evaluation Harness
+|Comprehensive evaluation framework for language models with 181 benchmarks covering reasoning, knowledge, language understanding, and more.
+|General capability
+
+|LightEval
+|Lightweight evaluation framework from Hugging Face with 25 benchmarks for commonsense reasoning and language tasks.
+|General capability
+
+|Garak
+|LLM vulnerability scanner and red-teaming framework with benchmarks for OWASP Top 10 risks, AVID taxonomy categories, and toxic content detection.
+|Security and safety
+
+|GuideLLM
+|Performance benchmarking framework for LLM inference servers, providing throughput, latency, and load-testing metrics.
+|Inference performance
+
+|IBM CLEAR
+|Error analysis and reporting framework for evaluating agentic AI interactions.
+|Error analysis
+
+|===
+
+[discrete]
+== Data model
+
+The evaluation stack organizes evaluation capabilities using three main concepts:
+
+Providers:: A provider represents a registered evaluation framework and its adapter container.
+Each provider exposes a set of benchmarks that you can use in evaluation jobs.
+
+Benchmarks:: A benchmark is an individual evaluation task within a provider.
+Each benchmark has a category, supported metrics, and optional pass/fail criteria with a primary score metric and threshold.
+
+Collections:: A collection is a named group of benchmarks with weighted scoring and pass/fail criteria.
+Collections enable you to evaluate a model against a coherent set of related benchmarks and receive a composite score.
+The evaluation stack ships with pre-defined collections for general capability, safety and fairness, and toxicity assessment.
+
+[discrete]
+== Interaction methods
+
+You can interact with the evaluation stack in three ways:
+
+* *REST API*: Submit evaluation jobs, query results, and manage resources by sending HTTP requests to the `/api/v1` endpoints.
+* *CLI*: Use the `evalhub` command-line tool for interactive or scripted evaluation workflows.
+* *Python SDK*: Use the `evalhub` Python library for programmatic integration in notebooks, scripts, or CI/CD pipelines.
+
+[discrete]
+== Relationship to existing LMEvalJob
+
+The evaluation stack and the existing LMEvalJob custom resource both support the LM Evaluation Harness framework, but they serve different purposes:
+
+* *LMEvalJob* is a direct, single-framework integration that creates Kubernetes jobs to run LM Evaluation Harness benchmarks. It is a Generally Available feature.
+* *The evaluation stack* is a multi-framework orchestration layer that routes evaluation requests to LM Evaluation Harness and other frameworks through a unified API. It manages job lifecycle, result aggregation, and MLflow experiment tracking across all providers.
+
+You can use both features independently.
+The evaluation stack orchestrates LM Evaluation Harness as one of its providers, in addition to the other supported frameworks.
+
+[discrete]
+== MLflow integration
+
+The evaluation stack integrates with MLflow for experiment tracking.
+When you include an experiment configuration in your job submission, evaluation results are recorded as MLflow runs with metrics, parameters, and artifacts.
+You can use the MLflow UI to compare results across models and evaluation runs.
+
+.Additional resources
+
+* link:https://eval-hub.github.io/[EvalHub upstream documentation]
+* link:https://catalog.redhat.com/en/software/containers/rhoai/odh-eval-hub-rhel9/697b84a32ca00a514132fcea[Red Hat Ecosystem Catalog - EvalHub container]

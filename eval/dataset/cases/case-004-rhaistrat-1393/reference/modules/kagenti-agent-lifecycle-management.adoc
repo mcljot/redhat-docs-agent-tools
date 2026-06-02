@@ -1,0 +1,52 @@
+:_mod-docs-content-type: CONCEPT
+[id="kagenti-agent-lifecycle-management_{context}"]
+= Kagenti agent lifecycle management
+
+[role="_abstract"]
+You can use Kagenti to centrally discover, monitor, and manage AI agents deployed on your OpenShift cluster.
+Kagenti is a Kubernetes operator that watches for `AgentRuntime` custom resources and creates corresponding `AgentCard` entries for agent discovery.
+
+[IMPORTANT]
+====
+The Kagenti `AgentRuntime` CRD uses API version `agent.kagenti.dev/v1alpha1`.
+The `v1alpha1` designation indicates the API can change before reaching general availability.
+A preview of Kagenti on {product-name} is planned for the second half of 2026.
+====
+
+[discrete]
+== How Kagenti works
+
+Kagenti provides centralized agent lifecycle management through two custom resource definitions (CRDs):
+
+AgentRuntime::
+A user-created custom resource that registers a deployed agent with Kagenti.
+The `AgentRuntime` CR references an existing Deployment by name and declares the agent's protocol (for example, A2A).
+
+AgentCard::
+An auto-created custom resource that Kagenti generates from the `AgentRuntime`.
+The `AgentCard` contains the agent's discovery metadata and is used by the Kagenti UI and other agents for service discovery.
+
+When you apply an `AgentRuntime` CR, the Kagenti operator:
+
+. Detects the new CR in the labeled namespace.
+. Validates that the referenced Deployment exists.
+. Creates a corresponding `AgentCard` with the agent's metadata.
+. Sets the `AgentRuntime` status to `SYNCED`.
+
+[discrete]
+== A2A protocol compliance
+
+Kagenti uses the Agent-to-Agent (A2A) protocol for agent interoperability.
+Agents registered with Kagenti can discover and communicate with other registered agents through the A2A protocol.
+The `spec.protocol` field in the `AgentRuntime` CR declares which protocol the agent supports.
+
+[discrete]
+== Namespace labeling
+
+Kagenti only watches namespaces that are labeled for agent discovery.
+You must label the namespace before applying `AgentRuntime` CRs.
+Without the label, the operator ignores `AgentRuntime` resources in that namespace.
+
+.Additional resources
+
+* link:https://github.com/kagenti/kagenti[Kagenti project on GitHub]

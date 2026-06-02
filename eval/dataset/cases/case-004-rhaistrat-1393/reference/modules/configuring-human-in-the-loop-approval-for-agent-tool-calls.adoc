@@ -1,0 +1,127 @@
+:_mod-docs-content-type: PROCEDURE
+[id="configuring-human-in-the-loop-approval-for-agent-tool-calls_{context}"]
+= Configure human-in-the-loop approval for agent tool calls
+
+[role="_abstract"]
+You can configure the Human-in-the-Loop (HITL) agent to pause execution before running sensitive tool calls and wait for human approval.
+This approval workflow prevents the agent from performing potentially destructive actions, such as file creation or database modifications, without explicit human consent.
+
+The HITL agent uses `HumanInTheLoopMiddleware` from `langchain.agents.middleware`, which automatically pauses the agent graph before executing tools listed in its `interrupt_on` dictionary.
+The agent returns a response with `finish_reason: "pending_approval"` and the pending tool call details.
+You then send a follow-up request with `approval: "yes"` or `approval: "no"` by using the same `thread_id` to resume or reject the tool call.
+
+.Prerequisites
+
+* The Human-in-the-Loop agent is running locally or deployed to OpenShift. See xref:running-a-langgraph-agent-locally_{context}[Run a LangGraph agent locally].
+
+.Procedure
+
+. Send a message that triggers a sensitive tool call.
++
+In the following example, the user asks the agent to create a file, which triggers the `create_file` tool:
++
+[source,terminal]
+----
+$ curl -X POST http://localhost:8000/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [{"role": "user", "content": "Create a file named report.md with info about LangChain"}],
+    "stream": false,
+    "thread_id": "conversation-1"
+  }'
+----
++
+The agent pauses execution and returns a response with `finish_reason: "pending_approval"`:
++
+[source,json]
+----
+{
+  "choices": [
+    {
+      "message": {
+        "role": "assistant",
+        "content": "{\"question\": \"Do you approve the following tool call(s)?\", \"tool_calls\": [\"Tool: create_file, Args: {...}\"], \"options\": [\"yes\", \"no\"]}"
+      },
+      "finish_reason": "pending_approval"
+    }
+  ],
+  "thread_id": "conversation-1"
+}
+----
+
+. Approve or reject the pending tool call by sending a follow-up request with the same `thread_id`.
++
+To approve the tool call:
++
+[source,terminal]
+----
+$ curl -X POST http://localhost:8000/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [{"role": "user", "content": ""}],
+    "thread_id": "conversation-1",
+    "approval": "yes"
+  }'
+----
++
+To reject the tool call:
++
+[source,terminal]
+----
+$ curl -X POST http://localhost:8000/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [{"role": "user", "content": ""}],
+    "thread_id": "conversation-1",
+    "approval": "no"
+  }'
+----
++
+When approved, the agent executes the tool and returns the final result with `finish_reason: "stop"`.
+When rejected, the agent returns a rejection message without executing the tool.
+
+. Optional: Add custom sensitive tools to the interrupt list.
++
+Edit `src/human_in_the_loop/agent.py` and add tool names to the `interrupt_on` dictionary:
++
+[source,python]
+----
+hitl_middleware = HumanInTheLoopMiddleware(
+    interrupt_on={
+        "create_file": True,
+        "delete_record": True,  # Add your custom sensitive tool
+    },
+)
+----
++
+Any tool function listed in `interrupt_on` with a value of `True` causes the agent to pause and request human approval before executing that tool.
+
+. Optional: Add new tool functions.
++
+Edit `src/human_in_the_loop/tools.py` and define the tool by using the `@tool` decorator:
++
+[source,python]
+----
+@tool("delete_record")
+def delete_record(record_id: str) -> str:
+    """Delete a record from the database. Requires human approval."""
+    # Implementation here
+----
++
+After defining the tool, add it to the `interrupt_on` dictionary in `agent.py` as described in the previous step.
+
+.Verification
+
+* Send a message that does not trigger a sensitive tool (for example, a general question) and verify the agent responds directly with `finish_reason: "stop"`.
+* Send a message that triggers a sensitive tool and verify the agent pauses with `finish_reason: "pending_approval"`.
+* Approve the pending tool call and verify the agent executes the tool and returns the result.
+
+.Troubleshooting
+
+* If the approval request returns an error, verify you are using the same `thread_id` from the pending approval response. The graph state must exist in the checkpointer for the resume to work.
+* If conversation state is lost after a server restart, the default `MemorySaver` checkpointer stores state in memory only. For production, use a database-backed checkpointer such as `PostgresSaver`.
+
+.Additional resources
+
+* xref:langgraph-agent-api-endpoints_{context}[LangGraph agent API endpoints]
+* link:https://langchain-ai.github.io/langgraph/concepts/human_in_the_loop/[LangGraph Human-in-the-Loop documentation]

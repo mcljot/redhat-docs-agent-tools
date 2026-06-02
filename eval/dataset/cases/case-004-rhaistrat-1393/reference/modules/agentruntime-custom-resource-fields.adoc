@@ -1,0 +1,90 @@
+:_mod-docs-content-type: REFERENCE
+[id="agentruntime-custom-resource-fields_{context}"]
+= AgentRuntime custom resource fields
+
+[role="_abstract"]
+You create an `AgentRuntime` custom resource to register a deployed agent with Kagenti for centralized lifecycle management.
+The following table describes the fields available in the `AgentRuntime` CR.
+
+[IMPORTANT]
+====
+The `AgentRuntime` CRD uses API version `agent.kagenti.dev/v1alpha1`.
+The `v1alpha1` designation indicates the API can change before reaching general availability.
+====
+
+.AgentRuntime custom resource fields
+[cols="2,1,1,3", options="header"]
+|===
+|Field
+|Type
+|Required
+|Description
+
+|`apiVersion`
+|String
+|Yes
+|API version. Must be `agent.kagenti.dev/v1alpha1`.
+
+|`kind`
+|String
+|Yes
+|Resource kind. Must be `AgentRuntime`.
+
+|`metadata.name`
+|String
+|Yes
+|Name of the `AgentRuntime` resource. Must be unique within the namespace.
+
+|`metadata.labels`
+|Map
+|No
+|Kubernetes labels. Use `app.kubernetes.io/name` to identify the associated agent.
+
+|`spec.type`
+|String
+|Yes
+|The type of runtime being registered. Set to `agent`.
+
+|`spec.protocol`
+|String
+|Yes
+|The communication protocol supported by the agent. Set to `a2a` for Agent-to-Agent protocol compliance.
+
+|`spec.targetRef.apiVersion`
+|String
+|Yes
+|API version of the referenced resource. Set to `apps/v1`.
+
+|`spec.targetRef.kind`
+|String
+|Yes
+|Kind of the referenced resource. Set to `Deployment`.
+
+|`spec.targetRef.name`
+|String
+|Yes
+|Name of the Deployment that runs the agent. Must match an existing Deployment in the same namespace.
+|===
+
+.Example AgentRuntime CR
+[source,yaml]
+----
+apiVersion: agent.kagenti.dev/v1alpha1
+kind: AgentRuntime
+metadata:
+  name: langgraph-react-agent-runtime
+  labels:
+    app.kubernetes.io/name: langgraph-react-agent
+spec:
+  type: agent
+  protocol: a2a
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: langgraph-react-agent
+----
+
+.Additional resources
+
+* xref:registering-a-deployed-agent-with-kagenti_{context}[Register a deployed agent with Kagenti]
+* xref:kagenti-agent-lifecycle-management_{context}[Kagenti agent lifecycle management]

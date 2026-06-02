@@ -1,0 +1,46 @@
+:_mod-docs-content-type: PROCEDURE
+
+[id="monitoring-model-transfer-jobs_{context}"]
+= Monitoring model transfer jobs
+
+[role="_abstract"]
+You can monitor the model transfer jobs that are created when you store model artifacts at registration time. Model transfer jobs are background Kubernetes Jobs that copy models from a source location to an OCI registry as ModelCar images.
+
+.Prerequisites
+
+* You have logged in to the {productname-long} dashboard.
+* You have access to a model registry instance.
+* You have created at least one model transfer job by registering and storing a model.
+
+.Procedure
+
+. In the {productname-short} dashboard, click *AI hub* -> *Models* -> *Registry*.
+
+. From the *Model registry* drop-down list, select the model registry instance in which to monitor transfer jobs.
+
+. On the *Models* page, click the action menu (⋮) beside the *Register model* button, and click *View model transfer jobs*. Alternatively, you can follow a link in a notification message.
++
+The *Model transfer jobs* table shows the following details:
+
+* *Job name*: Job display name and resource name. 
+* *Model name* and *Model version name*: These display as links only when the transfer job is successful.
+* *Namespace*: Where the job runs.
+* *Created*: When the job was created. 
+* *Author*: Username who created the job.
+* *Transfer job status*: Status indicator of `Pending`, `Running`, `Complete`, or `Failed`.
++
+The page auto-polls while any job is in `Pending` or `Running` state.
+
+. Optional: In the filter drop-down list, you can select filters to refine the list of jobs, for example, by a specific job name, model name, status, or author.
+
+. To view detailed status and events for a job, click a status indicator in a row to open the *Status* dialog.
++
+If the job has failed, this includes a failure alert with details.
+
+. In the *Status* dialog, on the *Event log* tab, you can view Kubernetes events for the job pods, for example, pulled image, started container, errors, and so on. These events auto-refresh while the job is active.
+
+.Verification
+
+* Monitor the *Transfer job status* column for real-time updates on the progress of your transfer job.
+* When a transfer job completes successfully, click the *Model name* or *Model version name* links to view your registered model version.
+* If a transfer job fails, click the *Failed* status indicator to open the *Status* dialog and review the error details.

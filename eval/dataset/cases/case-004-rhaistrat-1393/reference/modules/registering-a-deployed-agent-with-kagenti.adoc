@@ -1,0 +1,96 @@
+:_mod-docs-content-type: PROCEDURE
+[id="registering-a-deployed-agent-with-kagenti_{context}"]
+= Register a deployed agent with Kagenti
+
+[role="_abstract"]
+You can register a deployed LangGraph agent with Kagenti by applying an `AgentRuntime` custom resource that references the agent's Deployment.
+After registration, the agent is displayed in the Kagenti UI for centralized monitoring and management.
+
+[IMPORTANT]
+====
+The Kagenti `AgentRuntime` CRD uses API version `agent.kagenti.dev/v1alpha1`.
+The `v1alpha1` designation indicates the API can change before reaching general availability.
+====
+
+.Prerequisites
+
+* The Kagenti operator is installed on the OpenShift cluster.
+* A LangGraph agent is deployed to OpenShift. See xref:deploying-a-langgraph-agent-to-openshift_{context}[Deploy a LangGraph agent to Red Hat OpenShift AI].
+* You have `oc` CLI access with permissions to create custom resources.
+
+.Procedure
+
+. Label the namespace for Kagenti discovery:
++
+In the following command, replace `<namespace>` with the namespace where the agent is deployed:
++
+[source,terminal]
+----
+$ oc label namespace <namespace> kagenti-enabled=true
+----
+
+. Create an `AgentRuntime` CR that references the agent's Deployment.
++
+Save the following YAML to a file named `agent-runtime.yaml`.
+Replace `<agent-name>` with the name of the agent's Deployment (the `nameOverride` value from the agent's `values.yaml`):
++
+[source,yaml]
+----
+apiVersion: agent.kagenti.dev/v1alpha1
+kind: AgentRuntime
+metadata:
+  name: <agent-name>-runtime
+  labels:
+    app.kubernetes.io/name: <agent-name>
+spec:
+  type: agent
+  protocol: a2a
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: <agent-name>
+----
+
+. Apply the `AgentRuntime` CR:
++
+[source,terminal]
+----
+$ oc apply -f agent-runtime.yaml
+----
+
+.Verification
+
+. Check that the `AgentRuntime` status is `SYNCED`:
++
+[source,terminal]
+----
+$ oc get agentruntime <agent-name>-runtime
+----
+
+. Verify that an `AgentCard` was created automatically:
++
+[source,terminal]
+----
+$ oc get agentcard
+----
+
+. Optional: View the agent in the Kagenti UI.
+
+.Troubleshooting
+
+* If the `AgentRuntime` status does not show `SYNCED`:
+** Verify the namespace is labeled with `kagenti-enabled=true`.
+** Verify the Deployment name in `spec.targetRef.name` matches the actual Deployment name. Check with `oc get deployment`.
+** Verify the Kagenti operator is running with `oc get pods -n kagenti-system`.
+
+* If the `AgentCard` is not created, check the Kagenti operator logs for errors:
++
+[source,terminal]
+----
+$ oc logs -n kagenti-system deployment/kagenti-controller-manager
+----
+
+.Additional resources
+
+* xref:agentruntime-custom-resource-fields_{context}[AgentRuntime custom resource fields]
+* xref:kagenti-agent-lifecycle-management_{context}[Kagenti agent lifecycle management]

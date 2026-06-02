@@ -1,0 +1,11 @@
+ticket: RHAISTRAT-1393
+source_repo:
+  url: https://github.com/red-hat-data-services/agentic-starter-kits
+  sha: 6022efe
+workflow: docs-workflow
+options:
+  format: adoc
+  draft: true
+ground_truth:
+  tier: regression-baseline
+  source: "Pipeline-generated output from completed run"

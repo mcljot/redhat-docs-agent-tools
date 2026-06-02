@@ -1,0 +1,88 @@
+:_mod-docs-content-type: PROCEDURE
+
+[id="disabling-mlflow-integration-for-workbenches_{context}"]
+= Disable MLflow integration for a workbench
+
+[role="_abstract"]
+You can disable MLflow integration for a workbench by removing the `opendatahub.io/mlflow-instance` annotation from the notebook resource.
+You must stop the workbench before removing the annotation.
+
+[IMPORTANT]
+====
+When you remove the annotation, the platform deletes the associated `RoleBinding` resource immediately, but environment variables in the running pod persist until the pod restarts.
+If the workbench is running when you remove the annotation, the MLflow SDK continues to send requests to the tracking server without a valid `RoleBinding` resource in place, which causes authentication failures.
+====
+
+.Prerequisites
+
+* Your workbench has the `opendatahub.io/mlflow-instance` annotation.
+* The workbench is stopped.
+The validating webhook requires the `kubeflow-resource-stopped` annotation to be present on the notebook resource before it allows removal of the MLflow annotation.
+* You have installed the {openshift-cli}.
+
+.Procedure
+
+. Log in to your {openshift-platform} cluster:
++
+[source,terminal]
+----
+$ oc login --token=__<token>__ --server=__<openshift_cluster_url>__
+----
+
+. Verify that the workbench pod has stopped:
++
+[source,terminal]
+----
+$ oc get pods -n __<namespace>__ -l notebook-name=__<notebook_name>__
+----
++
+The command produces no output when the pod has stopped.
+
+. Remove the `opendatahub.io/mlflow-instance` annotation from the notebook resource.
++
+In the following command, replace `__<notebook_name>__` with the name of your workbench notebook:
++
+[source,terminal]
+----
+$ oc annotate notebook -n __<namespace>__ __<notebook_name>__ opendatahub.io/mlflow-instance-
+----
++
+The trailing dash (`-`) removes the annotation.
+
+.Verification
+
+. Start the workbench and verify that the MLflow environment variables are no longer present.
++
+First, find the pod name for your notebook:
++
+[source,terminal]
+----
+$ oc get pods -n __<namespace>__ -l notebook-name=__<notebook_name>__
+----
++
+Then verify that the MLflow environment variables are no longer present, where `__<notebook_pod_name>__` is the pod name from the previous command and `__<notebook_name>__` is the notebook resource name:
++
+[source,terminal]
+----
+$ oc exec -n __<namespace>__ __<notebook_pod_name>__ -c __<notebook_name>__ -- env | grep MLFLOW
+----
++
+The command produces no output, confirming that the MLflow variables have been removed.
+
+. Verify that the MLflow `RoleBinding` resource has been removed:
++
+[source,terminal]
+----
+$ oc get rolebinding -n __<namespace>__ __<notebook_name>__-mlflow
+----
++
+The expected output is:
++
+[source,terminal]
+----
+Error from server (NotFound): rolebindings.rbac.authorization.k8s.io "__<notebook_name>__-mlflow" not found
+----
+
+.Troubleshooting
+
+If the annotation removal is rejected with a webhook error, see xref:troubleshooting-mlflow-annotation-removal_{context}[Resolve MLflow annotation removal rejection].

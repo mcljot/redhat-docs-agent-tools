@@ -1,0 +1,101 @@
+:_mod-docs-content-type: PROCEDURE
+
+[id="enabling-mlflow-integration-for-workbenches_{context}"]
+= Enable MLflow integration for a workbench
+
+[role="_abstract"]
+You can enable automatic MLflow SDK configuration for a workbench by adding the `opendatahub.io/mlflow-instance` annotation to the notebook resource.
+When the workbench starts, the platform injects MLflow environment variables and provisions the required RBAC resources.
+
+When you create or update a workbench, the {productname-short} dashboard automatically adds the MLflow annotation.
+For this to occur, the following components in the `DataScienceCluster` object must be set to `Managed`:
+
+* Dashboard
+* MLflow
+* Workbenches
+
+The following procedure is for environments where you manage workbenches through GitOps, Helm charts, or direct YAML manifests without the {productname-short} dashboard.
+
+.Prerequisites
+
+* A cluster administrator has enabled the MLflow Operator component in the `DataScienceCluster` object.
+For more information, see xref:enabling-mlflow-component_{context}[Enable the MLflow Operator component].
+* An MLflow CR has been created in the same namespace as the workbench.
+* The workbench is stopped.
+* You have installed the {openshift-cli}.
+
+.Procedure
+
+. Log in to your {openshift-platform} cluster:
++
+[source,terminal]
+----
+$ oc login --token=__<token>__ --server=__<openshift_cluster_url>__
+----
+
+. Add the `opendatahub.io/mlflow-instance` annotation to the notebook resource.
++
+In the following command, replace `__<notebook_name>__` with the name of your workbench notebook and `__<mlflow_instance_name>__` with the name of your MLflow instance CR:
++
+[source,terminal]
+----
+$ oc annotate notebook -n __<namespace>__ __<notebook_name>__ opendatahub.io/mlflow-instance=__<mlflow_instance_name>__
+----
++
+If the MLflow instance name is `mlflow`, the tracking URI path is `/mlflow`.
+If the instance name is different, the path is `/mlflow-__<mlflow_instance_name>__`.
++
+Alternatively, you can add the annotation directly in the notebook resource YAML:
++
+[source,yaml]
+----
+apiVersion: kubeflow.org/v1
+kind: Notebook
+metadata:
+  name: __<notebook_name>__
+  namespace: __<namespace>__
+  annotations:
+    opendatahub.io/mlflow-instance: "__<mlflow_instance_name>__"
+spec:
+  # ...
+----
+
+. Start or restart the workbench so that the environment variables are injected into the new pod.
+
+.Verification
+
+. Verify that the MLflow environment variables are present in the running workbench pod.
++
+First, find the pod name for your notebook:
++
+[source,terminal]
+----
+$ oc get pods -n __<namespace>__ -l notebook-name=__<notebook_name>__
+----
++
+Then verify that the MLflow environment variables are present, where `__<notebook_pod_name>__` is the pod name from the previous command and `__<notebook_name>__` is the notebook resource name:
++
+[source,terminal]
+----
+$ oc exec -n __<namespace>__ __<notebook_pod_name>__ -c __<notebook_name>__ -- env | grep MLFLOW
+----
++
+The expected output shows the following environment variables:
++
+[source,terminal]
+----
+MLFLOW_TRACKING_URI=https://<gateway_hostname>/mlflow
+MLFLOW_K8S_INTEGRATION=true
+MLFLOW_TRACKING_AUTH=kubernetes-namespaced
+----
++
+The `<gateway_hostname>` value is cluster-specific and matches the GatewayAPI public endpoint for your cluster.
+
+. Verify that the MLflow `RoleBinding` resource exists in the namespace:
++
+[source,terminal]
+----
+$ oc get rolebinding -n __<namespace>__ __<notebook_name>__-mlflow
+----
++
+The output shows a `RoleBinding` resource referencing the `mlflow-operator-mlflow-integration` `ClusterRole` resource.

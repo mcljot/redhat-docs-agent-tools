@@ -1,0 +1,77 @@
+:_mod-docs-content-type: CONCEPT
+
+[id="mlflow-workbench-integration-overview_{context}"]
+= MLflow workbench integration
+
+[role="_abstract"]
+You can enable automatic MLflow SDK configuration in your workbenches by annotating notebook resources with the `opendatahub.io/mlflow-instance` annotation.
+When this annotation is present, {productname-short} automatically injects MLflow environment variables and provisions the required RBAC permissions, so that you can track experiments without manual SDK configuration.
+
+The MLflow workbench integration removes the need to manually set tracking URIs, configure authentication tokens, or create Kubernetes RBAC resources.
+When an administrator enables the MLflow Operator component in the `DataScienceCluster` and creates an MLflow custom resource (CR), the platform handles the remaining configuration at the workbench level.
+
+[#how-the-integration-works_{context}]
+== How the integration works
+
+The integration uses two mechanisms in the notebook controller to configure MLflow access:
+
+Environment variable injection::
+When a workbench notebook resource has the `opendatahub.io/mlflow-instance` annotation, the notebook controller's mutating webhook injects three environment variables into the notebook container before the pod starts:
++
+--
+* `MLFLOW_TRACKING_URI`: The URL of the MLflow tracking server, constructed from the GatewayAPI hostname and the MLflow instance name.
+* `MLFLOW_K8S_INTEGRATION`: Set to `true` to enable Kubernetes service account token authentication with the MLflow server.
+* `MLFLOW_TRACKING_AUTH`: Set to `kubernetes-namespaced` to configure namespace-scoped authentication.
+--
++
+These variables allow the MLflow Python SDK to connect to the tracking server without additional configuration in your notebook code.
+
+RBAC provisioning::
+The notebook controller's reconciler creates a namespace-scoped `RoleBinding` resource named `__<notebook_name>__-mlflow` that grants the workbench service account the permissions defined in the `mlflow-operator-mlflow-integration` `ClusterRole` resource.
+The `RoleBinding` resource uses a controller owner reference to the notebook resource, so it is automatically deleted when the notebook is deleted.
+
+[#mlflow-configuration-methods_{context}]
+== Configuration methods
+
+You can enable MLflow integration for workbenches in two ways:
+
+Dashboard-managed::
+If you use the {productname-short} dashboard with the Dashboard, MLflow, and Workbenches components set to `Managed` in the `DataScienceCluster`, the dashboard automatically adds the `opendatahub.io/mlflow-instance` annotation when you create or update a workbench.
+No manual configuration is required.
+
+Manual::
+If you manage workbenches through GitOps, Helm charts, or direct YAML manifests without the {productname-short} dashboard, you must manually add the `opendatahub.io/mlflow-instance` annotation to the notebook resource.
+
+[#annotation-lifecycle_{context}]
+== Annotation lifecycle
+
+The `opendatahub.io/mlflow-instance` annotation controls the MLflow integration for each workbench:
+
+Adding the annotation::
+You can add the annotation to a stopped notebook or include it when you create a new notebook.
+The annotation value must be the name of the MLflow instance CR.
+Environment variables are injected on the next pod start, and the `RoleBinding` resource is created by the reconciler.
+
+Removing the annotation::
+You must stop the workbench before removing the annotation.
+The `RoleBinding` resource is deleted immediately when the annotation is removed, but environment variables in the running pod persist until restart.
+This mismatch can cause authentication failures if the workbench continues to send requests to the MLflow tracking server after the `RoleBinding` resource is removed.
+A validating webhook checks that the `kubeflow-resource-stopped` annotation is present on the notebook resource before it allows removal of the MLflow annotation.
+The webhook validates the annotation state, not the actual pod state.
+If you try to remove the annotation without first stopping the workbench through the dashboard or by setting the stop annotation, the API request is rejected with a webhook error.
+
+[#non-blocking-behavior_{context}]
+== Non-blocking behavior
+
+MLflow integration failures do not block workbench admission.
+If the tracking URI cannot be determined, for example because the GatewayAPI hostname is not yet available, the webhook skips the `MLFLOW_TRACKING_URI` injection but still allows the notebook to start.
+In this case, `MLFLOW_K8S_INTEGRATION` and `MLFLOW_TRACKING_AUTH` are still injected, which creates a degraded state in which the MLflow SDK is configured for Kubernetes authentication but has no tracking server to connect to.
+If MLflow operations such as `mlflow.set_experiment()` fail with a `ConnectionError`, verify that the `MLFLOW_TRACKING_URI` environment variable is set in your workbench pod.
+
+Similarly, if the `mlflow-operator-mlflow-integration` `ClusterRole` resource does not yet exist, the reconciler requeues the `RoleBinding` resource creation with a warning event every 30 seconds until the `ClusterRole` resource becomes available.
+
+[#mlflow-integration-limitations_{context}]
+== Limitations
+
+Artifact-serving configuration with S3 connection types is not supported.
+You can log parameters, metrics, and tags, but `mlflow.log_artifact()` functionality that relies on an S3-backed artifact store requires additional configuration that is outside the scope of the automatic integration.

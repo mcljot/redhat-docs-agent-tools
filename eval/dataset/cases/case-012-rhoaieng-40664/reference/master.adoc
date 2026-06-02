@@ -1,0 +1,16 @@
+:self-managed:
+include::_artifacts/document-attributes-global.adoc[]
+
+= Working with the model catalog
+:doctype: book
+:toc: left
+:compat-mode:
+:context: working-model-catalog
+
+[role='_abstract']
+As a data scientist or AI engineer in {productname-short}, you can discover and evaluate the generative AI models that are available in the model catalog. From the model catalog, you can select the models that you want to register, deploy, and customize.
+
+include::upstream-modules/overview-of-model-registries.adoc[leveloffset=+1]
+include::upstream-modules/viewing-models-in-the-catalog.adoc[leveloffset=+1]
+include::upstream-modules/registering-a-model-from-the-model-catalog.adoc[leveloffset=+1]
+include::upstream-modules/deploying-a-model-from-the-model-catalog.adoc[leveloffset=+1]

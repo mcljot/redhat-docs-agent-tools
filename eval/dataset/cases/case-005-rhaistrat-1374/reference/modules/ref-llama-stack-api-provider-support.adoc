@@ -1,0 +1,169 @@
+:_mod-docs-content-type: REFERENCE
+[id="llama-stack-api-provider-support_{context}"]
+= Llama Stack API provider support
+
+[role="_abstract"]
+You can use the following table to identify which API providers are available in the Llama Stack distribution image, their activation status, and how to enable them.
+Providers are categorized as enabled by default, environment-variable-activated, or dependency-only.
+
+[discrete]
+== Provider status categories
+
+Enabled by default:: The provider is included in the default `config.yaml` and activates at server startup without additional configuration.
+
+Environment-variable-activated:: The provider is included in the default `config.yaml` but only activates when you set the specified environment variable.
+
+Dependency only:: The provider's Python dependencies are pre-installed in the container image, but the provider definition is not included in the default `config.yaml`. To use a dependency-only provider, you must supply a custom `config.yaml` at runtime. For instructions, see xref:re-enabling-inline-providers-custom-config_{context}[].
+
+.API provider support
+[cols="1,2,1,2", options="header"]
+|===
+|API
+|Provider
+|Default status
+|How to enable
+
+|batches
+|`inline::reference`
+|Enabled by default
+|No action required.
+
+|file_processors
+|`inline::pypdf`
+|Enabled by default
+|No action required.
+
+|files
+|`inline::localfs`
+|Enabled by default
+|No action required. Required at runtime by `inline::file-search`.
+
+|files
+|`remote::s3`
+|Environment variable
+|Set the `ENABLE_S3` environment variable.
+
+|inference
+|`inline::sentence-transformers`
+|Dependency only ^[1]^
+|Requires a custom `config.yaml`. See xref:re-enabling-inline-providers-custom-config_{context}[].
+
+|inference
+|`remote::azure`
+|Environment variable
+|Set the `AZURE_API_KEY` environment variable.
+
+|inference
+|`remote::bedrock`
+|Environment variable
+|Set the `AWS_BEARER_TOKEN_BEDROCK` environment variable.
+
+|inference
+|`remote::openai`
+|Environment variable
+|Set the `OPENAI_API_KEY` environment variable.
+
+|inference
+|`remote::vertexai`
+|Environment variable
+|Set the `VERTEX_AI_PROJECT` environment variable.
+
+|inference
+|`remote::vllm` (inference)
+|Environment variable
+|Set the `VLLM_URL` environment variable.
+
+|inference
+|`remote::vllm` (embedding)
+|Environment variable
+|Set the `VLLM_EMBEDDING_URL` environment variable. Recommended replacement for `inline::sentence-transformers`.
+
+|inference
+|`remote::watsonx`
+|Environment variable
+|Set the `WATSONX_API_KEY` environment variable.
+
+|responses
+|`inline::builtin`
+|Enabled by default
+|No action required.
+
+|tool_runtime
+|`inline::file-search`
+|Enabled by default
+|No action required. Requires `inline::localfs` at runtime.
+
+|tool_runtime
+|`remote::brave-search`
+|Enabled by default
+|Active by default. Set `BRAVE_SEARCH_API_KEY` to use.
+
+|tool_runtime
+|`remote::model-context-protocol`
+|Enabled by default
+|No action required.
+
+|tool_runtime
+|`remote::tavily-search`
+|Enabled by default
+|Active by default. Set `TAVILY_SEARCH_API_KEY` to use.
+
+|vector_io
+|`inline::faiss`
+|Dependency only ^[1]^
+|Requires a custom `config.yaml`. See xref:re-enabling-inline-providers-custom-config_{context}[].
+
+|vector_io
+|`inline::milvus`
+|Dependency only ^[1]^
+|Requires a custom `config.yaml`. Incompatible with multi-worker deployments. See xref:re-enabling-inline-providers-custom-config_{context}[].
+
+|vector_io
+|`remote::milvus`
+|Environment variable
+|Set the `MILVUS_ENDPOINT` environment variable. Recommended replacement for `inline::milvus`.
+
+|vector_io
+|`remote::pgvector`
+|Environment variable
+|Set the `ENABLE_PGVECTOR` environment variable. Alternative replacement for `inline::faiss`.
+
+|vector_io
+|`remote::qdrant`
+|Environment variable
+|Set the `ENABLE_QDRANT` environment variable. Alternative replacement for `inline::faiss`.
+|===
+
+^[1]^ Dependency-only providers are not included in the default runtime `config.yaml` but their Python dependencies are pre-installed in the container image.
+To use them, supply a custom `config.yaml` at runtime that includes the provider definitions from the `build.yaml` manifest.
+In a future release, the Python dependencies for dependency-only providers will be fully removed from the container image.
+
+[discrete]
+== Migration mapping for removed inline providers
+
+If you used inline providers that are now dependency-only, the following table shows the recommended remote provider replacements for production deployments:
+
+.Inline to remote provider migration
+[cols="1,1,1", options="header"]
+|===
+|Removed inline provider
+|Recommended remote replacement
+|Notes
+
+|`inline::sentence-transformers`
+|`remote::vllm` (with `VLLM_EMBEDDING_URL`)
+|Default embedding model: `ibm-granite/granite-embedding-125m-english`
+
+|`inline::milvus`
+|`remote::milvus` (with `MILVUS_ENDPOINT`)
+|Remote Milvus supports multi-worker deployments.
+
+|`inline::faiss`
+|`remote::pgvector` (with `ENABLE_PGVECTOR`) or `remote::qdrant` (with `ENABLE_QDRANT`)
+|Choose based on your existing database infrastructure.
+|===
+
+.Additional resources
+
+* xref:llama-stack-provider-configuration-architecture_{context}[]
+* xref:re-enabling-inline-providers-custom-config_{context}[]

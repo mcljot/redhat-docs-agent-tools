@@ -1,0 +1,87 @@
+:_mod-docs-content-type: PROCEDURE
+
+[id="enabling-mlflow-component_{context}"]
+= Enable the MLflow Operator component
+
+[role="_abstract"]
+You can enable the MLflow Operator as a managed component in the `DataScienceCluster` object so that the MLflow tracking server and workbench integration are available on the platform.
+When the MLflow Operator component is enabled, workbench notebooks can use automatic MLflow SDK configuration.
+
+.Prerequisites
+
+* The {productname-long} Operator is installed on your {openshift-platform} cluster.
+* A `DataScienceCluster` object exists.
+* You have cluster administrator privileges.
+* You have installed the {openshift-cli}.
+
+.Procedure
+
+. Log in to your {openshift-platform} cluster as a cluster administrator:
++
+[source,terminal]
+----
+$ oc login --token=__<token>__ --server=__<openshift_cluster_url>__
+----
+
+. Identify the name of the `DataScienceCluster` object:
++
+[source,terminal]
+----
+$ oc get datasciencecluster
+----
+
+. Edit the `DataScienceCluster` object to enable the MLflow Operator component:
++
+[source,terminal]
+----
+$ oc edit datasciencecluster __<dsc_name>__
+----
+
+. In the `spec.components` section, add or update the `mlflowoperator` field and set `managementState` to `Managed`:
++
+[source,yaml]
+----
+spec:
+  components:
+    # ...
+    mlflowoperator:
+      managementState: Managed
+    # ...
+----
++
+[NOTE]
+====
+The default `managementState` for the `mlflowoperator` component is `Removed`.
+You must explicitly set it to `Managed` to enable MLflow on the platform.
+====
+
+. Save and close the editor.
++
+When you set `mlflowoperator` to `Managed`, the {productname-long} Operator automatically configures the notebook controller with `MLFLOW_ENABLED=true` and sets the appropriate `GATEWAY_URL` for the cluster.
+
+. Create an MLflow CR to deploy a tracking server instance.
+The MLflow CR structure and namespace requirements depend on the MLflow Operator version.
+For more information, consult the MLflow Operator documentation for the CR specification.
+
+.Verification
+
+. Confirm that the MLflow Operator pod is running:
++
+[source,terminal]
+----
+$ oc get pods -n redhat-ods-applications -l app=mlflow-operator --field-selector status.phase=Running
+----
++
+The output shows one or more MLflow Operator pods in `Running` status.
+If the command returns no results, verify that the `mlflowoperator` component `managementState` is set to `Managed` and wait for the Operator pods to start.
+
+. Confirm that the `mlflowoperator` component status is `true` in the `DataScienceCluster` object:
++
+[source,terminal]
+----
+$ oc get datasciencecluster __<dsc_name>__ -o jsonpath='{.status.installedComponents.mlflowoperator}'
+----
++
+The expected output is `true`.
+
+include::mlflow-feature-flag-deprecation-notice.adoc[leveloffset=+1]

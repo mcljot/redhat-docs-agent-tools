@@ -1,0 +1,103 @@
+:_mod-docs-content-type: REFERENCE
+[id="localmodelnamespacecache-fields_{context}"]
+= LocalModelNamespaceCache field reference
+
+[role="_abstract"]
+The `LocalModelNamespaceCache` custom resource defines a namespace-scoped model cache.
+You can use this reference to look up field names, types, and validation rules when writing `LocalModelNamespaceCache` manifests.
+
+* API group: `serving.kserve.io`
+* API version: `v1alpha1`
+* Scope: Namespaced
+
+[discrete]
+== Spec fields
+
+The `LocalModelNamespaceCacheSpec` fields are identical to the cluster-scoped `LocalModelCacheSpec`.
+
+.`LocalModelNamespaceCacheSpec` fields
+[cols="2,2,1,3", options="header"]
+|===
+|Field
+|Type
+|Required
+|Description
+
+|`sourceModelUri`
+|String
+|Yes
+|The URI of the model to download and cache. This field is immutable after creation.
+
+|`modelSize`
+|`resource.Quantity` (for example, `20Gi`)
+|Yes
+|The expected size of the model.
+
+|`nodeGroups`
+|List of strings
+|Yes (minimum 1 item)
+|A list of `LocalModelNodeGroup` names. All referenced node groups must exist in the cluster; the validating webhook rejects the request otherwise.
+
+|`serviceAccountName`
+|String
+|No
+|The service account to use for credential lookup.
+
+|`storage`
+|`LocalModelStorageSpec`
+|No
+|Storage credential configuration. See xref:localmodelcache-fields_{context}[LocalModelCache field reference] for `LocalModelStorageSpec` fields.
+|===
+
+[discrete]
+== Validation rules
+
+* `sourceModelUri` is immutable. Any attempt to change this field after creation is rejected.
+* `nodeGroups` must contain at least one item.
+* All referenced `LocalModelNodeGroup` names must correspond to existing resources. The validating webhook rejects creation or update if any node group is not found.
+* Deletion is blocked by the validating webhook if any `InferenceService` or `LLMInferenceService` in the same namespace currently references the cache.
+
+[discrete]
+== Status fields
+
+The `LocalModelNamespaceCache` reuses the `LocalModelCacheStatus` type.
+See xref:localmodelcache-fields_{context}[LocalModelCache field reference] for status field definitions.
+
+[discrete]
+== Differences from cluster-scoped LocalModelCache
+
+.Cluster-scoped vs namespace-scoped model cache comparison
+[cols="1,2,2", options="header"]
+|===
+|Aspect
+|`LocalModelCache` (cluster-scoped)
+|`LocalModelNamespaceCache` (namespace-scoped)
+
+|Scope
+|Cluster
+|Namespaced
+
+|Inference service access
+|Any namespace
+|Same namespace only
+
+|ISVC label
+|`internal.serving.kserve.io/localmodel`
+|`internal.serving.kserve.io/localmodel-namespace`
+
+|URI uniqueness
+|`sourceModelUri` must be unique across all `LocalModelCache` resources
+|No cluster-wide uniqueness constraint
+
+|Node status tracking key
+|`modelName`
+|`namespace/modelName`
+
+|PV cleanup during deletion
+|Automatic via owner references
+|Explicit deletion (Kubernetes limitation prevents owner references on PVs from namespaced resources)
+
+|Node group validation
+|No webhook validation of node group existence
+|Webhook validates that all referenced node groups exist
+|===

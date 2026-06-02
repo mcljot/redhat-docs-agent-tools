@@ -1,0 +1,98 @@
+:_mod-docs-content-type: PROCEDURE
+[id="creating-namespace-scoped-model-cache_{context}"]
+= Create a namespace-scoped model cache
+
+[role="_abstract"]
+You can create a `LocalModelNamespaceCache` resource to pre-download a model to local node storage with access restricted to inference services in the same namespace.
+Namespace-scoped caching is useful in multi-tenant environments where models should not be shared across namespaces.
+
+.Prerequisites
+
+* Model caching is enabled in the `inferenceservice-config` ConfigMap.
+* At least one `LocalModelNodeGroup` resource exists. The validating webhook verifies that all referenced node groups exist before accepting the resource.
+* You have access to create resources in the target namespace.
+
+.Procedure
+
+. Create a `LocalModelNamespaceCache` resource in your namespace.
+The following example caches a model with namespace-level isolation:
++
+[source,yaml]
+----
+apiVersion: serving.kserve.io/v1alpha1
+kind: LocalModelNamespaceCache
+metadata:
+  name: team-a-llama-cache
+  namespace: team-a
+spec:
+  sourceModelUri: "hf://meta-llama/Meta-Llama-3-8B-Instruct"
+  modelSize: 20Gi
+  nodeGroups:
+    - worker-group-1
+----
++
+--
+Where:
+
+`sourceModelUri`:: The URI of the model to download. This field is immutable after creation.
+`modelSize`:: The expected size of the model.
+`nodeGroups`:: A list of `LocalModelNodeGroup` names that define which nodes receive the cached model. At least one node group is required. All referenced node groups must exist in the cluster; the validating webhook rejects the request if a node group is not found.
+--
+
+. Apply the resource:
++
+[source,terminal]
+----
+$ oc apply -f localmodelnamespacecache.yaml
+----
+
+. Monitor the download progress:
++
+[source,terminal]
+----
+$ oc get localmodelnamespacecache team-a-llama-cache -n team-a
+----
+
+. Deploy an inference service in the same namespace.
+The mutating webhook automatically configures the inference service to use the namespace-scoped cache when the `storageUri` matches:
++
+[source,yaml]
+----
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: llama-3-8b
+  namespace: team-a
+spec:
+  predictor:
+    model:
+      modelFormat:
+        name: vllm
+      runtime: vllm-runtime
+      storageUri: "hf://meta-llama/Meta-Llama-3-8B-Instruct"
+----
++
+The inference service must be in the same namespace as the `LocalModelNamespaceCache`.
+Inference services in other namespaces cannot use this cache.
+
+.Verification
+
+* Verify that the inference service has the namespace-scoped model cache label:
++
+[source,terminal]
+----
+$ oc get inferenceservice llama-3-8b -n team-a -o jsonpath='{.metadata.labels.internal\.serving\.kserve\.io/localmodel-namespace}'
+----
++
+The label value is the namespace of the `LocalModelNamespaceCache` resource.
+
+[NOTE]
+====
+Key differences between namespace-scoped and cluster-scoped model caches:
+
+* A `LocalModelNamespaceCache` is a namespaced resource created in the user's namespace, while a `LocalModelCache` is cluster-scoped.
+* Only inference services in the same namespace can use a namespace-scoped cache.
+* The inference service is labeled with `internal.serving.kserve.io/localmodel-namespace` instead of `internal.serving.kserve.io/localmodel`.
+* PersistentVolumes created for namespace-scoped caches cannot use owner references due to a Kubernetes limitation and are explicitly deleted during cleanup.
+* The LocalModelNode agent tracks namespace-scoped models with a composite status key in the format `namespace/modelName`, while cluster-scoped models use just `modelName`.
+====

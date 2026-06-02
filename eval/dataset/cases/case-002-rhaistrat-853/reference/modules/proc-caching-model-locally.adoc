@@ -1,0 +1,101 @@
+:_mod-docs-content-type: PROCEDURE
+[id="caching-model-locally_{context}"]
+= Create a model cache
+
+[role="_abstract"]
+You can create a cluster-scoped `LocalModelCache` resource to pre-download a model to local node storage.
+After the model is downloaded, inference services that reference the same model URI automatically mount the locally cached model instead of downloading it at startup.
+
+.Prerequisites
+
+* Model caching is enabled in the `inferenceservice-config` ConfigMap.
+* At least one `LocalModelNodeGroup` resource exists with nodes labeled for model caching.
+* You have `cluster-admin` privileges or the appropriate RBAC permissions to create cluster-scoped resources.
+
+.Procedure
+
+. Create a `LocalModelCache` resource.
+The following example caches a model from Hugging Face Hub:
++
+[source,yaml]
+----
+apiVersion: serving.kserve.io/v1alpha1
+kind: LocalModelCache
+metadata:
+  name: llama-3-8b-cache
+spec:
+  sourceModelUri: "hf://meta-llama/Meta-Llama-3-8B-Instruct"
+  modelSize: 20Gi
+  nodeGroups:
+    - worker-group-1
+----
++
+--
+Where:
+
+`sourceModelUri`:: The URI of the model to download. This value is immutable after creation. Supported URI schemes include `hf://` for Hugging Face Hub, `s3://` for S3-compatible storage, and `oci://` for OCI registries.
+`modelSize`:: The expected size of the model. The controller uses this value to verify that the model does not exceed the storage limit of the target node group.
+`nodeGroups`:: A list of `LocalModelNodeGroup` names that define which nodes receive the cached model. At least one node group is required.
+--
++
+To download models from private registries, also specify credential fields.
+See xref:configuring-model-cache-credentials_{context}[Configuring credentials for model downloads].
+
+. Apply the resource:
++
+[source,terminal]
+----
+$ oc apply -f localmodelcache.yaml
+----
+
+. Monitor the download progress:
++
+[source,terminal]
+----
+$ oc get localmodelcache llama-3-8b-cache
+----
++
+The output shows the `nodeStatus` for each target node and the `copies` count.
+
+. Check the per-node status to see download progress:
++
+[source,terminal]
+----
+$ oc get localmodelcache llama-3-8b-cache -o jsonpath='{.status.nodeStatus}'
+----
++
+Each node reports one of the following status values:
++
+* `NodeNotReady` -- The node is not yet available for downloading.
+* `NodeDownloadPending` -- The download job has been created but has not started.
+* `NodeDownloading` -- The download is in progress.
+* `NodeDownloaded` -- The model is successfully cached on this node.
+* `NodeDownloadError` -- The download failed on this node.
+
+.Verification
+
+* Verify that the model is cached on all target nodes by checking the `copies` field:
++
+[source,terminal]
+----
+$ oc get localmodelcache llama-3-8b-cache -o jsonpath='{.status.copies}'
+----
++
+.Example output
+[source,json]
+----
+{"available":2,"total":2,"failed":0}
+----
++
+When `available` equals `total` and `failed` is `0`, the model is fully cached on all target nodes.
+
+[NOTE]
+====
+The `sourceModelUri` must be unique across all `LocalModelCache` resources in the cluster.
+If you attempt to create a second `LocalModelCache` with the same URI, the validating webhook rejects the request.
+To cache the same model with namespace-scoped isolation, use a `LocalModelNamespaceCache` instead.
+====
+
+.Next steps
+
+* xref:deploying-inference-service-with-cached-model_{context}[Deploying an inference service with a cached model]

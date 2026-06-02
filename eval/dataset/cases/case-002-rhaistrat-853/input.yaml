@@ -1,0 +1,11 @@
+ticket: RHAISTRAT-853
+source_repo:
+  url: https://github.com/kserve/kserve
+  sha: 7f4fb4610082464eb55917aafe2de5eae03863fe
+workflow: docs-workflow
+options:
+  format: adoc
+  draft: true
+ground_truth:
+  tier: regression-baseline
+  source: "Best-scoring benchmark arm (Arm B, repo-only)"

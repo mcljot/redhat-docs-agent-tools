@@ -1,0 +1,43 @@
+:_module-type: CONCEPT
+
+[id="external-s3-provider-for-files-endpoint_{context}"]
+= External S3-compatible provider for the /v1/files endpoint
+
+[role="_abstract"]
+The Llama Stack Files API supports two providers in {productname-short}: the default `inline::localfs` provider, which stores files on the local file system of the Llama Stack pod, and the `remote::s3` provider, which stores file content in an external S3-compatible object storage service. Use the `remote::s3` provider when you require scalable, durable storage for file content that is independent of the Llama Stack pod lifecycle, or when you must integrate with enterprise-managed storage platforms.
+
+Support level: Developer Preview.
+
+The `remote::s3` provider stores file content in an S3 bucket. File metadata, such as the file ID, filename, purpose, size, and timestamps, is stored in the PostgreSQL metadata store that Llama Stack requires in {productname-short}. The Files API metadata is managed automatically within the same PostgreSQL instance that holds metadata for the other Llama Stack APIs. No additional database configuration is required.
+
+The provider works with any object storage system that exposes an S3-compatible API, including the following examples:
+
+* Amazon S3
+* MinIO
+* Ceph Object Gateway (RGW)
+* Oracle Cloud Infrastructure (OCI) Object Storage, through the S3 Compatibility API
+
+Since Llama Stack interacts with the storage system through the S3 API, any storage technology is compatible as long as it implements the S3 API. 
+
+*Benefits*
+
+Using external S3-compatible storage for the `/v1/files` endpoint provides the following advantages:
+
+* Reuse existing, approved object storage services and governance controls for file content.
+* Scale file content storage independently of Llama Stack compute resources.
+* Persist file content across Llama Stack pod restarts and rescheduling events.
+* Centralize file content across multiple AI applications and clusters.
+* Meet compliance requirements by integrating with enterprise-managed storage platforms.
+
+*Compatibility and constraints*
+
+The `remote::s3` provider has the following compatibility characteristics and constraints:
+
+* The provider is compatible with the OpenAI `/v1/files` API.
+* The `inline::localfs` provider remains supported and requires no configuration changes for existing deployments.
+* Migration from the `inline::localfs` provider to the `remote::s3` provider is not performed automatically. Files stored by one provider are not available through the other.
+* The external storage system must implement a compatible S3 API. Provider-specific features that deviate from the S3 specification are not supported.
+* The provider uses the same `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` environment variables as the `remote::bedrock` inference provider. If you use both providers and require different credentials for each, use IAM roles for service accounts or a non-AWS S3-compatible backend.
+* Some S3-compatible backends require additional client-side environment variables, such as checksum-handling settings. Consult the documentation for your S3-compatible backend for the configuration that it requires.
+
+For information about the limitations of the `remote::s3` provider, see link:{rhoaidocshome}{default-format-url}/working_with_llama_stack/llama-stack-adv-examples_rag#limitations-of-external-s3-compatible-files-providers_rag[Limitations of external S3-compatible files providers].

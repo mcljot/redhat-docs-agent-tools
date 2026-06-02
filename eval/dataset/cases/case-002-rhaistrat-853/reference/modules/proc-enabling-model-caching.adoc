@@ -1,0 +1,86 @@
+:_mod-docs-content-type: PROCEDURE
+[id="enabling-model-caching_{context}"]
+= Enable model caching
+
+[role="_abstract"]
+You can enable model caching by configuring the `localModel` section of the `inferenceservice-config` ConfigMap in the `kserve` namespace.
+Model caching is disabled by default and must be explicitly enabled before you can create cache resources or node groups.
+
+.Prerequisites
+
+* You have `cluster-admin` privileges on the OpenShift cluster.
+* Red Hat OpenShift AI 3.5 or later is installed.
+* KServe is deployed on the cluster.
+
+.Procedure
+
+. Create the namespace where download jobs will run:
++
+[source,terminal]
+----
+$ oc create namespace kserve-localmodel-jobs
+----
+
+. Edit the `inferenceservice-config` ConfigMap in the `kserve` namespace:
++
+[source,terminal]
+----
+$ oc edit configmap inferenceservice-config -n kserve
+----
+
+. In the `localModel` section of the ConfigMap data, set `enabled` to `true` and configure the `jobNamespace`:
++
+[source,yaml]
+----
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inferenceservice-config
+  namespace: kserve
+data:
+  localModel: |-
+    {
+      "enabled": true,
+      "jobNamespace": "kserve-localmodel-jobs"
+    }
+----
++
+For a complete list of configurable parameters, see xref:model-cache-configmap-parameters_{context}[Model cache ConfigMap parameters].
+
+. Save the ConfigMap.
+
+.Verification
+
+. Verify that the LocalModel controller pod is running:
++
+[source,terminal]
+----
+$ oc get pods -n kserve -l control-plane=kserve-localmodel-controller-manager
+----
++
+.Example output
+[source,terminal]
+----
+NAME                                                    READY   STATUS    RESTARTS   AGE
+kserve-localmodel-controller-manager-5b4c6f7d8f-xxxxx   1/1     Running   0          2m
+----
+
+. Verify the ConfigMap contains the correct configuration:
++
+[source,terminal]
+----
+$ oc get configmap inferenceservice-config -n kserve -o jsonpath='{.data.localModel}' | python3 -m json.tool
+----
++
+.Example output
+[source,json]
+----
+{
+    "enabled": true,
+    "jobNamespace": "kserve-localmodel-jobs"
+}
+----
+
+.Next steps
+
+* xref:creating-model-cache-node-group_{context}[Creating a model cache node group]

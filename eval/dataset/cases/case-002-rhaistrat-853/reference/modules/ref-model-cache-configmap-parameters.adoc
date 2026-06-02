@@ -1,0 +1,72 @@
+:_mod-docs-content-type: REFERENCE
+[id="model-cache-configmap-parameters_{context}"]
+= Model cache ConfigMap parameters
+
+[role="_abstract"]
+You can configure model caching behavior by setting parameters in the `localModel` section of the `inferenceservice-config` ConfigMap in the `kserve` namespace.
+The following table lists all available parameters.
+
+.`localModel` ConfigMap parameters
+[cols="2,1,1,3", options="header"]
+|===
+|Parameter
+|Type
+|Default
+|Description
+
+|`enabled`
+|Boolean
+|`false`
+|Enables or disables model caching. Set to `true` to activate the model cache controllers and agents.
+
+|`jobNamespace`
+|String
+|None (required when `enabled` is `true`)
+|The namespace where model download jobs run. You must create this namespace before enabling model caching. A common value is `kserve-localmodel-jobs`.
+
+|`defaultJobImage`
+|String
+|`kserve/storage-initializer:latest`
+|The container image used for model download jobs. Override this value in disconnected environments to reference an image accessible within the cluster.
+
+|`fsGroup`
+|Integer (int64)
+|None
+|The filesystem group ID applied to the download job pod's security context. The host directory used for model storage must be owned by this group ID. A common value is `1000`.
+
+|`jobTTLSecondsAfterFinished`
+|Integer (int32)
+|`3600` (1 hour)
+|The number of seconds before a completed download job is automatically cleaned up by Kubernetes. Set to `0` to delete jobs immediately after completion, or increase the value to retain job logs longer for troubleshooting.
+
+|`reconcilationFrequencyInSecs`
+|Integer (int64)
+|`60` (1 minute)
+|The interval in seconds between reconciliation cycles for the LocalModelNode agent. During each cycle, the agent checks whether model folders exist on the local disk and creates download jobs for missing models.
+
+|`disableVolumeManagement`
+|Boolean
+|`false`
+|When set to `true`, disables automatic creation and deletion of PersistentVolumes and PersistentVolumeClaims by the LocalModel controller. Enable this option if you manage PVs and PVCs manually or through an external provisioner.
+|===
+
+.Example ConfigMap configuration
+[source,yaml]
+----
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inferenceservice-config
+  namespace: kserve
+data:
+  localModel: |-
+    {
+      "enabled": true,
+      "jobNamespace": "kserve-localmodel-jobs",
+      "defaultJobImage": "registry.example.com/kserve/storage-initializer:latest",
+      "fsGroup": 1000,
+      "jobTTLSecondsAfterFinished": 7200,
+      "reconcilationFrequencyInSecs": 120,
+      "disableVolumeManagement": false
+    }
+----

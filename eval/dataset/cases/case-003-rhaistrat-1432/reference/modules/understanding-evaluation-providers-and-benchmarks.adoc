@@ -1,0 +1,129 @@
+:_mod-docs-content-type: CONCEPT
+[id="understanding-evaluation-providers-and-benchmarks_{context}"]
+= Evaluation providers and benchmarks
+
+[role="_abstract"]
+The evaluation stack organizes evaluation capabilities into providers, benchmarks, and collections.
+Understanding how these concepts relate helps you select the right evaluation approach for your use case and interpret results correctly.
+
+[discrete]
+== Providers
+
+A provider is a registered evaluation framework with its adapter container image, runtime configuration, and a set of benchmarks.
+Each provider defines the container image, entrypoint, and resource requirements for running its benchmarks on Kubernetes.
+
+The following providers are available:
+
+* *LM Evaluation Harness* (`lm_evaluation_harness`): 181 benchmarks across categories including reasoning, knowledge, language understanding, and safety.
+* *LightEval* (`lighteval`): 25 benchmarks focusing on commonsense reasoning, language understanding, and related tasks.
+* *Garak* (`garak`): 8 benchmarks for LLM vulnerability scanning, covering OWASP Top 10 risks, AVID taxonomy categories, toxic content, and CWE software weaknesses.
+* *GuideLLM* (`guidellm`): 7 benchmarks for inference performance testing, including sweep, throughput, concurrency, constant-rate, and Poisson-distributed load profiles.
+* *IBM CLEAR* (`ibm-clear`): 1 benchmark for agentic evaluation that identifies error categories from agent traces.
+
+You can list available providers by using the CLI or the REST API:
+
+[source,terminal]
+----
+$ evalhub providers list
+----
+
+To see the benchmarks available for a specific provider:
+
+[source,terminal]
+----
+$ evalhub providers describe lm_evaluation_harness
+----
+
+[discrete]
+== Benchmarks
+
+A benchmark is an individual evaluation task within a provider.
+Each benchmark defines:
+
+* A unique identifier (for example, `arc_easy`, `toxigen`, `sweep`)
+* A category (for example, `reasoning`, `safety`, `performance`)
+* A set of metrics that the evaluation produces
+* Optional tags for filtering and discovery
+* An optional primary score metric and pass/fail threshold
+
+For example, the `arc_easy` benchmark in the LM Evaluation Harness provider evaluates basic science reasoning.
+It produces `acc` and `acc_norm` metrics, uses `acc_norm` as the primary score, and has a default pass threshold of `0.25`.
+
+Benchmarks within a provider share the same adapter container and execution runtime, but each benchmark configures the adapter differently based on its dataset and evaluation methodology.
+
+[discrete]
+== Collections
+
+A collection groups related benchmarks from one or more providers into a named set with weighted scoring.
+Collections enable you to:
+
+* Evaluate a model against a coherent set of benchmarks with a single job submission.
+* Apply weights to individual benchmarks based on their importance.
+* Set per-benchmark and collection-level pass/fail thresholds.
+* Receive a composite weighted score across all benchmarks in the collection.
+
+The evaluation stack ships with the following pre-defined collections:
+
+.Pre-defined benchmark collections
+[cols="1,1,2", options="header"]
+|===
+|Collection
+|Category
+|Description
+
+|Open LLM Leaderboard v2 (`leaderboard-v2`)
+|General
+|Comprehensive evaluation suite for general-purpose language models, including IFEval, BBH, GPQA, MMLU-Pro, MuSR, and MATH Hard benchmarks.
+
+|Safety and Fairness (`safety-and-fairness-v1`)
+|Safety
+|Evaluates model safety, bias, and fairness using TruthfulQA, ToxiGen, WinoGender, CrowS-Pairs, BBQ, and Ethics benchmarks with weighted scoring.
+
+|Toxicity and Ethical Principles (`toxicity-and-ethical-principles`)
+|Safety
+|End-to-end safety assessment covering toxic content generation, false information, and alignment with ethical principles of helpfulness, honesty, and harmlessness.
+
+|===
+
+You can list available collections by using the CLI:
+
+[source,terminal]
+----
+$ evalhub collections list
+----
+
+To view details of a collection, including its benchmarks, weights, and thresholds:
+
+[source,terminal]
+----
+$ evalhub collections describe safety-and-fairness-v1
+----
+
+[discrete]
+== Categories and tags
+
+Benchmarks and collections use categories and tags to support filtering and discovery:
+
+* *Categories* group benchmarks by focus area, such as `reasoning`, `safety`, `security`, `performance`, or `general`.
+* *Tags* provide finer-grained classification. For example, the Safety and Fairness collection uses tags such as `safety`, `fairness`, `bias`, `toxicity`, `ethics`, and `truthfulness`.
+
+You can filter collections by tag when listing:
+
+[source,terminal]
+----
+$ evalhub collections list --tag safety
+----
+
+[discrete]
+== Weighted scoring and pass criteria
+
+Collections use weighted scoring to compute a composite assessment:
+
+* Each benchmark in a collection has a `weight` value.
+Benchmarks with higher weights contribute more to the overall score.
+* Each benchmark can define a `primary_score` metric and a `pass_criteria` threshold.
+If the primary score falls below the threshold, the benchmark fails.
+* The collection itself can define a `pass_criteria` threshold based on the weighted average of all benchmark scores.
+
+For example, in the Safety and Fairness collection, the `toxigen` and `ethics_cm` benchmarks each have a weight of 3 (safety-critical), while `winogender` and `crows_pairs_english` have a weight of 1.
+The collection-level pass threshold is 0.758.

@@ -1,0 +1,128 @@
+:_mod-docs-content-type: REFERENCE
+[id="troubleshooting-evaluation-jobs_{context}"]
+= Troubleshooting evaluation jobs
+
+[role="_abstract"]
+You can use the following information to diagnose and resolve common failures that occur when running evaluation jobs with the evaluation stack.
+
+[discrete]
+[id="oomkilled-evaluation-pods_{context}"]
+== OOMKilled evaluation pods
+
+.Symptom
+The evaluation pod terminates with an `OOMKilled` status.
+
+.Cause
+The benchmark dataset exceeds the memory limits configured for the adapter container.
+This is common with large benchmarks or when evaluation frameworks load entire datasets into memory.
+
+.Resolution
+* Reduce the dataset size by setting the `limit` parameter in the benchmark configuration:
++
+[source,yaml]
+----
+benchmarks:
+  - id: my-benchmark
+    provider_id: lm_evaluation_harness
+    parameters:
+      limit: 100
+----
++
+* If reducing the dataset is not acceptable, request that the system administrator increase the memory limits for the provider's adapter container in the provider configuration.
+
+.Diagnostic steps
+Check the pod status to confirm the OOMKilled reason:
+
+[source,terminal]
+----
+$ oc get pods -n <namespace> -l evalhub-job-id=<job_id>
+$ oc describe pod <pod_name> -n <namespace>
+----
+
+Look for `OOMKilled` in the container `Last State` section.
+
+[discrete]
+[id="gated-huggingface-dataset-failures_{context}"]
+== Gated HuggingFace dataset failures
+
+.Symptom
+An evaluation job fails during data download with an authentication or access denied error.
+
+.Cause
+The benchmark uses a gated HuggingFace dataset that requires authentication.
+Some datasets on HuggingFace are restricted and require users to accept terms of use before accessing them.
+
+.Resolution
+* Ensure that you have accepted the terms of use for the dataset on the HuggingFace website.
+* Provide a HuggingFace token with access to the gated dataset by adding the token to the adapter's environment configuration.
+* In disconnected environments, pre-download the dataset and make it available through an internal repository.
+
+[discrete]
+[id="jobs-stuck-in-pending-or-running_{context}"]
+== Jobs stuck in pending or running state
+
+.Symptom
+An evaluation job remains in `pending` or `running` state indefinitely and does not progress.
+
+.Cause
+In earlier releases, abrupt pod termination (due to node eviction, resource limits, or infrastructure failures) could leave jobs in a non-terminal state because the controller did not detect the pod failure.
+
+.Resolution
+The evaluation stack controller now automatically detects pod failures and marks the corresponding jobs as `failed`.
+If you encounter a legacy stuck job, cancel it manually:
+
+[source,terminal]
+----
+$ evalhub eval cancel <job_id>
+----
+
+To permanently remove the stuck job and its resources:
+
+[source,terminal]
+----
+$ evalhub eval cancel <job_id> --hard-delete
+----
+
+[discrete]
+[id="general-diagnostic-steps_{context}"]
+== General diagnostic steps
+
+When an evaluation job fails, use the following steps to diagnose the issue:
+
+. Check the job status and error message:
++
+[source,terminal]
+----
+$ evalhub eval status <job_id>
+----
++
+The output includes the overall job state and per-benchmark status.
+Benchmarks in a `failed` state include an error message with diagnostic details.
+
+. Check the adapter container logs:
++
+[source,terminal]
+----
+$ oc logs -n <namespace> <pod_name> -c adapter
+----
+
+. Check the sidecar container logs for communication errors:
++
+[source,terminal]
+----
+$ oc logs -n <namespace> <pod_name> -c sidecar
+----
+
+. Check pod events for scheduling or resource issues:
++
+[source,terminal]
+----
+$ oc describe pod <pod_name> -n <namespace>
+----
+
+. If the job completed with `partially_failed` state, review the results to identify which benchmarks succeeded and which failed:
++
+[source,terminal]
+----
+$ evalhub eval results <job_id> --format json
+----

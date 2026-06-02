@@ -1,0 +1,16 @@
+:_mod-docs-content-type: ASSEMBLY
+:context: monitoring-and-troubleshooting-model-caching
+[id="monitoring-and-troubleshooting-model-caching"]
+= Monitor and troubleshoot model caching
+
+[role="_abstract"]
+As a cluster administrator, you can monitor model download progress across nodes and diagnose common failures to ensure models are available before inference services attempt to use them.
+
+.Prerequisites
+
+* Model caching is enabled and at least one model cache resource exists.
+* You have access to view resources in the `kserve` namespace and the job namespace (default: `kserve-localmodel-jobs`).
+
+include::modules/proc-monitoring-model-cache-status.adoc[leveloffset=+1]
+
+include::modules/proc-troubleshooting-model-cache.adoc[leveloffset=+1]

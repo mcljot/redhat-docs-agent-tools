@@ -1,0 +1,53 @@
+:_module-type: REFERENCE
+
+[id="llama-stack-provider-support_{context}"]
+= Llama Stack API provider support
+
+[role='_abstract']
+You can use Llama Stack to enable various Provider APIs and providers in {productname-short}. The following table lists the supported providers included in {productname-short}, enablement environment variables, disconnected environment support, and its current support status.
+
+[WARNING]
+====
+The support status of the Llama Stack API providers has shifted between Technology Preview and Developer Preview across {productname-short} versions.
+====
+
+[cols="1,2,2,1,2", options="header"]
+|===
+|*Provider API* |*Providers* |*How to Enable* |*Disconnected support* |*Support status*
+|Agents 
+a|`inline::meta-reference` 
+[NOTE] 
+====
+The Responses API is accessible from the Agents provider API.
+====
+|Enabled by default 
+|Yes 
+|Developer Preview 
+.2+|Dataset_IO |`inline::localfs` |Enabled by default |Yes |Technology Preview
+|`remote::huggingface` |Enabled by default |No |Technology Preview
+.3+|Evaluation |`inline::ragas` |Set the `EMBEDDING_MODEL` environment variable |No |Technology Preview
+|`remote::ragas` |See the "Configuring the Ragas remote provider for production" documentation |No |Technology Preview
+|`remote::lmeval` |Enabled by default |No |Technology Preview
+.2+|Files |`inline::localfs` |Enabled by default |No |Technology Preview
+|`remote::s3` |Set the `ENABLE_S3` environment variable to `"true"`  |Yes |Developer Preview
+.7+|Inference |`remote::vllm` |Set the `VLLM_URL` environment variable |Yes |Technology Preview
+|`inline::sentence-transformers` |Set the `ENABLE_SENTENCE_TRANSFORMERS` environment variable to `"true"` |Yes |Technology Preview
+|`remote::azure` |Set the `AZURE_API_KEY` environment variable |No |Technology Preview
+|`remote::bedrock` |Set the `AWS_ACCESS_KEY_ID` environment variable |No |Technology Preview
+|`remote::openai` |Set the `OPENAI_API_KEY` environment variable |No |Technology Preview
+|`remote::vertexai` |Set the `VERTEX_AI_PROJECT` environment variable |No |Technology Preview
+|`remote::watsonx` |Set the `WATSONX_API_KEY` environment variable |No |Technology Preview
+|Safety |`remote::trustyai_fms` |Enabled by default |No |Technology Preview
+.3+|Scoring |`inline::basic` |Enabled by default |No |Technology Preview
+|`inline::braintrust` |Enabled by default |No |Technology Preview
+|`inline::llm-as-a-judge` |Enabled by default |No |Technology Preview
+.4+|Tool_Runtime |`remote::model-context-protocol` |Enabled by default |No |Developer Preview
+|`inline::rag-runtime` |Enabled by default |No |Developer Preview
+|`remote::brave-search` |Enabled by default |No |Developer Preview
+|`remote::tavily-search` |Enabled by default |No |Developer Preview
+.5+|Vector_IO | `inline::faiss` |Set the `ENABLE_FAISS` environment variable |No |Technology Preview
+|`inline::milvus` |Set the `ENABLE_INLINE_MILVUS` environment variable to `"true"` |Yes |Technology Preview
+|`remote::milvus` |Set the `MILVUS_ENDPOINT` environment variable |Yes |Technology Preview
+|`remote::pgvector` |Set the `ENABLE_PGVECTOR` environment variable |Yes |Technology Preview
+|`remote::qdrant` |Set the `ENABLE_QDRANT` environment variable |Yes |Technology Preview 
+|===

@@ -1,0 +1,130 @@
+:_mod-docs-content-type: PROCEDURE
+[id="running-a-langgraph-agent-locally_{context}"]
+= Run a LangGraph agent locally
+
+[role="_abstract"]
+You can run any LangGraph agent template locally to test and iterate on your agent before deploying it to {product-name}.
+Running locally uses Ollama or a Llama Stack server for model inference, with no cluster access required.
+
+.Prerequisites
+
+* `uv` is installed. For installation instructions, see link:https://docs.astral.sh/uv/[uv documentation].
+* Ollama is installed and running, or you have access to any OpenAI-compatible model serving endpoint. For installation instructions, see link:https://ollama.com/[Ollama documentation].
+* GNU Make and a bash-compatible shell are available. On Windows, use WSL or Git Bash.
+* For the Agentic RAG agent: A Milvus vector database and an embedding model are available.
+* For the Database Memory agent: A PostgreSQL 14+ instance is running and accessible.
+
+.Procedure
+
+. Clone the agentic starter kits repository and navigate to the agent directory:
++
+In the following command, replace `<agent_name>` with the name of the agent template you want to use (`react_agent`, `agentic_rag`, `human_in_the_loop`, or `react_with_database_memory`):
++
+[source,terminal]
+----
+$ git clone https://github.com/red-hat-data-services/agentic-starter-kits.git
+$ cd agentic-starter-kits/agents/langgraph/<agent_name>
+----
+
+. Create the `.env` configuration file from the template:
++
+[source,terminal]
+----
+$ make init
+----
+
+. Pull a model with Ollama:
++
+[source,terminal]
+----
+$ ollama pull llama3.2:3b
+----
++
+For RAG agents that require embeddings, also pull an embedding model:
++
+[source,terminal]
+----
+$ ollama pull embeddinggemma:latest
+----
+
+. Optional: Start a Llama Stack server if you want to use the Llama Stack API as a provider abstraction layer:
++
+[source,terminal]
+----
+$ make llama-server
+----
++
+The Llama Stack server starts on `http://localhost:8321`.
++
+[NOTE]
+====
+The `make llama-server` target installs Llama Stack with pinned dependency versions.
+If you need to install Llama Stack manually, refer to the pinned versions in the agent's `Makefile` to ensure version consistency.
+====
+
+. Edit the `.env` file and configure the core environment variables:
++
+[source,ini]
+----
+API_KEY=not-needed-for-local-development
+BASE_URL=http://localhost:8321/v1
+MODEL_ID=llama3.2:3b
+----
++
+If you are using Ollama directly without Llama Stack, set `BASE_URL` to `http://localhost:11434/v1`.
+If you are using any other OpenAI-compatible endpoint, set `BASE_URL` and `API_KEY` to match that endpoint.
++
+For the Database Memory agent, also set the PostgreSQL connection variables:
++
+[source,ini]
+----
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_DB=agent_memory
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=<your_password>
+----
+
+. Start the agent:
++
+[source,terminal]
+----
+$ make run-app
+----
++
+The agent starts a FastAPI server on `http://localhost:8000` with the web playground UI.
++
+For terminal-based testing without a browser, use:
++
+[source,terminal]
+----
+$ make run-cli
+----
+
+.Verification
+
+. Check the agent's health endpoint:
++
+[source,terminal]
+----
+$ curl http://localhost:8000/health
+----
++
+A healthy agent returns `{"status": "healthy", "agent_initialized": true}`.
+
+. Send a test message to the agent:
++
+[source,terminal]
+----
+$ curl -X POST http://localhost:8000/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"messages": [{"role": "user", "content": "Hello!"}], "stream": false}'
+----
++
+The agent returns an OpenAI-compatible chat completion response with the assistant's reply.
+
+. Optional: Open `http://localhost:8000` in a browser to use the web playground UI.
+
+.Next steps
+
+* xref:deploying-a-langgraph-agent-to-openshift_{context}[Deploy a LangGraph agent to Red Hat OpenShift AI]

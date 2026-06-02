@@ -1,0 +1,25 @@
+:_mod-docs-content-type: ASSEMBLY
+include::_attributes/attributes.adoc[]
+:context: evaluating-ai-models
+[id="evaluating-ai-models-across-multiple-frameworks"]
+= Evaluate AI models across multiple frameworks
+
+[role="_abstract"]
+As a developer or data scientist, you can use the evaluation stack to run standardized evaluations against your AI models across multiple frameworks through a single interface.
+You can assess model quality, safety, fairness, and inference performance using built-in providers and benchmark collections, and track results in MLflow experiments.
+
+This workflow guides you through understanding the evaluation stack concepts, installing the client tools, running evaluation jobs, using benchmark collections, viewing results in MLflow, and integrating custom evaluation frameworks.
+
+include::modules/about-the-evaluation-stack.adoc[leveloffset=+1]
+
+include::modules/understanding-evaluation-providers-and-benchmarks.adoc[leveloffset=+1]
+
+include::modules/installing-the-evaluation-stack-client-tools.adoc[leveloffset=+1]
+
+include::modules/running-an-evaluation-job.adoc[leveloffset=+1]
+
+include::modules/using-benchmark-collections-for-domain-specific-evaluation.adoc[leveloffset=+1]
+
+include::modules/viewing-evaluation-results-in-mlflow.adoc[leveloffset=+1]
+
+include::modules/integrating-a-custom-evaluation-framework.adoc[leveloffset=+1]

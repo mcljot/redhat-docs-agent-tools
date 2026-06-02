@@ -1,0 +1,11 @@
+ticket: RHOAIENG-40664
+source_repo:
+  url: https://github.com/opendatahub-io/odh-dashboard
+  sha: 646c039717ba
+workflow: docs-workflow
+options:
+  format: adoc
+  draft: true
+ground_truth:
+  tier: gold-standard
+  source: "GitLab MR 2574, authored by stmccart"
