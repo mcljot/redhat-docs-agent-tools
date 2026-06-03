@@ -97,6 +97,14 @@ Read `<OUTPUT_FILE>` and count the number of module specifications. Count each o
 
 Ignore headings or list items outside the "Module Specifications" section, and skip items inside code blocks or blockquotes. Treat duplicate module titles as separate modules (no deduplication). This count becomes the `module_count` field.
 
+**Module count gate:** If `module_count` exceeds 15, the plan is over-scoped. Ask the user:
+
+> "The plan contains {module_count} modules (recommended max: 15). Large plans increase cost, execution time, and review burden. Proceed as-is, or re-plan with consolidation?"
+
+Options: "Proceed as-is" / "Re-plan (consolidate to ≤15 modules)"
+
+If the user chooses to re-plan, re-invoke the planner agent with an additional instruction prepended: "IMPORTANT: The previous plan had {module_count} modules, which is too many. Consolidate related modules — combine concept+procedure pairs for the same feature, merge small reference tables, group closely related procedures. Target ≤15 modules total."
+
 Write the sidecar to `<OUTPUT_DIR>/step-result.json`:
 
 ```json

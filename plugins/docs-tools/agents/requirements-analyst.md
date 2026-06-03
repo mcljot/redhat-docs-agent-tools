@@ -114,7 +114,7 @@ From the gathered sources, produce:
 
 - **summary**: What changed and why it matters to users (2-3 sentences)
 - **user_impact**: How users are affected (1-2 sentences)
-- **documentation_actions**: Specific documentation tasks (create/update which files, which module types)
+- **documentation_actions**: High-level documentation needs — what types of content are needed (concept, procedure, reference), not specific filenames. List 1-3 actions per requirement. The planner decides module boundaries and filenames.
 - **acceptance_criteria**: Testable criteria for documentation completeness
 - **references**: All sources consulted with URLs and notes
 - **web_findings**: Curated external references from web search
@@ -131,6 +131,8 @@ Map the requirement to documentation module types:
 | `breaking_change` | Migration procedure + deprecation notice + updated prerequisites |
 | `api_change` | Reference module update + new code examples |
 | `deprecation` | Deprecation notice + migration guidance |
+
+List 1-3 documentation needs per requirement. The planner determines specific module boundaries and filenames.
 
 ## Output format
 
@@ -152,8 +154,8 @@ Print exactly one JSON object to stdout. Nothing else — no markdown fences, no
   "user_impact": "How users are affected",
   "scope": "new|update|both",
   "documentation_actions": [
-    {"action": "Create", "file": "proc-configuring-ca-bundles.adoc", "type": "PROCEDURE", "note": null},
-    {"action": "Update", "file": "ref-tls-parameters.adoc", "type": "REFERENCE", "note": "Add ca_bundle parameter"}
+    {"action": "Create", "type": "PROCEDURE", "description": "How to configure custom CA bundles", "note": null},
+    {"action": "Update", "type": "REFERENCE", "description": "Add ca_bundle parameter to TLS parameters reference", "note": null}
   ],
   "acceptance_criteria": [
     "Users can configure custom CA bundles following the procedure",
@@ -225,6 +227,6 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/article-extractor/scripts/article_extractor
 
 1. **Depth over breadth**: You handle ONE requirement — analyze it thoroughly
 2. **Traceability**: Link every claim to a source with a full URL
-3. **Actionability**: Documentation actions must name specific files and module types
+3. **Actionability**: Documentation actions must describe what content types are needed (concept, procedure, reference) — not specific filenames. The planner decides filenames.
 4. **Acceptance criteria**: Each criterion must be testable — "user can X" not "X is documented"
 5. **Sanitized output**: No raw search queries or unvetted URLs in the final JSON
