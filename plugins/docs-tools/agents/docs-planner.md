@@ -215,6 +215,7 @@ Before delivering the final plan, verify your output against these checks. Do no
 | **Source traceability** | Each module recommendation links to at least one source |
 | **No sensitive information** | No hostnames, passwords, IPs, internal URLs, or tokens in the output |
 | **Persona limit** | Maximum 3 user personas identified |
+| **Module count is reasonable** | Aim for the fewest modules that cover the scope. If you have more than 20, look for consolidation opportunities: combine concept+procedure pairs for the same feature, merge small reference tables, group closely related procedures |
 | **Template completeness** | All required output sections are present and populated |
 | **Impact consistency** | Doc impact grades align with the prioritization of recommended modules |
 | **Journey coverage** | Content journey phase mapping is included and has no unexplained gaps |

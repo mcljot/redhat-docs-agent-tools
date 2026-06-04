@@ -97,6 +97,7 @@ Read `<OUTPUT_FILE>` and count the number of module specifications. Count each o
 
 Ignore headings or list items outside the "Module Specifications" section, and skip items inside code blocks or blockquotes. Treat duplicate module titles as separate modules (no deduplication). This count becomes the `module_count` field.
 
+
 Write the sidecar to `<OUTPUT_DIR>/step-result.json`:
 
 ```json
