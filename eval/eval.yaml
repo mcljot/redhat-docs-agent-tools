@@ -7,11 +7,12 @@ skill: docs-tools:docs-orchestrator
 
 execution:
   mode: case
-  arguments: "{ticket} --draft"
+  arguments: "{ticket} --docs-repo-path {docs_repo_path}"
   timeout: 3600
   max_budget_usd: 50
-  # env:
-  #   ANTHROPIC_API_KEY: $ANTHROPIC_API_KEY
+  env:
+    JIRA_API_TOKEN: $JIRA_API_TOKEN
+    JIRA_EMAIL: $JIRA_EMAIL
 
 runner:
   type: claude-code
@@ -38,26 +39,29 @@ permissions:
 
 dataset:
   path: eval/dataset/cases
-  schema: >
+  schema: |
     Each case directory contains input.yaml with fields: ticket (JIRA ID),
-    source_repo (url + sha), workflow, options (format, draft), and
-    ground_truth (tier, source). The reference/ subdirectory contains the
-    target AsciiDoc files (assemblies and modules) to compare against.
+    source_repo (url + sha), docs_repo (url + sha + branch for the docs repo
+    checked out to the state before the gold standard MR merged), workflow,
+    options (format), and ground_truth (tier, source). The reference/
+    subdirectory contains the target AsciiDoc files (assemblies and modules)
+    to compare against. The docs_repo_path field is resolved at runtime by
+    checking out the docs repo at the pinned SHA.
 
 inputs:
-  - tool: AskUserQuestion
-    match: "*"
-    answer_from: input
-    fields: [ticket]
-    fallback: "Pick the first option or answer 'yes'"
+  tools:
+    - match: "Questions asked to the user via AskUserQuestion."
+      prompt: |
+        Answer based on the test case context. Pick the first option
+        or answer "yes" for confirmations.
 
 outputs:
-  - type: file
-    path: .agent_workspace/{ticket}/writing
-    schema: >
-      AsciiDoc files: assembly_*.adoc at top level, modules/ subdirectory
-      with con-*.adoc, proc-*.adoc, ref-*.adoc files. Also _index.md
-      manifest and step-result.json sidecar.
+  - path: .agent_workspace/{ticket}/writing
+    schema: |
+      AsciiDoc files written into the docs repo at the path specified by
+      --docs-repo-path. In update-in-place mode, files are placed according
+      to framework detection (Antora nav, assembly includes). The writing
+      step's step-result.json sidecar lists all written file paths.
 
 traces:
   stdout: true

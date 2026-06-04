@@ -5,7 +5,11 @@ source_repo:
 workflow: docs-workflow
 options:
   format: adoc
-  draft: true
 ground_truth:
   tier: gold-standard
   source: "GitLab MR 2691, authored by chtyler"
+docs_repo:
+  url: https://gitlab.cee.redhat.com/documentation-red-hat-openshift-data-science-documentation/openshift-ai-documentation.git
+  sha: 86b53335167721cc99c19139d24d697118a1f92d
+  branch: main
+docs_repo_path: /Users/dobrenna/Documents/PROJECTS/redhat-docs-agent-tools/eval/dataset/cases/case-007-rhai-eng-4485/.docs-worktree
