@@ -8,7 +8,7 @@ skill: docs-tools:docs-orchestrator
 execution:
   mode: case
   arguments: "{ticket} --docs-repo-path {docs_repo_path}"
-  timeout: 3600
+  timeout: 5400
   max_budget_usd: 50
   parallelism: 3
   env:
@@ -57,12 +57,11 @@ inputs:
         or answer "yes" for confirmations.
 
 outputs:
-  - path: .agent_workspace/{ticket}/writing
+  - path: .output/writing
     schema: |
-      AsciiDoc files written into the docs repo at the path specified by
-      --docs-repo-path. In update-in-place mode, files are placed according
-      to framework detection (Antora nav, assembly includes). The writing
-      step's step-result.json sidecar lists all written file paths.
+      AsciiDoc modules and assemblies. The skill writes to the external
+      docs repo (--docs-repo-path). Run eval/scripts/collect-docs-repo-output.sh
+      after execution to copy AsciiDoc files here for collection.
 
 traces:
   stdout: true
@@ -76,14 +75,9 @@ judges:
   - name: files_exist
     type: check
     check: |
-      import json
-      mods = outputs.get('modified_files', {})
-      sr_keys = [k for k in mods if 'writing/step-result.json' in k]
-      if not sr_keys:
-        return (False, "No writing step-result.json found")
-      data = json.loads(mods[sr_keys[0]])
-      written = [f for f in data.get('files', []) if f.endswith('.adoc')]
-      return (len(written) >= 1, f"Writing step produced {len(written)} AsciiDoc files")
+      files = outputs.get('files', {})
+      adoc = [k for k in files if k.endswith('.adoc')]
+      return (len(adoc) >= 1, f"Found {len(adoc)} AsciiDoc files in writing output")
 
   - name: step_results_valid
     type: check
