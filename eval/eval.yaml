@@ -10,6 +10,7 @@ execution:
   arguments: "{ticket} --docs-repo-path {docs_repo_path}"
   timeout: 3600
   max_budget_usd: 50
+  parallelism: 3
   env:
     JIRA_API_TOKEN: $JIRA_API_TOKEN
     JIRA_EMAIL: $JIRA_EMAIL
@@ -20,7 +21,7 @@ runner:
 
 models:
   skill: claude-opus-4-6
-  judge: claude-opus-4-7
+  judge: claude-opus-4-6
   # subagent: claude-opus-4-6
 
 permissions:
@@ -75,38 +76,43 @@ judges:
   - name: files_exist
     type: check
     check: |
-      import glob
-      adoc_files = glob.glob(f"{outputs['path']}/**/*.adoc", recursive=True)
-      (len(adoc_files) >= 1, f"Found {len(adoc_files)} AsciiDoc files")
+      import json
+      mods = outputs.get('modified_files', {})
+      sr_keys = [k for k in mods if 'writing/step-result.json' in k]
+      if not sr_keys:
+        return (False, "No writing step-result.json found")
+      data = json.loads(mods[sr_keys[0]])
+      written = [f for f in data.get('files', []) if f.endswith('.adoc')]
+      return (len(written) >= 1, f"Writing step produced {len(written)} AsciiDoc files")
 
   - name: step_results_valid
     type: check
     check: |
-      import json, os
-      base = os.path.dirname(outputs['path'])
+      import json
+      mods = outputs.get('modified_files', {})
       steps = ['requirements', 'planning', 'writing']
       missing = []
       for step in steps:
-        sr = os.path.join(base, step, 'step-result.json')
-        if not os.path.exists(sr):
+        matches = [k for k in mods if step + '/step-result.json' in k]
+        if not matches:
           missing.append(step)
         else:
-          data = json.load(open(sr))
+          data = json.loads(mods[matches[0]])
           if 'schema_version' not in data or 'step' not in data:
             missing.append(f"{step} (invalid)")
-      (len(missing) == 0, f"Missing/invalid: {missing}" if missing else "All step results valid")
+      return (len(missing) == 0, f"Missing/invalid: {missing}" if missing else "All step results valid")
 
   - name: pipeline_complete
     type: check
     check: |
-      import json, glob
-      progress_files = glob.glob(f"{os.path.dirname(outputs['path'])}/workflow/*.json")
-      if not progress_files:
-        (False, "No progress file found")
-      else:
-        data = json.load(open(progress_files[0]))
-        status = data.get('status', 'unknown')
-        (status == 'completed', f"Pipeline status: {status}")
+      import json
+      mods = outputs.get('modified_files', {})
+      progress = [k for k in mods if '/workflow/' in k and k.endswith('.json')]
+      if not progress:
+        return (False, "No progress file found")
+      data = json.loads(mods[progress[0]])
+      status = data.get('status', 'unknown')
+      return (status == 'completed', f"Pipeline status: {status}")
 
   # --- LLM judges ---
 
