@@ -30,13 +30,19 @@ This clones and checks out the docs repo for each case at the SHA recorded in `i
 
 ### 2. Run the eval
 
+**Quick run (6 gold-standard cases, ~2 hours, ~$200):**
+
+```bash
+/eval-run --model claude-opus-4-6 --cases case-001-rhoaieng-45969 case-002-rhaistrat-853 case-004-rhaistrat-1393 case-008-rhai-eng-2620 case-011-rhoaieng-16840 case-012-rhoaieng-40664
+```
+
+**Full run (all 11 cases, ~4 hours, ~$400):**
+
 ```bash
 /eval-run --model claude-opus-4-6
 ```
 
-This runs the `docs-orchestrator` skill against all 12 test cases with parallelism 3, scores the outputs with 4 judges, and generates an HTML report.
-
-The run takes approximately 3-4 hours. Progress is logged to the terminal.
+The quick run uses 6 gold-standard cases (authored by chtyler/stmccart) that cover the key ticket types. Use the full run for milestone validations (pre-merge, release candidates).
 
 ### 3. Review results
 
@@ -109,12 +115,21 @@ The eval config is at `eval/eval.yaml`. Key settings:
 
 ## Dataset
 
-12 test cases from gold-standard MRs authored by experienced tech writers (chtyler, stmccart). Each case has:
+11 test cases from gold-standard MRs authored by experienced tech writers (chtyler, stmccart). Each case has:
 
 - `input.yaml` — JIRA ticket ID, source repo URL + SHA, docs repo URL + SHA
 - `.docs-worktree/` — docs repo checked out at the pinned SHA (created by setup script)
 
-Cases cover a range of OpenShift AI features: model caching, agent deployment, evaluation stacks, Llama Stack providers, RAG pipelines, model registries, and model catalogs.
+Cases cover a range of OpenShift AI features: model caching, agent deployment, Llama Stack providers, RAG pipelines, model registries, and model catalogs.
+
+### Quick vs full case sets
+
+| Set | Cases | Cost | Time | Use for |
+|-----|-------|------|------|---------|
+| **Quick** (6 gold-standard) | 001, 002, 004, 008, 011, 012 | ~$200 | ~2h | Day-to-day development, iterating on changes |
+| **Full** (all 11) | All | ~$400 | ~4h | Pre-merge validation, milestone runs |
+
+The quick set covers the key ticket types (kubeflow, model caching, agent deployment, file citations, model registries, model catalogs) while keeping cost manageable for frequent runs.
 
 ## Execution flow
 
