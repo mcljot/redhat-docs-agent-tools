@@ -126,6 +126,21 @@ judges:
       modular documentation structure (concept/procedure/reference separation),
       and absence of fabricated commands, flags, or API details.
 
+      ## Documentation to evaluate
+
+      {% for path, content in outputs.files.items() if path.startswith('.output/writing/') and path.endswith('.adoc') %}
+      ### {{ path }}
+
+      {{ content }}
+
+      {% endfor %}
+
+  - name: reference_comparison
+    module: eval.scripts.reference_judge
+    function: judge
+    arguments:
+      model: claude-opus-4-6
+
   - name: pairwise
     type: prompt
     prompt_file: eval/config/pairwise-judge.md

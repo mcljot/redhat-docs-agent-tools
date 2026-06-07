@@ -9,6 +9,7 @@ PROJECT_ID=82936
 EVAL_DIR="eval/dataset/cases"
 
 declare -A MR_MAP=(
+  ["case-001-rhoaieng-45969"]=2664
   ["case-006-rhai-eng-2388"]=2697
   ["case-007-rhai-eng-4485"]=2691
   ["case-008-rhai-eng-2620"]=2380
@@ -19,6 +20,7 @@ declare -A MR_MAP=(
 )
 
 declare -A JIRA_MAP=(
+  ["case-001-rhoaieng-45969"]="RHOAIENG-45969"
   ["case-006-rhai-eng-2388"]="RHAI-ENG-2388"
   ["case-007-rhai-eng-4485"]="RHAI-ENG-4485"
   ["case-008-rhai-eng-2620"]="RHAI-ENG-2620"
@@ -29,6 +31,7 @@ declare -A JIRA_MAP=(
 )
 
 declare -A AUTHOR_MAP=(
+  ["case-001-rhoaieng-45969"]="mmortari"
   ["case-006-rhai-eng-2388"]="chtyler"
   ["case-007-rhai-eng-4485"]="chtyler"
   ["case-008-rhai-eng-2620"]="chtyler"
@@ -69,6 +72,7 @@ for c in data['changes']:
   for filepath in ${adoc_files}; do
     # Determine local path: preserve assemblies/modules structure
     filename=$(basename "${filepath}")
+    mkdir -p "${ref_dir}"
     if echo "${filepath}" | grep -q "modules/"; then
       mkdir -p "${ref_dir}/modules"
       dest="${ref_dir}/modules/${filename}"
