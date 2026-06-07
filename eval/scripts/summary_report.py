@@ -153,6 +153,8 @@ def _md_to_html(text):
     text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
     text = re.sub(r'__(.+?)__', r'<strong>\1</strong>', text)
     text = re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
+    # Add line breaks after sentences for scannability
+    text = re.sub(r'(\.) ([A-Z])', r'.\n\2', text)
 
     lines = text.split("\n")
     html_parts = []
