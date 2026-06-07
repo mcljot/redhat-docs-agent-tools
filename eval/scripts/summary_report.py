@@ -48,6 +48,9 @@ TEMPLATE = """<!DOCTYPE html>
     padding: 1.25rem; margin-bottom: 1rem; }}
   .card h2 {{ font-size: 1.1rem; margin-bottom: 0.75rem; }}
   .analysis {{ border-left: 3px solid var(--accent); padding-left: 1rem; }}
+  .analysis p {{ margin-bottom: 0.75rem; }}
+  .analysis ul {{ margin: 0.5rem 0 0.75rem 1.25rem; }}
+  .analysis li {{ margin-bottom: 0.25rem; }}
   table {{ width: 100%; border-collapse: collapse; font-size: 0.875rem; }}
   th, td {{ text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); }}
   th {{ font-weight: 600; color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }}
@@ -144,6 +147,46 @@ def _fmt_score(value):
     return str(value)
 
 
+def _md_to_html(text):
+    """Convert basic markdown to HTML — bold, paragraphs, lists."""
+    import re
+    text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
+    text = re.sub(r'__(.+?)__', r'<strong>\1</strong>', text)
+    text = re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
+
+    lines = text.split("\n")
+    html_parts = []
+    in_list = False
+    paragraph = []
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("- "):
+            if paragraph:
+                html_parts.append(f'<p>{"<br>".join(paragraph)}</p>')
+                paragraph = []
+            if not in_list:
+                html_parts.append("<ul>")
+                in_list = True
+            html_parts.append(f"<li>{stripped[2:]}</li>")
+        else:
+            if in_list:
+                html_parts.append("</ul>")
+                in_list = False
+            if stripped:
+                paragraph.append(stripped)
+            elif paragraph:
+                html_parts.append(f'<p>{"<br>".join(paragraph)}</p>')
+                paragraph = []
+
+    if in_list:
+        html_parts.append("</ul>")
+    if paragraph:
+        html_parts.append(f'<p>{"<br>".join(paragraph)}</p>')
+
+    return "\n".join(html_parts)
+
+
 def _read_analysis(run_dir):
     path = run_dir / "analysis.md"
     if not path.exists():
@@ -192,7 +235,8 @@ def main():
     # Analysis
     rec = _read_analysis(run_dir)
     if rec:
-        analysis_html = f'<div class="card analysis"><h2>Recommendation</h2><p>{rec}</p></div>'
+        rec_html = _md_to_html(rec)
+        analysis_html = f'<div class="card analysis"><h2>Recommendation</h2>{rec_html}</div>'
     else:
         analysis_html = ""
 
