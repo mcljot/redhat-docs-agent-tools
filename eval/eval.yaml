@@ -141,6 +141,41 @@ judges:
     arguments:
       model: claude-opus-4-6
 
+  - name: intent_alignment
+    type: prompt
+    prompt: |
+      You are evaluating whether AI-generated documentation fulfills the intent
+      of the original JIRA ticket that requested it.
+
+      ## JIRA ticket intent
+
+      {{ annotations }}
+
+      ## Documentation produced
+
+      {% for path, content in outputs.files.items() if path.startswith('.output/writing/') and path.endswith('.adoc') %}
+      ### {{ path }}
+
+      {{ content }}
+
+      {% endfor %}
+
+      ## Scoring criteria
+
+      Score on a 1-5 scale based on how well the documentation fulfills the ticket's intent:
+
+      1 - Off-target: documentation covers unrelated topics or misunderstands the request
+      2 - Partially relevant: touches on the right area but misses the core ask
+      3 - Addresses the intent: covers the main topic but misses key acceptance criteria or scope items
+      4 - Strong alignment: covers the intent well, addresses most acceptance criteria, correct audience
+      5 - Full alignment: directly addresses the ticket intent, covers all acceptance criteria, matches the target audience, stays within scope
+
+      Consider:
+      - **Scope match**: does the output address what the ticket asked for, not more, not less?
+      - **Acceptance criteria coverage**: are the specific deliverables listed in the ticket addressed?
+      - **Audience alignment**: does the content match the target audience (admin vs developer vs data scientist)?
+      - **Focus**: does the output stay on-topic or wander into areas outside the ticket's scope?
+
   - name: pairwise
     type: prompt
     prompt_file: eval/config/pairwise-judge.md

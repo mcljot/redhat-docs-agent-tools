@@ -1,0 +1,16 @@
+ticket: RHAISTRAT-1393
+summary: "Bring your agent built on your laptop with LangGraph to RH AI"
+intent: |
+  Document the end-to-end migration path for a LangChain/LangGraph agentic app
+  from local development (VS Code, Ollama, local vector DB) to production on RHOAI,
+  using Llama Stack API as the standardized provider layer. Includes K8s manifests,
+  provider swap config, and observability.
+acceptance_criteria:
+  - "Document the provider swap from local to enterprise (Ollama→vLLM, Chroma→Milvus, local memory→PV/Postgres)"
+  - "Cover K8s artifacts: InferenceService, LlamaStackDistribution CR, Deployment, PVC, Service, Route"
+  - "Include local development workflow (running agent locally with Ollama)"
+  - "Document observability: pod logs, MLFlow tracking via mlflow.langchain module"
+audience: "developer (building agentic apps), data scientist (experimenting locally then deploying)"
+scope:
+  in: "Provider swap demo, K8s deployment manifests, local-to-enterprise migration path"
+  out: "Detailed Llama Stack internals, MCP server configuration"
