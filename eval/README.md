@@ -65,16 +65,42 @@ The report is at `eval/runs/<run-id>/report.html`. Key files:
 
 ## What the judges measure
 
-| Judge | Type | What it measures | Scale |
-|-------|------|-----------------|-------|
-| `doc_quality` | LLM | Standalone documentation quality — accuracy, completeness, structure, absence of fabrication | 1-5 (1=unusable, 3=acceptable, 5=production-ready) |
-| `reference_comparison` | code+LLM | How closely pipeline output matches human-written gold-standard documentation | 1-5 (1=no match, 3=similar with gaps, 5=equivalent to human) |
-| `files_exist` | check | Pipeline produced at least one AsciiDoc file | pass/fail |
-| `step_results_valid` | check | Requirements, planning, and writing steps completed with valid metadata | pass/fail |
-| `pipeline_complete` | check | Workflow finished all steps | pass/fail |
-| `pairwise` | LLM | Head-to-head comparison of two runs' output for the same case | A wins / B wins / tie |
+The eval harness measures documentation quality across three dimensions, plus structural checks and run-vs-run comparison.
 
-**Note**: `reference_comparison` only scores cases with human-written gold-standard references (8 of 11 cases). Cases 002, 004, 005 are pipeline-generated and are skipped.
+### Quality dimensions
+
+These three LLM judges answer distinct questions about the pipeline's output:
+
+| Dimension | Judge | Question it answers | Scale |
+|-----------|-------|-------------------|-------|
+| **Is it good?** | `doc_quality` | Is the documentation well-written, accurate, and well-structured? | 1-5 (1=unusable, 3=acceptable, 5=production-ready) |
+| **Does it match the ask?** | `intent_alignment` | Does the output address what the JIRA ticket requested? | 1-5 (1=off-target, 3=addresses intent with gaps, 5=full alignment) |
+| **Does it match what a human wrote?** | `reference_comparison` | How closely does the output match the human-written gold standard? | 1-5 (1=no match, 3=similar with gaps, 5=equivalent to human) |
+
+Reading the scores together tells you more than any single number:
+
+- **High doc_quality + low intent_alignment** → well-written but off-target (pipeline wandered from the ticket scope)
+- **High intent_alignment + low reference_comparison** → addresses the ticket but differs from how the human structured it (may be a valid alternative approach)
+- **All three high** → pipeline output is close to production-ready
+- **All three low** → significant pipeline issues
+
+**Notes:**
+- `reference_comparison` only scores cases with human-written gold-standard references (8 of 11 cases). Cases 002, 004, 005 are pipeline-generated and are skipped.
+- `intent_alignment` requires `annotations.yaml` per case with the ticket's intent, acceptance criteria, and scope. Cases without annotations receive no intent score.
+
+### Structural checks
+
+| Judge | What it checks | Scale |
+|-------|---------------|-------|
+| `files_exist` | Pipeline produced at least one AsciiDoc file | pass/fail |
+| `step_results_valid` | Requirements, planning, and writing steps completed with valid metadata | pass/fail |
+| `pipeline_complete` | Workflow finished all steps | pass/fail |
+
+### Run comparison
+
+| Judge | What it checks | Scale |
+|-------|---------------|-------|
+| `pairwise` | Head-to-head comparison of two runs' output for the same case (only when `--baseline` is used) | A wins / B wins / tie |
 
 ## Managing baselines
 
