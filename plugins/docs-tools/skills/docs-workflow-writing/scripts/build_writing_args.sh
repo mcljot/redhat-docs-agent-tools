@@ -22,6 +22,7 @@ FORMAT="adoc"
 DRAFT=false
 DOCS_REPO_PATH=""
 SOURCE_REPO=""
+ADDITIONAL_REPOS=()
 FIX_FROM=""
 
 require_arg() {
@@ -51,7 +52,11 @@ while [[ $# -gt 0 ]]; do
       ;;
     --repo)
       require_arg "$1" "${2:-}"
-      SOURCE_REPO="$2"
+      if [[ -z "$SOURCE_REPO" ]]; then
+        SOURCE_REPO="$2"
+      else
+        ADDITIONAL_REPOS+=("$2")
+      fi
       shift 2
       ;;
     --repo-path)
@@ -98,25 +103,35 @@ fi
 
 # --- Compute paths ---
 INPUT_FILE="${BASE_PATH}/planning/plan.md"
-EVIDENCE_FILE="${BASE_PATH}/code-evidence/evidence.json"
+CODE_ANALYSIS_DIR="${BASE_PATH}/code-analysis"
+PR_ANALYSIS_DIR="${BASE_PATH}/pr-analysis"
 OUTPUT_DIR="${BASE_PATH}/writing"
 OUTPUT_FILE="${OUTPUT_DIR}/_index.md"
 
-# --- Check for code evidence ---
-if [[ -f "$EVIDENCE_FILE" ]]; then
-  HAS_EVIDENCE=true
+# --- Check for code-learner analysis ---
+if [[ -d "$CODE_ANALYSIS_DIR" && -f "$CODE_ANALYSIS_DIR/ONBOARDING.md" ]]; then
+  HAS_CODE_ANALYSIS=true
 else
-  HAS_EVIDENCE=false
-  EVIDENCE_FILE=""
+  HAS_CODE_ANALYSIS=false
+  CODE_ANALYSIS_DIR=""
 fi
 
-# --- Check for evidence status (scope-req-audit classifications) ---
-EVIDENCE_STATUS_FILE="${BASE_PATH}/scope-req-audit/evidence-status.json"
-if [[ -f "$EVIDENCE_STATUS_FILE" ]]; then
-  HAS_EVIDENCE_STATUS=true
+# --- Check for additional code-learner analyses ---
+ADDITIONAL_CODE_ANALYSIS_DIRS=()
+for repo in "${ADDITIONAL_REPOS[@]}"; do
+  repo_name="$(basename "$repo")"
+  add_analysis_dir="${BASE_PATH}/code-analysis-${repo_name}"
+  if [[ -d "$add_analysis_dir" && -f "$add_analysis_dir/ONBOARDING.md" ]]; then
+    ADDITIONAL_CODE_ANALYSIS_DIRS+=("$add_analysis_dir")
+  fi
+done
+
+# --- Check for PR analysis ---
+if [[ -d "$PR_ANALYSIS_DIR" ]] && ls "$PR_ANALYSIS_DIR"/PR-*-ANALYSIS.md &>/dev/null; then
+  HAS_PR_ANALYSIS=true
 else
-  HAS_EVIDENCE_STATUS=false
-  EVIDENCE_STATUS_FILE=""
+  HAS_PR_ANALYSIS=false
+  PR_ANALYSIS_DIR=""
 fi
 
 # --- Validate source repo if provided ---
@@ -124,6 +139,17 @@ if [[ -n "$SOURCE_REPO" && ! -d "$SOURCE_REPO" ]]; then
   echo "WARNING: Source repo path not found: ${SOURCE_REPO}. Ignoring --repo." >&2
   SOURCE_REPO=""
 fi
+
+# --- Validate additional repos ---
+VALID_ADDITIONAL_REPOS=()
+for repo in "${ADDITIONAL_REPOS[@]}"; do
+  if [[ -d "$repo" ]]; then
+    VALID_ADDITIONAL_REPOS+=("$repo")
+  else
+    echo "WARNING: Additional repo path not found: ${repo}. Skipping." >&2
+  fi
+done
+ADDITIONAL_REPOS=("${VALID_ADDITIONAL_REPOS[@]}")
 
 # --- Determine mode ---
 MODE=""
@@ -166,35 +192,51 @@ else
   VERIFY=true
 fi
 
+# --- Build JSON arrays for additional repos ---
+if [[ ${#ADDITIONAL_REPOS[@]} -gt 0 ]]; then
+  ADDITIONAL_REPOS_JSON="$(printf '%s\n' "${ADDITIONAL_REPOS[@]}" | jq -R . | jq -s .)"
+else
+  ADDITIONAL_REPOS_JSON="[]"
+fi
+if [[ ${#ADDITIONAL_CODE_ANALYSIS_DIRS[@]} -gt 0 ]]; then
+  ADDITIONAL_ANALYSIS_JSON="$(printf '%s\n' "${ADDITIONAL_CODE_ANALYSIS_DIRS[@]}" | jq -R . | jq -s .)"
+else
+  ADDITIONAL_ANALYSIS_JSON="[]"
+fi
+
 # --- Emit JSON ---
 jq -n \
   --arg mode              "$MODE" \
   --arg ticket            "$TICKET" \
   --arg format            "$FORMAT" \
   --arg input_file        "$INPUT_FILE" \
-  --arg evidence_file     "$EVIDENCE_FILE" \
-  --argjson has_evidence  "$HAS_EVIDENCE" \
-  --arg evidence_status     "$EVIDENCE_STATUS_FILE" \
-  --argjson has_evidence_status "$HAS_EVIDENCE_STATUS" \
+  --arg code_analysis_dir "$CODE_ANALYSIS_DIR" \
+  --argjson has_code_analysis "$HAS_CODE_ANALYSIS" \
+  --arg pr_analysis_dir   "$PR_ANALYSIS_DIR" \
+  --argjson has_pr_analysis "$HAS_PR_ANALYSIS" \
   --arg output_dir          "$OUTPUT_DIR" \
   --arg output_file         "$OUTPUT_FILE" \
   --arg docs_repo_path      "$DOCS_REPO_PATH" \
   --arg source_repo_path    "$SOURCE_REPO" \
   --arg fix_from            "$FIX_FROM" \
   --argjson verify          "$VERIFY" \
+  --argjson additional_repo_paths "$ADDITIONAL_REPOS_JSON" \
+  --argjson additional_code_analysis_dirs "$ADDITIONAL_ANALYSIS_JSON" \
   '{
     mode:              $mode,
     ticket:            $ticket,
     format:            $format,
     input_file:        $input_file,
-    evidence_file:     (if $evidence_file == "" then null else $evidence_file end),
-    has_evidence:      $has_evidence,
-    evidence_status:   (if $evidence_status == "" then null else $evidence_status end),
-    has_evidence_status: $has_evidence_status,
+    code_analysis_dir: (if $code_analysis_dir == "" then null else $code_analysis_dir end),
+    has_code_analysis: $has_code_analysis,
+    pr_analysis_dir:   (if $pr_analysis_dir == "" then null else $pr_analysis_dir end),
+    has_pr_analysis:   $has_pr_analysis,
     output_dir:        $output_dir,
     output_file:       $output_file,
     docs_repo_path:    (if $docs_repo_path == "" then null else $docs_repo_path end),
     source_repo_path:  (if $source_repo_path == "" then null else $source_repo_path end),
+    additional_repo_paths: $additional_repo_paths,
+    additional_code_analysis_dirs: $additional_code_analysis_dirs,
     fix_from:          (if $fix_from == "" then null else $fix_from end),
     verify_output:     $verify
   }'

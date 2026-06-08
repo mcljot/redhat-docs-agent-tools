@@ -126,9 +126,11 @@ if [[ ! -d "$MARKETPLACE_DIR/.git" ]]; then
 fi
 
 if [[ -z "$branch" ]]; then
-    branch=$(git -C "$MARKETPLACE_DIR" branch --show-current 2>/dev/null || true)
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+    branch=$(git -C "$REPO_DIR" branch --show-current 2>/dev/null || true)
     if [[ -z "$branch" ]]; then
-        echo "Error: --branch <branch> is required (could not detect current branch in $MARKETPLACE_DIR)."
+        echo "Error: --branch <branch> is required (could not detect current branch)."
         echo
         usage
     fi

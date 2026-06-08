@@ -126,9 +126,6 @@ Write the sidecar to `<OUTPUT_DIR>/step-result.json`:
   "schema_version": 1,
   "step": "style-review",
   "ticket": "<TICKET>",
-  "completed_at": "<current ISO 8601 timestamp>",
-  "context_size_bytes": <total_bytes>
+  "completed_at": "<current ISO 8601 timestamp>"
 }
 ```
-
-After writing the sidecar, sum the byte sizes of all output files in the step's output folder and add `context_size_bytes` to the sidecar.

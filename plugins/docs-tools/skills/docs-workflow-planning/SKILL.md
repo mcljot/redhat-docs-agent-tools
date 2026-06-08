@@ -64,21 +64,28 @@ mkdir -p "$OUTPUT_DIR"
 >
 > Save the complete plan to: `<OUTPUT_FILE>`
 
-**[Include only if `<BASE_PATH>/scope-req-audit/evidence-status.json` exists]** Append the following paragraph to the prompt:
+**[Include only if `<BASE_PATH>/code-analysis/ONBOARDING.md` exists]** Append the following paragraph to the prompt:
 
-> ## MANDATORY: Scope gating by code evidence
+> ## MANDATORY: Scope gating by code analysis
 >
-> **You MUST read** `<BASE_PATH>/scope-req-audit/evidence-status.json` before creating any module specifications. This file classifies each requirement by whether code evidence exists in the indexed repository.
+> **You MUST read** `<BASE_PATH>/code-analysis/ONBOARDING.md` and `<BASE_PATH>/code-analysis/registry.json` before creating any module specifications. These files contain structured analysis of the source repository produced by code-learner.
 >
-> **This is not optional. Every requirement must be checked against this file.**
+> **This is not optional. The module registry must inform your planning.**
 >
-> - **Grounded** requirements: create full module specifications as normal. Use the `key_files` for each grounded requirement as content source references in the module spec — these are the actual source files where the feature is implemented. The code-evidence step will use them for targeted retrieval
-> - **Partial** requirements: create module specifications but note what evidence was found and what is missing — flag for SME review. Include available `key_files` as partial source references
-> - **Absent** requirements: check the `secondary_repos` array in the evidence status. If a secondary repo was cloned for this requirement (its ID appears in a `secondary_repos[].requirements` entry), **promote it to partial** — create a module specification flagged as "secondary source" with a note that evidence comes from a companion repo. The code-evidence step will search this secondary repo with lower-priority weighting. If no secondary repo covers the requirement, **STOP. Do NOT create module specifications.** List it in a "Deferred requirements (no code evidence)" section at the end of the plan with: (a) the requirement ID and title, (b) the `action` text from the evidence status, (c) which repository the implementation likely lives in (from the evidence status or discovered repos)
+> Use the module registry's `onboarding_priority` field to scope documentation:
+> - **read-first** modules: create full module specifications. These are the core modules that new developers must understand first
+> - **read-second** modules: create summary module specifications. Include purpose and key APIs but less detail than read-first modules
+> - **skip** modules: **Do NOT create module specifications.** These are utility, test, or generated modules that don't warrant standalone documentation. If relevant to a read-first module, mention them briefly in that module's context
 >
-> If `discovered_repos` lists repos that weren't indexed and no `secondary_repos` were cloned, note them in the deferred section as potential sources for resolving absent requirements.
+> Use the `public_api`, `dependencies`, and `data_flow` fields from module summaries in `<BASE_PATH>/code-analysis/summaries/` to inform content points and prerequisites in each module specification.
 >
-> **Self-check before writing the plan:** Count your module specifications. If the count exceeds the number of grounded + partial + promoted-from-absent requirements, you have created modules for unresolvable absent requirements — go back and move them to the deferred section.
+> **Self-check before writing the plan:** Count your module specifications. Verify that no skip-priority module has a full module specification — if any does, remove it or downgrade to a brief mention within a related module.
+
+**[Include only if `<BASE_PATH>/pr-analysis/` exists]** Also append:
+
+> ## PR change context
+>
+> Read the PR analysis from `<BASE_PATH>/pr-analysis/PR-*-ANALYSIS.md`. Focus documentation on modules listed in the "Changes by Module" section — these are the modules directly affected by the code changes that triggered this documentation work. Prioritize these modules for full specifications regardless of their onboarding_priority.
 
 ### 3. Verify output
 
@@ -86,7 +93,7 @@ After the agent completes, verify the output file exists at `<OUTPUT_FILE>`.
 
 If no output file is found, report an error.
 
-**[If `<BASE_PATH>/scope-req-audit/evidence-status.json` exists]** Cross-check the plan against the audit: read the evidence status and verify that no absent requirement has a corresponding module specification in the plan. If any absent requirement was given a full module, log a warning: "Plan includes modules for absent requirement(s): <list>. These risk fabrication." This is a warning, not a blocker — the plan is still valid but the downstream writing step may produce ungrounded content.
+**[If `<BASE_PATH>/code-analysis/registry.json` exists]** Cross-check the plan against the registry: read the module registry and verify that no skip-priority module has a full module specification in the plan. If any skip module was given a full spec, log a warning: "Plan includes full specs for skip-priority module(s): <list>. These are typically utility modules that don't warrant standalone documentation." This is a warning, not a blocker.
 
 ### 4. Write step-result.json
 
@@ -106,9 +113,6 @@ Write the sidecar to `<OUTPUT_DIR>/step-result.json`:
   "step": "planning",
   "ticket": "<TICKET>",
   "completed_at": "<current ISO 8601 timestamp>",
-  "module_count": <number of modules in the plan>,
-  "context_size_bytes": <total_bytes>
+  "module_count": <number of modules in the plan>
 }
 ```
-
-After writing the sidecar, sum the byte sizes of all output files in the step's output folder and add `context_size_bytes` to the sidecar.

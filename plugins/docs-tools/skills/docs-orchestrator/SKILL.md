@@ -35,7 +35,7 @@ When displaying available options to the user (e.g., on skill load or when askin
 - `--mkdocs` — Use Material for MkDocs format instead of AsciiDoc. Propagates to the writing step (generates `.md` with MkDocs front matter) and style-review step (applies Markdown-appropriate rules). Sets `options.format` to `"mkdocs"` in the progress file
 - `--draft` — Write documentation to the staging area (`.agent_workspace/<ticket>/writing/`) instead of directly into the repo. Uses DRAFT placement mode: no framework detection, no file placement into the target repo. Without this flag, UPDATE-IN-PLACE is the default
 - `--docs-repo-path <path>` — Target documentation repository for UPDATE-IN-PLACE mode. The docs-writer explores this directory for framework detection (Antora, MkDocs, Docusaurus, etc.) and writes files there instead of the current working directory. Propagates to `writing` and `create-merge-request` steps (mapped to their internal `--repo-path` flag). **Precedence**: if both `--docs-repo-path` and `--draft` are passed, `--docs-repo-path` wins — log a warning and ignore `--draft`
-- `--source-code-repo <url-or-path>...` — Source code repository/repositories for scope audit and requirements enrichment (space-delimited, one or more). Accepts remote URLs (https://, git@, ssh:// — each shallow-cloned to `.agent_workspace/<ticket>/code-repo/<repo_name>/`) or local paths (used directly). The first repo is treated as primary; additional repos are returned as `additional_repos` in the result. Passed to requirements, scope-req-audit, writing, and technical-review steps (mapped to their internal `--repo` flag). Without `--pr`, the entire repo is the subject matter; with `--pr`, the PR branch is checked out on the primary repo so the scope audit reflects the PR's state. Takes highest priority in source resolution, overriding `source.yaml` and PR-derived URLs
+- `--source-code-repo <url-or-path>...` — Source code repository/repositories for code analysis and requirements enrichment (space-delimited, one or more). Accepts remote URLs (https://, git@, ssh:// — each shallow-cloned to `.agent_workspace/<ticket>/code-repo/<repo_name>/`) or local paths (used directly). The first repo is treated as primary; additional repos are returned as `additional_repos` in the result. Passed to requirements, code-analysis, writing, and technical-review steps (mapped to their internal `--repo` flag). Without `--pr`, the entire repo is the subject matter; with `--pr`, the PR branch is checked out on the primary repo so code-analysis reflects the PR's state. Takes highest priority in source resolution, overriding `source.yaml` and PR-derived URLs
 - `--create-jira <PROJECT>` — Create a linked JIRA ticket in the specified project after the planning step completes. Runs the standalone `docs-workflow-create-jira` workflow (use `--workflow workflow-create-jira`). Requires `JIRA_API_TOKEN` to be set
 - `--create-merge-request` — Create a branch, commit, push, and open a merge request or pull request after reviews complete. Activates the `create-merge-request` workflow step (guarded by `when: create_merge_request`). Off by default
 - `--no-source-repo` — Skip source repo resolution and all source-dependent steps (scope-req-audit). The workflow runs without source grounding. Use for tickets with no associated source code repository, or pass on resume after the workflow stops due to no repo being found
@@ -69,23 +69,11 @@ When displaying available options to the user (e.g., on skill load or when askin
 
 # Custom workflow YAML
 /docs-orchestrator PROJ-123 --workflow quick
-
-# Code-evidence workflow — auto-discovers repo from JIRA, or pass explicitly
-/docs-orchestrator PROJ-123 --workflow workflow-code-evidence
-
-# Code-evidence workflow — explicit repo (overrides auto-discovery)
-/docs-orchestrator PROJ-123 \
-  --workflow workflow-code-evidence \
-  --source-code-repo https://github.com/org/operator
 ```
 
 ## Resolve source repository
 
-After parsing arguments and before running steps, resolve the source code repository if one is configured. This makes the repo available to all downstream steps that need it (requirements, scope-req-audit, writing).
-
-**If `--no-source-repo` was passed:** Skip source resolution entirely. Mark all steps with `when: has_source_repo` as `skipped` immediately. Record `options.no_source_repo: true` in the progress file. Proceed directly to [Load and evaluate the workflow](#load-and-evaluate-the-workflow).
-
-**Backward compatibility:** If resuming an existing progress file that has `no_code_evidence: true`, treat it as `no_source_repo: true`.
+After parsing arguments and before running steps, resolve the source code repository if one is configured. This makes the repo available to all downstream steps that need it (requirements, code-analysis, writing).
 
 All clone, verify, PR-resolution, and source.yaml logic is handled by the `resolve_source.py` script. The orchestrator calls the script and acts on the JSON result.
 
@@ -105,7 +93,7 @@ The script checks sources in priority order:
 1. **CLI `--source-code-repo` flag** — clone or verify the path
 2. **Per-ticket `source.yaml`** — read and apply existing config
 3. **PR-derived** — resolve repo URL and branch from `--pr` via `gh pr view` or `glab mr view`
-4. **`discovered_repos.json`** — from the requirements-step graph walk (via `extract_discovered_repos.py`)
+4. **`discovered_repos.json`** — read repos discovered by the requirements step (from JIRA graph walk)
 5. **No source** — exit code 2, defer resolution until after requirements
 
 The script outputs JSON to stdout:
@@ -164,21 +152,10 @@ All fields except `repo` are optional. If `scope` is omitted, the entire reposit
 
 Read the YAML file and extract the ordered step list. Each step has: `name`, `skill`, `description`, optional `when`, and optional `inputs`.
 
-### 3. Validate `requires` conditions
-
-If the YAML includes a top-level `workflow.requires` list, check each condition **before evaluating steps or running anything**:
-
-- `has_source_repo` → a source repo must be resolvable. The pre-flight resolution script tries all sources in priority order: CLI `--source-code-repo`, `source.yaml`, `--pr`-derived, and JIRA ticket discovery (git links and auto-discovered PRs). If **none** yield a source repo, **STOP** immediately with: `"This workflow requires a source code repository. No repo could be discovered from the JIRA ticket. Options: (1) re-run with --source-code-repo <url-or-path>, (2) re-run with --pr <url>, (3) create .agent_workspace/<ticket>/source.yaml with a repo: field, or (4) link PRs to the JIRA ticket and re-run."`
-
-Unlike `when` (which makes individual steps conditional), `requires` is a workflow-level precondition — the entire workflow fails if a required condition is not met. This prevents users from running a code-evidence workflow without a repo and only discovering the problem after requirements and planning have already completed.
-
-The `has_source_repo` precondition supports two modes:
-- **Explicit:** User passes `--source-code-repo` → guaranteed grounding against the specified repo
-- **Auto-discovered:** User passes only a JIRA ticket → pre-flight discovers the repo from JIRA git links and linked PRs
-
-### 4. Evaluate `when` conditions
+### 3. Evaluate `when` conditions
 
 - `when: create_merge_request` → run this step only if `--create-merge-request` was passed
+- `when: has_pr` → run this step only if a PR/MR URL is available (passed via `--pr` or discovered from JIRA by the requirements step). Evaluated after source resolution completes — if a PR URL was resolved from `options.source` or `options.pr_urls`, the condition is met
 - `when: has_source_repo` → evaluation depends on timing:
   - If `--no-source-repo` was passed → mark as `skipped` immediately (source resolution was skipped entirely)
   - If a source repo was already resolved pre-flight (via `--source-code-repo`, `--pr`, or `source.yaml`) → step runs normally (`pending`)
@@ -187,7 +164,7 @@ The `has_source_repo` precondition supports two modes:
 - Steps with no `when` always run
 - Steps that don't meet their `when` condition and cannot be deferred are marked `skipped` in the progress file
 
-### 5. Validate the step list
+### 4. Validate the step list
 
 All of the following must be true. If any check fails, **STOP** with a clear error:
 
@@ -212,7 +189,7 @@ Steps declare their inputs as a list of upstream step names in the YAML:
 
 The orchestrator validates at load time that every step name in `inputs` exists in the step list. Step skills read their input data from the upstream step's output folder by convention (see below).
 
-**Conditional input dependencies**: If an upstream step in `inputs` has a `when` condition and was `skipped`, that dependency is considered satisfied. The downstream step is responsible for checking whether the optional input data actually exists (e.g., the writing step checks for `evidence.json` and uses it if present, but proceeds without it). Only upstream steps that ran and `failed` block downstream execution.
+**Conditional input dependencies**: If an upstream step in `inputs` has a `when` condition and was `skipped`, that dependency is considered satisfied. The downstream step is responsible for checking whether the optional input data actually exists (e.g., the writing step checks for `code-analysis/ONBOARDING.md` and uses it if present, but proceeds without it). Only upstream steps that ran and `failed` block downstream execution.
 
 **Custom workflow validation**: If a step's `inputs` references a step that does not exist in the current YAML step list, fail at load time with an error (e.g., "Step 'writing' requires 'planning', but 'planning' is not in the step list").
 
@@ -246,10 +223,23 @@ Use this absolute `BASE_PATH` for the progress file's `base_path` field and for 
   requirements/
     requirements.md
     step-result.json                 (sidecar: title)
-  scope-req-audit/                     (if source repo is available)
-    evidence-status.json
-    summary.md
-    step-result.json                 (sidecar: recommendation, grounded, partial, absent, total, discovered_repos_count)
+  code-analysis/                       (if source repo is available)
+    ONBOARDING.md
+    registry.json
+    detection.json
+    summaries/
+    relationships/
+    step-result.json                 (sidecar: module_count, relationship_count, languages_detected, repo_path)
+  code-analysis-<repo-name>/           (additional repos, if any — same structure as code-analysis/)
+    ONBOARDING.md
+    registry.json
+    detection.json
+    summaries/
+    relationships/
+    step-result.json
+  pr-analysis/                         (if PR is available)
+    PR-<number>-ANALYSIS.md
+    step-result.json                 (sidecar: pr_number, pr_url, modules_affected, platform)
   planning/
     plan.md
     step-result.json                 (sidecar: module_count)
@@ -305,7 +295,7 @@ The `workflow_type` field and filename prefix match the YAML's `workflow.name`. 
     "auto_discover_repos": false,
     "max_secondary_repos": 3
   },
-  "step_order": ["requirements", "scope-req-audit", "planning", "writing", ...],
+  "step_order": ["requirements", "code-analysis", "pr-analysis", "planning", "writing", ...],
   "steps": {
     "<step-name>": {
       "status": "pending",
@@ -387,13 +377,13 @@ Before starting, check for a progress file at `.agent_workspace/<ticket>/workflo
 3. If `options.source` is `null`, rehydrate it from on-disk source state **before** choosing the resume step:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/sync_progress_source.py \
+python3 ${CLAUDE_SKILL_DIR}/scripts/resolve_source.py \
   --base-path <base_path> \
   --progress-file <progress_file> \
   [--scan-requirements --skip-deferred-on-no-source]
 ```
 
-Use the bracketed flags only if the `requirements` step has already completed; this re-runs post-requirements source discovery against the persisted workflow artifacts. Then re-read the progress file from disk before continuing. This ensures cached `source.yaml` and any already-cloned repo are reflected in `options.source` on resume.
+Use the bracketed flags only if the `requirements` step has already completed; this re-runs post-requirements source discovery against the persisted workflow artifacts (`discovered_repos.json`, `requirements.md`). Then re-read the progress file from disk before continuing. This ensures cached `source.yaml` and any already-cloned repo are reflected in `options.source` on resume.
 
 4. Resume from the first step with status `"pending"` or `"failed"`
 5. Before running the resume step, validate its input dependencies are satisfied
@@ -427,9 +417,10 @@ Build the args string for the step skill. The orchestrator maps its user-facing 
 2. **If source repo is resolved**: `--repo <repo_path>` — passed to steps that can use it
 3. **From orchestrator context**: Step-specific args from parsed CLI flags:
    - `requirements`: `[--pr <url>]... [--repo <repo_path>]`
-   - `scope-req-audit`: `--repo <repo_path> [--grounded-threshold <float>] [--absent-threshold <float>]`
-   - `writing`: `--format <adoc|mkdocs> [--draft] [--repo <repo_path>] [--repo-path <path>]`
-   - `technical-review`: `[--repo <repo_path>]`
+   - `code-analysis`: `--repo <repo_path>`
+   - `pr-analysis`: `--repo <repo_path> [--pr <url>...]`
+   - `writing`: `--format <adoc|mkdocs> [--draft] [--repo <repo_path>]... [--repo-path <path>]` — pass `--repo` for the primary source repo AND for each entry in `options.additional_sources` (in order)
+   - `technical-review`: `[--repo <repo_path>]...` — pass `--repo` for the primary source repo AND for each entry in `options.additional_sources` (in order)
    - `style-review`: `--format <adoc|mkdocs>`
    - `create-merge-request`: `[--draft] [--repo-path <path>]`
 
@@ -447,10 +438,9 @@ Skill: <step.skill>, args: "<constructed args>"
 2. Read the step's `step-result.json` sidecar if it exists in the output folder. If present, store the step-specific fields in `steps.<step-name>.result` in the progress file (see [Step-specific post-processing](#step-specific-post-processing) for which fields to record per step). Log a warning if the sidecar is missing (the step still counts as completed — sidecars are expected but not required for backward compatibility)
 3. Update the step's status to `"completed"` with the output folder path in the progress file
 4. Update the progress file's `updated_at` timestamp
-5. If `context_size_bytes` is present in the sidecar, log: `"Step '<step>' output: <bytes> bytes (~<bytes // 3> tokens)"`
-6. Do NOT read step output files (requirements.md, plan.md, review.md) into the orchestrator context. Read only step-result.json sidecars. Step skills and their dispatched agents read output files — the orchestrator reads metadata only
-7. After each step completes, assess your own context usage. If you are experiencing degraded recall of earlier steps, losing track of which steps have completed, or uncertain about arguments you parsed at the start — tell the user: "Context is getting large after N steps. All progress is saved. Recommend resuming in a new session: `Resume docs workflow for <TICKET>`." Do not silently degrade — warn early so the user can resume cleanly
-8. Run [step-specific post-processing](#step-specific-post-processing) for the just-completed step
+5. Do NOT read step output files (requirements.md, plan.md, review.md) into the orchestrator context. Read only step-result.json sidecars. Step skills and their dispatched agents read output files — the orchestrator reads metadata only
+6. Run [step-specific post-processing](#step-specific-post-processing) for the just-completed step
+7. **Post-step context refresh** — Re-read the progress file from disk before starting the next step. This ensures that if automatic context compaction has occurred (compressing earlier conversation turns), the orchestrator re-establishes workflow state from the authoritative source. The progress file, active workflow marker, and step output folders are the complete state — nothing essential is held only in conversation context
 
 ### Step-specific post-processing
 
@@ -460,11 +450,20 @@ After each step completes, apply the rules below. When rules reference sidecar f
 - Log the `title` field: `"Requirements extracted: <title>"`
 - If `options.source` is `null` → run [Post-requirements source resolution](#post-requirements-source-resolution). This may change `deferred` steps to `pending` or `skipped`
 
-**scope-req-audit**
-- Log: `"scope-req-audit completed: N grounded, N partial, N absent — recommendation: <recommendation>"`
-- If `discovered_repos_count` > 0, also log: `"(N discovered repos not indexed)"`
-- Fall back to reading `evidence-status.json` if sidecar result is missing
-- If `secondary_repos_count` > 0, run [Post-scope-req-audit secondary repo resolution](#post-scope-req-audit-secondary-repo-resolution)
+**code-analysis**
+- Log: `"Code analysis completed: N modules, N relationships, languages: <languages_detected>"`
+- Record `repo_path` from the sidecar for downstream steps
+- **Multi-repo code analysis**: If `options.additional_sources` is non-empty, run code-analysis for each additional repo sequentially. For each additional source entry:
+  1. Derive the repo name: `basename(additional_source.repo_path)`
+  2. Invoke the code-analysis step skill with a custom output dir:
+     ```
+     Skill: docs-workflow-code-analysis, args: "--repo <additional_source.repo_path> --ticket <ticket> --output-dir <base_path>/code-analysis-<repo-name>"
+     ```
+  3. Log: `"Additional code analysis completed for <repo-name>"`
+  These additional analyses are sub-tasks of the primary code-analysis step — do not create separate progress file entries. If an additional repo analysis fails, log a warning and continue (do not fail the entire code-analysis step)
+
+**pr-analysis**
+- Log: `"PR analysis completed: PR #<pr_number> — N modules affected"`
 
 **planning**
 - Log: `"Planning completed: N modules"`
@@ -483,17 +482,17 @@ After each step completes, apply the rules below. When rules reference sidecar f
 
 This section triggers **only** when the `requirements` step completes AND `options.source` is still `null` (i.e., no source was resolved pre-flight).
 
-### 1. Run the progress-sync script with `--scan-requirements`
+### 1. Run resolve_source.py with `--progress-file`
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/sync_progress_source.py \
+python3 ${CLAUDE_SKILL_DIR}/scripts/resolve_source.py \
   --base-path <base_path> \
   --progress-file <progress_file> \
   --scan-requirements \
   --skip-deferred-on-no-source
 ```
 
-The sync script delegates source resolution to `resolve_source.py`, then writes the result back into the progress file. Resolution checks `discovered_repos.json` (written by `extract_discovered_repos.py` during the requirements step), then scans `requirements.md` for GitHub/GitLab PR/MR URLs as a fallback. When a repo is found, it clones/verifies it, writes `source.yaml`, records `options.source`, and promotes deferred steps to `pending`.
+The script reads `discovered_repos.json` (produced by the requirements step from the JIRA graph), then scans `requirements.md` for GitHub/GitLab PR/MR URLs as a fallback. When a repo is found, it clones/verifies it, writes `source.yaml`, records `options.source` in the progress file, and promotes deferred steps to `pending`.
 
 ### 2. Handle the result
 
@@ -501,98 +500,31 @@ The sync script delegates source resolution to `resolve_source.py`, then writes 
 |---|---|---|
 | 0 | `resolved` | The script has already recorded `options.source` in the progress file (primary repo + any `additional_repos`) and updated all `deferred` steps to `pending`. Log all resolved repos |
 | 1 | `error` / `clone_failed` | Log a warning: "Could not clone `<repo_url>`. Code-evidence will be skipped. To retry, run with `--source-code-repo <url-or-local-path>`." Leave the progress file unchanged |
-| 2 | `no_source` | Skip source-dependent steps (see below) |
+| 2 | `no_source` | Skip code-analysis (see below) |
 
 ### 3. No source found
 
-When the script returns `no_source`, behavior depends on `--no-source-repo`:
+When the script returns `no_source`, skip code-analysis without prompting.
 
-**If `--no-source-repo` was passed:** With `--skip-deferred-on-no-source`, the script has already updated all `deferred` steps to `skipped`. Continue without source grounding and log: "No source code repository or PR discovered. Skipping source-dependent steps (--no-source-repo). To enable them, re-run with `--source-code-repo <url-or-path>` or `--pr <url>`."
-
-**If `--no-source-repo` was NOT passed (default):** **STOP** the workflow. Progress is saved — requirements are completed and the progress file is preserved. Log:
-
-> "No source code repository or PR could be discovered from the JIRA ticket. The workflow requires a source repo by default for scope auditing. Options: (1) re-run with `--source-code-repo <url-or-path>`, (2) re-run with `--pr <url>`, (3) link PRs to the JIRA ticket and re-run, (4) resume with `--no-source-repo` to skip source-dependent steps."
-
-The stop is advisory: the user can resume the same workflow in a new session with `--no-source-repo` to skip past it. On resume, the orchestrator reads the saved progress file (requirements already completed), marks all `deferred` steps as `skipped`, records `options.no_source_repo: true`, and continues from the next pending step (planning).
-
-## Post-scope-req-audit secondary repo resolution
-
-This section triggers **only** when the `scope-req-audit` step completes AND `secondary_repos` in `evidence-status.json` is non-empty. It clones discovered secondary repos so downstream steps (writing, technical review) can reference them.
-
-### 1. Read secondary repos
-
-Read `<base_path>/scope-req-audit/evidence-status.json` and extract the `secondary_repos` array. Each entry has `url`, `requirements`, `pr_refs`, `priority`, and `suggested_scope`.
-
-### 2. Confirm with user (unless `--auto-discover-repos`)
-
-If `--auto-discover-repos` was **not** passed, present the discovered repos and ask:
-
-```
-Scope audit found N absent/partial requirements across M unindexed repos:
-- <org>/<repo> (REQ-002, REQ-004) — N PRs
-- <org>/<repo> (REQ-003, REQ-006) — N PRs
-
-Index these repos as secondary sources? [Y/n]
-```
-
-Use AskUserQuestion with Yes (default) and No options. If the user declines, skip this section — log `"Skipping secondary repo indexing."` and continue to planning.
-
-If `--auto-discover-repos` **was** passed, skip the prompt and proceed directly.
-
-### 3. Clone secondary repos
-
-For each confirmed secondary repo, clone it using `resolve_source.py`:
-
-```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/resolve_source.py \
-  --base-path <base_path> \
-  --repo <repo_url> \
-  --priority secondary
-```
-
-The `--priority secondary` flag tells the script to:
-- Shallow-clone (`--depth 1`) to `.agent_workspace/<ticket>/code-repo/<repo_name>/`
-- Return the result without overwriting the primary `source.yaml`
-- Include `priority: secondary` in the result JSON
-
-If the clone fails for a repo, log a warning and continue with the remaining repos.
-
-### 4. Record in progress file
-
-For each successfully cloned secondary repo, append to `options.additional_sources` in the progress file:
-
-```json
-{
-  "repo_path": "<cloned_path>",
-  "repo_url": "<repo_url>",
-  "ref": null,
-  "scope": {"include": <suggested_scope or null>, "exclude": null},
-  "priority": "secondary",
-  "requirements": ["REQ-002", "REQ-004"]
-}
-```
-
-Log: `"Cloned N secondary repos: <repo_names>. Code evidence will search them for <N> requirements."`
-
-### 5. Bounded cost
-
-Maximum 3 secondary repos per run (or the value of `--max-secondary-repos`). If more are discovered, the extraction script already caps at this limit, sorted by requirement count.
+With `--skip-deferred-on-no-source`, the script has already updated all `deferred` steps to `skipped`. Continue without code-analysis and log: "No source code repository or PR discovered. Skipping code-analysis. To enable it, re-run with `--source-code-repo <url-or-path>` or `--pr <url>`."
 
 ## Technical review iteration
 
 The technical review step runs in a loop until confidence is acceptable or three iterations are exhausted:
 
 1. Invoke `docs-workflow-tech-review` with the standard args
-2. Read the review metadata. **Prefer the sidecar** (`<base_path>/technical-review/step-result.json`) when present — read `confidence` and `severity_counts` directly. **Fall back** to parsing `review.md` for the `Overall technical confidence: (HIGH|MEDIUM|LOW)` and `Severity counts:` lines if no sidecar exists
+2. Read the review metadata. **Prefer the sidecar** (`<base_path>/technical-review/step-result.json`) when present — read `confidence` and `severity_counts` directly. **Fall back** to using `grep` to extract the `Overall technical confidence: (HIGH|MEDIUM|LOW)` and `Severity counts:` lines from `review.md` if no sidecar exists — do not read the full review.md into context
    - If neither the sidecar nor the confidence line is found, treat it as a step failure — mark the step `failed` and stop iteration
+   - Also update `steps.technical-review.result` from the latest sidecar (confidence, severity_counts, iteration). Values may change between iterations as review.md content changes after fixes
 3. If `HIGH` → mark completed, proceed to next step
 4. If `MEDIUM`, check the severity counts (from sidecar `severity_counts` object or from the `Severity counts:` line):
    - If both `critical=0` AND `significant=0` → treat as acceptable. Log: "MEDIUM confidence with zero critical/significant issues — proceeding (remaining items require SME review)." Mark completed and proceed to next step.
    - If severity counts are unavailable, or either `critical > 0` or `significant > 0` → continue to step 5 for iteration
 5. If `MEDIUM` (with fixable issues) or `LOW` and fewer than 3 iterations completed → run the fix skill:
    ```
-   Skill: docs-tools:docs-workflow-writing, args: "<ticket> --base-path <base_path> --fix-from <base_path>/technical-review/review.md"
+   Skill: docs-tools:docs-workflow-writing, args: "<ticket> --base-path <base_path> [--repo <repo_path>]... --fix-from <base_path>/technical-review/review.md"
    ```
+   Pass `--repo` for the primary source repo and each additional source (same as the writing step's initial invocation) so the fix agent can verify review findings against source code.
    Then re-run the reviewer (go to step 1)
 6. After 3 iterations without reaching `HIGH`:
    - `MEDIUM` is acceptable — proceed with a warning that manual review is recommended
@@ -615,7 +547,7 @@ After all steps complete (or are skipped):
 2. Delete the active workflow marker: remove `.agent_workspace/.active-workflow`
 3. Display a summary:
    - List all output folders with paths
-   - Note any warnings (tech review didn't reach `HIGH`, planning had 0 modules, etc.)
+   - Note any warnings (tech review didn't reach `HIGH`, planning had 0 modules, code-analysis had 0 modules, etc.)
    - Show MR/PR URL from `steps.create-merge-request.result.url` if present
    - Show JIRA URL from `steps.create-jira.result.jira_url` (with key `result.jira_key`) if present
    - Show module count from `steps.planning.result.module_count` and file count from `steps.writing.result.files` length
@@ -641,9 +573,15 @@ User says: `"Resume docs workflow for PROJ-123"`
 
 Same as new session. The progress file shows which steps completed and which failed. Walk back to the earliest incomplete dependency and resume from there.
 
-### Context overflow resilience
+### Context management
 
-The progress file is the orchestrator's context overflow safety net. If a workflow session exhausts its context window — due to complex tickets, multiple tech review iterations, or extensive user interaction — the user resumes from a new session with a fresh 200K-token context window. All completed steps are preserved in the progress file. Output folders persist on disk. This is by design: the orchestrator is resilient to session boundaries because every decision it needs (step status, sidecar metadata, CLI flags) is recorded in the progress file, not held in memory.
+The orchestrator relies on two complementary mechanisms for context management:
+
+1. **Automatic compaction** — Claude Code automatically compresses prior conversation turns when approaching context limits. Because the orchestrator invokes step skills via the Skill tool, there are natural tool-call boundaries between steps where compaction can occur. No manual intervention is needed.
+
+2. **Progress file as authoritative state** — After compaction, prior conversation turns (argument parsing, early step logs, sidecar data) may no longer be in context. The orchestrator handles this by re-reading the progress file from disk after each step completes (see "Post-step context refresh" in the after-step checklist). The progress file records everything the orchestrator needs to continue: ticket, options (format, draft, source, PR URLs), step_order, per-step status, output paths, and sidecar result data. No workflow state is held exclusively in conversation memory.
+
+This design means the orchestrator runs the entire pipeline in a single session without forced stops. The progress file remains the safety net for genuine session interruptions (user closes the terminal, network failure, crash).
 
 ## Follow-on work
 

@@ -228,7 +228,10 @@ echo "Pushed $branch ($sha)"
 # ---------------------------------------------------------------------------
 
 mr_summary=""
-if [[ -f "$BASE_PATH/requirements/step-result.json" ]]; then
+if [[ -f "$BASE_PATH/requirements/discovery.json" ]]; then
+    mr_summary=$(jq -r '.ticket_summary // empty' "$BASE_PATH/requirements/discovery.json" 2>/dev/null || true)
+fi
+if [[ -z "$mr_summary" && -f "$BASE_PATH/requirements/step-result.json" ]]; then
     mr_summary=$(jq -r '.title // empty' "$BASE_PATH/requirements/step-result.json" 2>/dev/null || true)
 fi
 if [[ -z "$mr_summary" && -f "$BASE_PATH/requirements/requirements.md" ]]; then
@@ -237,7 +240,7 @@ if [[ -z "$mr_summary" && -f "$BASE_PATH/requirements/requirements.md" ]]; then
     mr_summary=$(echo "$mr_summary" | sed "s/^${TICKET_UPPER}[[:space:]]*[-:][[:space:]]*//I")
 fi
 mr_summary="${mr_summary:-generated documentation}"
-pr_title="docs($TICKET_UPPER): $mr_summary"
+pr_title="[AI generated docs] $TICKET_UPPER: $mr_summary"
 
 # ---------------------------------------------------------------------------
 # Build MR/PR description

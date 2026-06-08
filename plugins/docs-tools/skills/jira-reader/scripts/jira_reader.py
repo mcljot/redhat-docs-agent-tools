@@ -679,9 +679,43 @@ class JiraReader:
 
         return ancestors, errors
 
+    def _build_child_info(self, issue):
+        """Build the metadata dict for a child/sibling issue."""
+        f = issue.fields
+        return {
+            "key": issue.key,
+            "summary": f.summary,
+            "status": str(f.status) if f.status else None,
+            "issuetype": str(f.issuetype) if f.issuetype else None,
+            "priority": str(f.priority) if f.priority else None,
+            "assignee": f.assignee.displayName
+            if f.assignee and hasattr(f.assignee, "displayName")
+            else None,
+        }
+
+    def _enrich_with_remote_links(self, issues, errors):
+        """Fetch remote links, adding git_links and auto_discovered_urls."""
+        for item in issues:
+            web_links, auto_discovered, link_errors = self._fetch_remote_links(item["key"])
+            item["git_links"] = []
+            for link in web_links.get("links", []):
+                url = link.get("url", "")
+                try:
+                    host = urllib3.util.parse_url(url).host
+                except Exception:  # noqa: BLE001, S112
+                    continue
+                if host and host.startswith(("github", "www.github", "gitlab")):
+                    item["git_links"].append(url)
+            item["auto_discovered_urls"] = auto_discovered
+            errors.extend(link_errors)
+
     def _fetch_children(self, ticket_key, max_children=25):
         """
         Fetch children via parent = KEY and "Epic Link" = KEY JQL queries.
+
+        Also fetches remote links for each child and grandchild to populate
+        git_links and auto_discovered_urls, so downstream consumers
+        (extract_discovered_repos) can find PRs attached to child tickets.
 
         Returns:
             Dictionary with total, showing, skipped, and issues list.
@@ -697,19 +731,7 @@ class JiraReader:
             for issue in results:
                 if issue.key not in seen_keys:
                     seen_keys.add(issue.key)
-                    f = issue.fields
-                    issues.append(
-                        {
-                            "key": issue.key,
-                            "summary": f.summary,
-                            "status": str(f.status) if f.status else None,
-                            "issuetype": str(f.issuetype) if f.issuetype else None,
-                            "priority": str(f.priority) if f.priority else None,
-                            "assignee": f.assignee.displayName
-                            if f.assignee and hasattr(f.assignee, "displayName")
-                            else None,
-                        }
-                    )
+                    issues.append(self._build_child_info(issue))
         except Exception as e:
             errors.append(f"Children query (parent field): {e}")
 
@@ -721,21 +743,29 @@ class JiraReader:
                 for issue in results:
                     if issue.key not in seen_keys:
                         seen_keys.add(issue.key)
-                        f = issue.fields
-                        issues.append(
-                            {
-                                "key": issue.key,
-                                "summary": f.summary,
-                                "status": str(f.status) if f.status else None,
-                                "issuetype": str(f.issuetype) if f.issuetype else None,
-                                "priority": str(f.priority) if f.priority else None,
-                                "assignee": f.assignee.displayName
-                                if f.assignee and hasattr(f.assignee, "displayName")
-                                else None,
-                            }
-                        )
+                        issues.append(self._build_child_info(issue))
             except Exception as e:
                 errors.append(f"Children query (Epic Link): {e}")
+
+        self._enrich_with_remote_links(issues, errors)
+
+        # Fetch grandchildren (children of children) with remote links
+        child_keys = [c["key"] for c in issues]
+        if child_keys:
+            keys_csv = ", ".join(child_keys)
+            jql_gc = f"parent in ({keys_csv}) ORDER BY status ASC, key ASC"
+            try:
+                gc_results = self.jira.search_issues(jql_gc, maxResults=max_children * 3)
+                grandchildren = []
+                for issue in gc_results:
+                    if issue.key not in seen_keys:
+                        seen_keys.add(issue.key)
+                        gc_info = self._build_child_info(issue)
+                        grandchildren.append(gc_info)
+                self._enrich_with_remote_links(grandchildren, errors)
+                issues.extend(grandchildren)
+            except Exception as e:
+                errors.append(f"Grandchildren query: {e}")
 
         showing = min(len(issues), max_children)
         issues = issues[:max_children]
@@ -796,9 +826,10 @@ class JiraReader:
 
     def _extract_issue_links(self, issue, max_links=15):
         """
-        Extract issue link summaries from an issue object.
+        Extract issue link summaries and fetch their remote links.
 
-        No additional API calls needed — data is embedded in the issuelinks field.
+        Link metadata comes from the embedded issuelinks field. Remote links
+        are fetched per linked issue to populate git_links/auto_discovered_urls.
         """
         raw_links = issue.fields.issuelinks if hasattr(issue.fields, "issuelinks") else []
         links = []
@@ -837,12 +868,16 @@ class JiraReader:
 
         total = len(raw_links)
         showing = len(links)
+
+        link_errors = []
+        self._enrich_with_remote_links(links, link_errors)
+
         return {
             "total": total,
             "showing": showing,
             "skipped": max(0, total - showing),
             "links": links,
-        }
+        }, link_errors
 
     def _classify_url(self, url):
         """Classify a URL as 'pull_request', 'google_doc', or 'other'."""
@@ -1104,8 +1139,9 @@ class JiraReader:
             )
             all_errors.extend(errors)
 
-        # Step 6: Extract issue links (no extra API calls)
-        issue_links = self._extract_issue_links(issue, max_links)
+        # Step 6: Extract issue links and fetch their remote links
+        issue_links, errors = self._extract_issue_links(issue, max_links)
+        all_errors.extend(errors)
 
         # Step 7: Fetch remote/web links and classify URLs
         web_links, auto_discovered, errors = self._fetch_remote_links(ticket_key)

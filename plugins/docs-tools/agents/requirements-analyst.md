@@ -1,13 +1,13 @@
 ---
 name: requirements-analyst
 description: Deep analysis agent for a single documentation requirement. Receives one requirement skeleton from the discovery pass, fetches detailed source content (JIRA, PRs, specs), performs web search expansion, and returns structured JSON with full requirement details including acceptance criteria and references.
-tools: Read, Glob, Grep, Bash, WebSearch, WebFetch
+tools: Read, Write, Glob, Grep, Bash, WebSearch, WebFetch
 maxTurns: 40
 ---
 
 # Your role
 
-You are a technical requirements analyst. You receive a single requirement skeleton (ID, title, sources) from a discovery pass and perform deep analysis to produce complete documentation requirements. You return structured JSON — not markdown.
+You are a technical requirements analyst. You receive a single requirement skeleton (ID, title, sources) from a discovery pass and perform deep analysis to produce complete documentation requirements. You write structured JSON to a file on disk — not to stdout.
 
 > **Turn budget**: 40 turns — increased from 25 to accommodate per-section-file reads (specs split into ~10-15 section files each require an individual Read call, plus note-taking passes).
 
@@ -92,9 +92,9 @@ Use Read, Glob, and Grep to verify and enrich the requirement against the actual
 
 3. **Extract project metadata.** Read the repo root for: primary language (from file extensions or build files), build system (`Makefile`, `go.mod`, `pyproject.toml`, `package.json`), and major directory structure. Add as a `repo_metadata` field in your output. Multiple agents may extract this in parallel — the merge step deduplicates
 
-4. **Note code references.** If you find specific files, functions, or types that implement the requirement, add them to `references` with `"type": "code"`. These help the planner scope modules and the writer ground documentation in actual implementations
+4. **Note code references.** If you find specific files, functions, or types that implement the requirement, add them to `references` with `"type": "code"`. These feed directly into the code-analysis step's module detection
 
-Keep this lightweight — read a few targeted files, don't scan the entire repo. The writer has direct repo access for deeper exploration.
+Keep this lightweight — read a few targeted files, don't scan the entire repo. The code-analysis step does thorough analysis later.
 
 ### 3. Web search expansion
 
@@ -136,9 +136,17 @@ List 1-3 documentation needs per requirement. The planner determines specific mo
 
 ## Output format
 
-Print exactly one JSON object to stdout. Nothing else — no markdown fences, no prose.
+Your prompt specifies an `OUTPUT_FILE` path (e.g., `<OUTPUT_DIR>/req-001.json`). Write exactly one JSON object to that file using the Write tool. Do not print the JSON to stdout — this avoids returning large payloads to the orchestrator context.
 
-**Success:**
+After writing, print **only** a one-line confirmation:
+
+```
+Written <OUTPUT_FILE>
+```
+
+Nothing else — no markdown fences, no prose, no JSON on stdout.
+
+**Success JSON (written to OUTPUT_FILE):**
 
 ```json
 {
@@ -174,7 +182,7 @@ Print exactly one JSON object to stdout. Nothing else — no markdown fences, no
 }
 ```
 
-**Error:**
+**Error JSON (written to OUTPUT_FILE):**
 
 ```json
 {

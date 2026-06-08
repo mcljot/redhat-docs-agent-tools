@@ -526,6 +526,17 @@ class GitReviewAPI(ABC):
         """
         ...
 
+    @abstractmethod
+    def get_metadata(self) -> Dict:
+        """
+        Get combined PR/MR metadata in a normalized schema.
+
+        Returns:
+            Dictionary with: platform, pr_number, title, description, state,
+            author, base_branch, head_branch, labels, commits, changed_files, url.
+        """
+        ...
+
     # -------------------------------------------------------------------------
     # Shared concrete methods
     # -------------------------------------------------------------------------
@@ -842,7 +853,7 @@ class GitHubReviewAPI(GitReviewAPI):
         self._diff_cache[cache_key] = diff
         return diff
 
-    def _fetch_bulk_diff(self, file_path: Optional[str] = None) -> str:
+    def _fetch_bulk_diff(self, _file_path: Optional[str] = None) -> str:
         """Tier 1: Fetch full diff via GitHub's bulk diff API endpoint."""
         url = f"https://api.github.com/repos/{self.owner_repo}/pulls/{self.pr_number}"
         headers = {
@@ -1152,6 +1163,57 @@ class GitHubReviewAPI(GitReviewAPI):
         finally:
             self._filters = original_filters
 
+    def get_metadata(self) -> Dict:
+        """Get combined PR metadata in a normalized schema."""
+        info = self.get_pr_info()
+        files = self.get_changed_files()
+
+        author = self._pr.user.login if self._pr.user else ""
+        labels = [label.name for label in self._pr.labels]
+
+        commits = []
+        for c in self._pr.get_commits():
+            commits.append(
+                {
+                    "sha": c.sha[:12],
+                    "message": c.commit.message.split("\n")[0],
+                    "author": c.author.login
+                    if c.author
+                    else (c.commit.author.name if c.commit.author else ""),
+                }
+            )
+
+        if self._pr.merged:
+            state = "merged"
+        elif self._pr.draft:
+            state = "draft"
+        else:
+            state = self._pr.state.lower()
+
+        status_map = {
+            "removed": "deleted",
+            "copied": "added",
+            "changed": "modified",
+            "unchanged": "modified",
+        }
+        for f in files:
+            f["status"] = status_map.get(f["status"], f["status"])
+
+        return {
+            "platform": "github",
+            "pr_number": self.pr_number,
+            "title": info["title"],
+            "description": info.get("body", ""),
+            "state": state,
+            "author": author,
+            "base_branch": info["base_ref"],
+            "head_branch": info["head_ref"],
+            "labels": labels,
+            "commits": commits,
+            "changed_files": files,
+            "url": self.url,
+        }
+
 
 # =============================================================================
 # GitLab implementation
@@ -1424,7 +1486,7 @@ class GitLabReviewAPI(GitReviewAPI):
             description = self._mr.description or ""
 
             changes = self._mr.changes()
-            file_diffs = changes.get("changes", [])
+            file_diffs = changes["changes"]  # type: ignore[index]
 
             diffs: List[Dict] = []
             total_files = len(file_diffs)
@@ -1460,6 +1522,48 @@ class GitLabReviewAPI(GitReviewAPI):
             return {"error": f"Failed to fetch MR from {self.url}: {str(e)}", "url": self.url}
         finally:
             self._filters = original_filters
+
+    def get_metadata(self) -> Dict:
+        """Get combined MR metadata in a normalized schema."""
+        info = self.get_pr_info()
+        files = self.get_changed_files()
+
+        author_obj = getattr(self._mr, "author", {}) or {}
+        author = author_obj.get("username", author_obj.get("name", ""))
+
+        labels = list(getattr(self._mr, "labels", []) or [])
+
+        commits = []
+        try:
+            for c in self._mr.commits():
+                commits.append(
+                    {
+                        "sha": c.id[:12],
+                        "message": c.message.split("\n")[0],
+                        "author": c.author_name or "",
+                    }
+                )
+        except Exception:  # noqa: BLE001, S110
+            pass
+
+        state = getattr(self._mr, "state", "").lower()
+        if state == "opened":
+            state = "open"
+
+        return {
+            "platform": "gitlab",
+            "pr_number": self.mr_id,
+            "title": info["title"],
+            "description": info.get("body", ""),
+            "state": state,
+            "author": author,
+            "base_branch": info["base_ref"],
+            "head_branch": info["head_ref"],
+            "labels": labels,
+            "commits": commits,
+            "changed_files": files,
+            "url": self.url,
+        }
 
 
 # =============================================================================
@@ -1716,9 +1820,12 @@ def cmd_diff(args) -> int:
     max_files = getattr(args, "max_files", 1000) or 1000
 
     try:
-        diff = api.get_diff(ignore_patterns=ignore_patterns, max_files=max_files)
+        if isinstance(api, GitHubReviewAPI):
+            diff = api.get_diff(ignore_patterns=ignore_patterns, max_files=max_files)
+        else:
+            diff = api.get_diff()
 
-        used_blobless = hasattr(api, "_blobless_total_files")
+        used_blobless = isinstance(api, GitHubReviewAPI) and hasattr(api, "_blobless_total_files")
 
         if args.save_diff:
             save_path = args.save_diff
@@ -1731,7 +1838,7 @@ def cmd_diff(args) -> int:
                 "files": _parse_diff_file_stats(diff),
             }
 
-            if used_blobless:
+            if used_blobless and isinstance(api, GitHubReviewAPI):
                 manifest["diff_mode"] = "blobless_clone"
                 manifest["total_files_in_pr"] = api._blobless_total_files
                 manifest["files_after_filter"] = api._blobless_filtered_files
@@ -1779,7 +1886,8 @@ def cmd_post(args) -> int:
         "technical": "Claude Code docs technical review",
         "style": "Claude Code docs style review",
     }
-    signoff = signoff_map.get(getattr(args, "review_type", None), "Claude Code docs review")
+    review_type = getattr(args, "review_type", None) or ""
+    signoff = signoff_map.get(review_type, "Claude Code docs review")
 
     try:
         result = api.post_comments(comments, dry_run=args.dry_run, signoff=signoff)
@@ -2049,6 +2157,321 @@ def cmd_detect(args) -> int:
         return 1
 
 
+# =============================================================================
+# Shared helpers for resolve and clone subcommands
+# =============================================================================
+
+
+def _run_git_cmd(args: List[str], cwd: Optional[str] = None, check: bool = True):
+    """Run a git command and return the CompletedProcess."""
+    result = subprocess.run(  # noqa: S603
+        ["git"] + args,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+    )
+    if check and result.returncode != 0:
+        raise subprocess.CalledProcessError(
+            result.returncode, ["git"] + args, result.stdout, result.stderr
+        )
+    return result
+
+
+def _normalize_git_url(url: str) -> str:
+    """Normalize a git URL for comparison (strip .git suffix and trailing slash)."""
+    return url.rstrip("/").removesuffix(".git")
+
+
+def _extract_pr_number(pr_url: Optional[str]) -> Optional[int]:
+    """Extract the PR/MR number from a GitHub PR or GitLab MR URL."""
+    if not pr_url:
+        return None
+    m = re.search(r"/pull/(\d+)", pr_url)
+    if m:
+        return int(m.group(1))
+    m = re.search(r"/merge_requests/(\d+)", pr_url)
+    if m:
+        return int(m.group(1))
+    return None
+
+
+# =============================================================================
+# resolve subcommand — PR/MR metadata via PyGithub / python-gitlab
+# =============================================================================
+
+
+def resolve_pr_info(pr_url: str) -> Dict:
+    """Resolve PR/MR metadata from a URL using the native API clients.
+
+    Uses PyGithub for GitHub PRs and python-gitlab for GitLab MRs —
+    the same clients already used by the rest of git_pr_reader.
+
+    Returns a dict with: repo_url, branch (null if merged), state,
+    platform, pr_number, base_ref.
+    """
+    api = GitReviewAPI.from_url(pr_url)
+    info = api.get_pr_info()
+
+    if isinstance(api, GitHubReviewAPI):
+        is_merged = api._pr.merged
+        state = "MERGED" if is_merged else api._pr.state.upper()
+        return {
+            "repo_url": f"https://github.com/{api.owner_repo}.git",
+            "branch": None if is_merged else info["head_ref"],
+            "state": state,
+            "platform": "github",
+            "pr_number": api.pr_number,
+            "base_ref": info["base_ref"],
+        }
+    elif isinstance(api, GitLabReviewAPI):
+        state = api._mr.state
+        is_merged = state == "merged"
+        return {
+            "repo_url": f"{api.base_url}/{api.project_path}.git",
+            "branch": None if is_merged else info["head_ref"],
+            "state": state,
+            "platform": "gitlab",
+            "pr_number": api.mr_id,
+            "base_ref": info["base_ref"],
+        }
+
+    raise ValueError(f"Unsupported platform for URL: {pr_url}")
+
+
+def cmd_resolve(args) -> int:
+    """Handle 'resolve' subcommand — resolve PR/MR metadata via gh/glab CLI."""
+    try:
+        result = resolve_pr_info(args.pr_url)
+    except (ValueError, subprocess.CalledProcessError) as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}))
+        else:
+            print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(f"Repo: {result['repo_url']}")
+        print(f"Branch: {result['branch'] or '(merged/deleted)'}")
+        print(f"State: {result['state']}")
+        print(f"Platform: {result['platform']}")
+        if result.get("pr_number"):
+            print(f"PR: #{result['pr_number']}")
+        print(f"Base: {result['base_ref']}")
+
+    return 0
+
+
+def cmd_metadata(args) -> int:
+    """Handle 'metadata' subcommand — combined PR/MR metadata."""
+    try:
+        api = GitReviewAPI.from_url(args.pr_url)
+    except (ValueError, RuntimeError, ImportError) as e:
+        print(json.dumps({"error": str(e)}))
+        return 1
+
+    try:
+        result = api.get_metadata()
+
+        if args.diff_output:
+            diff = api.get_diff()
+            os.makedirs(os.path.dirname(args.diff_output) or ".", exist_ok=True)
+            with open(args.diff_output, "w") as f:
+                f.write(diff)
+
+        print(json.dumps(result, indent=2))
+    except Exception as e:
+        print(json.dumps({"error": f"Failed to fetch metadata: {str(e)}"}))
+        return 1
+
+    return 0
+
+
+# =============================================================================
+# clone subcommand — fork-aware git clone with configurable depth
+# =============================================================================
+
+
+def clone_repo(
+    repo_url: str,
+    output_dir: str,
+    depth: int = 1,
+    ref: Optional[str] = None,
+    pr_url: Optional[str] = None,
+    dry_run: bool = False,
+) -> Dict:
+    """Clone a repository with fork-aware PR ref fallback.
+
+    Args:
+        repo_url: Remote git URL to clone.
+        output_dir: Target directory for the clone.
+        depth: Clone depth (0 = full history, default 1).
+        ref: Branch/tag/commit to checkout.
+        pr_url: PR/MR URL for fork ref fallback.
+        dry_run: If True, return success without cloning.
+
+    Returns:
+        Dict with status, path, ref, method.
+    """
+    if dry_run:
+        return {"status": "cloned", "path": output_dir, "ref": ref, "method": "dry_run"}
+
+    depth_args = [] if depth == 0 else ["--depth", str(depth)]
+
+    if ref:
+        result = _run_git_cmd(
+            ["clone"] + depth_args + ["--branch", ref, repo_url, output_dir],
+            check=False,
+        )
+        if result.returncode == 0:
+            return {"status": "cloned", "path": output_dir, "ref": ref, "method": "branch"}
+
+        # Fallback: clone default branch, then try to checkout the ref
+        result = _run_git_cmd(
+            ["clone"] + depth_args + [repo_url, output_dir],
+            check=False,
+        )
+        if result.returncode != 0:
+            return {"status": "error", "message": f"Clone failed: {result.stderr.strip()}"}
+
+        fetch = _run_git_cmd(["fetch", "origin", ref], cwd=output_dir, check=False)
+        if fetch.returncode == 0:
+            checkout = _run_git_cmd(["checkout", "FETCH_HEAD"], cwd=output_dir, check=False)
+            if checkout.returncode == 0:
+                return {"status": "cloned", "path": output_dir, "ref": ref, "method": "fetch"}
+
+        # Branch not on origin — try PR ref for fork-based PRs
+        pr_number = _extract_pr_number(pr_url)
+        if pr_number:
+            pr_ref = (
+                f"refs/merge-requests/{pr_number}/head"
+                if "gitlab" in repo_url
+                else f"refs/pull/{pr_number}/head"
+            )
+            pr_fetch = _run_git_cmd(
+                ["fetch", "origin", pr_ref],
+                cwd=output_dir,
+                check=False,
+            )
+            if pr_fetch.returncode == 0:
+                checkout = _run_git_cmd(
+                    ["checkout", "FETCH_HEAD"],
+                    cwd=output_dir,
+                    check=False,
+                )
+                if checkout.returncode == 0:
+                    print(
+                        f"Checked out PR #{pr_number} via {pr_ref}"
+                        f" (fork branch '{ref}' not on origin).",
+                        file=sys.stderr,
+                    )
+                    return {"status": "cloned", "path": output_dir, "ref": ref, "method": "pr_ref"}
+
+        print(
+            f"WARNING: Cloned {repo_url} but ref '{ref}' not found"
+            f" (branch may be in a fork or deleted after merge)."
+            f" Using default branch.",
+            file=sys.stderr,
+        )
+        return {"status": "cloned", "path": output_dir, "ref": None, "method": "default"}
+
+    # No ref specified — clone default branch
+    result = _run_git_cmd(
+        ["clone"] + depth_args + [repo_url, output_dir],
+        check=False,
+    )
+    if result.returncode != 0:
+        return {"status": "error", "message": f"Clone failed: {result.stderr.strip()}"}
+    return {"status": "cloned", "path": output_dir, "ref": None, "method": "default"}
+
+
+def verify_clone(
+    path: str,
+    ref: Optional[str] = None,
+    expected_url: Optional[str] = None,
+) -> Dict:
+    """Verify an existing clone is valid, optionally checking out a ref.
+
+    Returns:
+        Dict with status ("valid"/"invalid"), path, current_ref, and optional reason.
+    """
+    result = _run_git_cmd(["rev-parse", "HEAD"], cwd=path, check=False)
+    if result.returncode != 0:
+        return {"status": "invalid", "path": path, "reason": "Not a git repository"}
+
+    if expected_url:
+        origin = _run_git_cmd(["remote", "get-url", "origin"], cwd=path, check=False)
+        if origin.returncode != 0:
+            return {"status": "invalid", "path": path, "reason": "No origin remote"}
+        if _normalize_git_url(origin.stdout.strip()) != _normalize_git_url(expected_url):
+            return {
+                "status": "invalid",
+                "path": path,
+                "reason": f"Origin URL mismatch: expected {expected_url}, "
+                f"got {origin.stdout.strip()}",
+            }
+
+    current = _run_git_cmd(["rev-parse", "--abbrev-ref", "HEAD"], cwd=path, check=False)
+    current_ref = current.stdout.strip() if current.returncode == 0 else None
+
+    if ref and current_ref != ref:
+        fetch = _run_git_cmd(["fetch", "origin", ref], cwd=path, check=False)
+        if fetch.returncode != 0:
+            print(
+                f"WARNING: Could not fetch ref '{ref}' in {path} "
+                f"(branch may have been deleted after merge). Using clone at HEAD.",
+                file=sys.stderr,
+            )
+        else:
+            checkout = _run_git_cmd(["checkout", ref], cwd=path, check=False)
+            if checkout.returncode != 0:
+                fallback = _run_git_cmd(["checkout", "FETCH_HEAD"], cwd=path, check=False)
+                if fallback.returncode != 0:
+                    print(
+                        f"WARNING: Fetched ref '{ref}' but checkout failed in {path}. "
+                        f"Using clone at HEAD.",
+                        file=sys.stderr,
+                    )
+                else:
+                    current_ref = ref
+            else:
+                current_ref = ref
+
+    return {"status": "valid", "path": path, "current_ref": current_ref}
+
+
+def cmd_clone(args) -> int:
+    """Handle 'clone' subcommand — fork-aware git clone or verify existing clone."""
+    if args.verify:
+        result = verify_clone(
+            path=args.verify,
+            ref=args.ref,
+            expected_url=args.expected_url,
+        )
+        print(json.dumps(result, indent=2))
+        return 0 if result["status"] == "valid" else 1
+
+    if not args.repo_url:
+        print("Error: repo_url is required for clone mode", file=sys.stderr)
+        return 1
+
+    if not args.output_dir:
+        print("Error: --output-dir is required for clone mode", file=sys.stderr)
+        return 1
+
+    result = clone_repo(
+        repo_url=args.repo_url,
+        output_dir=args.output_dir,
+        depth=args.depth,
+        ref=args.ref,
+        pr_url=args.pr_url,
+        dry_run=args.dry_run,
+    )
+    print(json.dumps(result, indent=2))
+    return 0 if result["status"] != "error" else 1
+
+
 def _parse_git_remote(remote_url: str) -> Tuple[Optional[str], Optional[str]]:
     """
     Parse a git remote URL to extract host and project path.
@@ -2121,6 +2544,14 @@ Examples:
   # Auto-detect PR/MR for current branch
   %(prog)s detect
   %(prog)s detect --json
+
+  # Resolve PR/MR metadata (branch, state) via gh/glab CLI
+  %(prog)s resolve https://github.com/owner/repo/pull/123 --json
+
+  # Clone a repo (fork-aware, configurable depth)
+  %(prog)s clone https://github.com/owner/repo.git --output-dir /tmp/repo
+  %(prog)s clone https://github.com/owner/repo.git --output-dir /tmp/repo --depth 0
+  %(prog)s clone --verify /tmp/repo --ref main
 """,
     )
 
@@ -2277,6 +2708,74 @@ Examples:
         help="Output as JSON with platform and branch info",
     )
 
+    # -- resolve subcommand --------------------------------------------------
+    resolve_parser = subparsers.add_parser(
+        "resolve",
+        help="Resolve PR/MR metadata (branch, state, repo URL) via gh/glab CLI",
+    )
+    resolve_parser.add_argument("pr_url", help="GitHub PR or GitLab MR URL")
+    resolve_parser.add_argument(
+        "--json",
+        action="store_true",
+        default=True,
+        help="Output as JSON (default)",
+    )
+
+    # -- metadata subcommand -------------------------------------------------
+    metadata_parser = subparsers.add_parser(
+        "metadata",
+        help="Get combined PR/MR metadata (author, labels, commits, files, state)",
+    )
+    metadata_parser.add_argument("pr_url", help="GitHub PR or GitLab MR URL")
+    metadata_parser.add_argument(
+        "--diff-output",
+        metavar="PATH",
+        help="Also save the unified diff to this file path",
+    )
+
+    # -- clone subcommand ----------------------------------------------------
+    clone_parser = subparsers.add_parser(
+        "clone",
+        help="Clone a repo (fork-aware) or verify an existing clone",
+    )
+    clone_parser.add_argument(
+        "repo_url",
+        nargs="?",
+        help="Remote git URL to clone",
+    )
+    clone_parser.add_argument(
+        "--output-dir",
+        help="Target directory for the clone",
+    )
+    clone_parser.add_argument(
+        "--depth",
+        type=int,
+        default=1,
+        help="Clone depth (0 = full history, default: 1)",
+    )
+    clone_parser.add_argument(
+        "--ref",
+        help="Branch, tag, or commit to checkout after cloning",
+    )
+    clone_parser.add_argument(
+        "--pr-url",
+        help="PR/MR URL for fork ref fallback (refs/pull/N/head)",
+    )
+    clone_parser.add_argument(
+        "--verify",
+        metavar="PATH",
+        help="Verify an existing clone instead of cloning",
+    )
+    clone_parser.add_argument(
+        "--expected-url",
+        help="Expected origin URL (used with --verify)",
+    )
+    clone_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Return success without cloning",
+    )
+
     # -- parse and dispatch --------------------------------------------------
     args = parser.parse_args()
 
@@ -2293,6 +2792,9 @@ Examples:
         "post": cmd_post,
         "extract": cmd_extract,
         "detect": cmd_detect,
+        "resolve": cmd_resolve,
+        "metadata": cmd_metadata,
+        "clone": cmd_clone,
     }
 
     handler = handlers.get(args.command)

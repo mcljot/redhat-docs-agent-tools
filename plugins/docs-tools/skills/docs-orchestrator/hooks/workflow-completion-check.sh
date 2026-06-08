@@ -101,7 +101,7 @@ done
 
 if [ -n "$NEXT_STEP" ]; then
   echo "$((COUNT + 1))" > "$COUNTER_FILE"
-  echo "Documentation workflow '$WORKFLOW_TYPE' for $TICKET is not complete. Next step: $NEXT_STEP. Continue the workflow." >&2
+  echo "Documentation workflow '$WORKFLOW_TYPE' for $TICKET is not complete. Next step: $NEXT_STEP. Read the progress file at $PROGRESS_FILE then continue the workflow." >&2
   exit 2
 fi
 

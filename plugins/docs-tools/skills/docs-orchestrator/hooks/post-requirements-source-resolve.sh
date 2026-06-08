@@ -2,7 +2,7 @@
 # post-requirements-source-resolve.sh
 #
 # PostToolUse hook (Write|Edit): after the requirements step writes its
-# step-result.json, automatically run sync_progress_source.py to discover
+# step-result.json, automatically run resolve_source.py to discover
 # and sync source repos into the workflow progress file, then un-defer (or
 # skip) source-dependent steps.
 #
@@ -101,9 +101,9 @@ if [ -z "${PLUGIN_ROOT:-}" ]; then
   exit 0
 fi
 
-SYNC_SCRIPT="${PLUGIN_ROOT}/skills/docs-orchestrator/scripts/sync_progress_source.py"
-if [ ! -f "$SYNC_SCRIPT" ]; then
-  echo "post-requirements-source-resolve: sync_progress_source.py not found at $SYNC_SCRIPT" >&2
+RESOLVE_SCRIPT="${PLUGIN_ROOT}/skills/docs-orchestrator/scripts/resolve_source.py"
+if [ ! -f "$RESOLVE_SCRIPT" ]; then
+  echo "post-requirements-source-resolve: resolve_source.py not found at $RESOLVE_SCRIPT" >&2
   exit 0
 fi
 
@@ -112,24 +112,14 @@ echo "post-requirements-source-resolve: requirements completed, resolving source
 RESULT_FILE=$(mktemp)
 trap 'rm -f "$RESULT_FILE"' EXIT
 
-TICKET=$(jq -r '.ticket // empty' "$PROGRESS_FILE" 2>/dev/null)
-
-SYNC_ARGS=(
+RESOLVE_ARGS=(
   --base-path "$BASE_PATH"
   --progress-file "$PROGRESS_FILE"
   --scan-requirements
   --skip-deferred-on-no-source
 )
 
-if [ -n "$TICKET" ]; then
-  SYNC_ARGS+=(--ticket "$TICKET")
-fi
-
-if [ -n "$PLUGIN_ROOT" ]; then
-  SYNC_ARGS+=(--plugin-root "$PLUGIN_ROOT")
-fi
-
-python3 "$SYNC_SCRIPT" "${SYNC_ARGS[@]}" > "$RESULT_FILE" 2>&2
+python3 "$RESOLVE_SCRIPT" "${RESOLVE_ARGS[@]}" > "$RESULT_FILE" 2>&2
 RESOLVE_EXIT=$?
 
 if [ "$RESOLVE_EXIT" -eq 0 ]; then
@@ -143,7 +133,7 @@ elif [ "$RESOLVE_EXIT" -eq 2 ]; then
 
 else
   # Error — leave state unchanged
-  echo "post-requirements-source-resolve: sync_progress_source.py failed (exit $RESOLVE_EXIT), leaving state unchanged" >&2
+  echo "post-requirements-source-resolve: resolve_source.py failed (exit $RESOLVE_EXIT), leaving state unchanged" >&2
 fi
 
 # Write stamp regardless of outcome (prevent re-runs)
