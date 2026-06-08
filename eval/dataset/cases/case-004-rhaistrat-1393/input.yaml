@@ -1,0 +1,15 @@
+ticket: RHAISTRAT-1393
+source_repo:
+  url: https://github.com/red-hat-data-services/agentic-starter-kits
+  sha: 6022efe
+workflow: docs-workflow
+options:
+  format: adoc
+ground_truth:
+  tier: regression-baseline
+  source: "Pipeline-generated output from completed run"
+docs_repo:
+  url: https://gitlab.cee.redhat.com/documentation-red-hat-openshift-data-science-documentation/openshift-ai-documentation.git
+  sha: HEAD
+  branch: main
+docs_repo_path: /Users/dobrenna/Documents/PROJECTS/redhat-docs-agent-tools/eval/dataset/cases/case-004-rhaistrat-1393/.docs-worktree

@@ -1,0 +1,192 @@
+# Pipeline evaluation configuration for docs-orchestrator
+# Uses agent-eval-harness (https://github.com/opendatahub-io/agent-eval-harness)
+
+name: docs-pipeline-eval
+description: "Evaluate docs-orchestrator pipeline output against gold standard and baseline documentation"
+skill: docs-tools:docs-orchestrator
+
+execution:
+  mode: case
+  arguments: "{ticket} --docs-repo-path {docs_repo_path}"
+  timeout: 5400
+  max_budget_usd: 50
+  parallelism: 3
+  env:
+    JIRA_API_TOKEN: $JIRA_API_TOKEN
+    JIRA_EMAIL: $JIRA_EMAIL
+
+runner:
+  type: claude-code
+  # effort: high
+
+models:
+  skill: claude-opus-4-6
+  judge: claude-opus-4-6
+  # subagent: claude-opus-4-6
+
+permissions:
+  allow:
+    - "Read"
+    - "Write"
+    - "Edit"
+    - "Bash"
+    - "Glob"
+    - "Grep"
+    - "Skill"
+    - "Agent"
+    - "AskUserQuestion"
+  deny:
+    - "mcp__*"
+
+dataset:
+  path: eval/dataset/cases
+  schema: |
+    Each case directory contains input.yaml with fields: ticket (JIRA ID),
+    source_repo (url + sha), docs_repo (url + sha + branch for the docs repo
+    checked out to the state before the gold standard MR merged), workflow,
+    options (format), and ground_truth (tier, source). The reference/
+    subdirectory contains the target AsciiDoc files (assemblies and modules)
+    to compare against. The docs_repo_path field is resolved at runtime by
+    checking out the docs repo at the pinned SHA.
+
+inputs:
+  tools:
+    - match: "Questions asked to the user via AskUserQuestion."
+      prompt: |
+        Answer based on the test case context. Pick the first option
+        or answer "yes" for confirmations.
+
+outputs:
+  - path: .output/writing
+    schema: |
+      AsciiDoc modules and assemblies. The skill writes to the external
+      docs repo (--docs-repo-path). Run eval/scripts/collect-docs-repo-output.sh
+      after execution to copy AsciiDoc files here for collection.
+
+traces:
+  stdout: true
+  stderr: true
+  events: false
+  metrics: true
+
+judges:
+  # --- Inline checks ---
+
+  - name: files_exist
+    type: check
+    check: |
+      files = outputs.get('files', {})
+      adoc = [k for k in files if k.endswith('.adoc')]
+      return (len(adoc) >= 1, f"Found {len(adoc)} AsciiDoc files in writing output")
+
+  - name: step_results_valid
+    type: check
+    check: |
+      import json
+      mods = outputs.get('modified_files', {})
+      steps = ['requirements', 'planning', 'writing']
+      missing = []
+      for step in steps:
+        matches = [k for k in mods if step + '/step-result.json' in k]
+        if not matches:
+          missing.append(step)
+        else:
+          data = json.loads(mods[matches[0]])
+          if 'schema_version' not in data or 'step' not in data:
+            missing.append(f"{step} (invalid)")
+      return (len(missing) == 0, f"Missing/invalid: {missing}" if missing else "All step results valid")
+
+  - name: pipeline_complete
+    type: check
+    check: |
+      import json
+      mods = outputs.get('modified_files', {})
+      progress = [k for k in mods if '/workflow/' in k and k.endswith('.json')]
+      if not progress:
+        return (False, "No progress file found")
+      data = json.loads(mods[progress[0]])
+      status = data.get('status', 'unknown')
+      return (status == 'completed', f"Pipeline status: {status}")
+
+  # --- LLM judges ---
+
+  - name: doc_quality
+    type: prompt
+    prompt: |
+      You are evaluating AI-generated AsciiDoc documentation for a Red Hat product feature.
+
+      Score the documentation on a 1-5 scale:
+      1 - Unusable: major errors, fabricated content, or missing critical sections
+      2 - Poor: significant gaps in coverage or accuracy
+      3 - Acceptable: covers the basics correctly but lacks depth or polish
+      4 - Good: comprehensive, accurate, well-structured, minor issues only
+      5 - Excellent: production-ready quality, matches what a senior tech writer would produce
+
+      Consider: technical accuracy, completeness relative to the JIRA ticket scope,
+      modular documentation structure (concept/procedure/reference separation),
+      and absence of fabricated commands, flags, or API details.
+
+      ## Documentation to evaluate
+
+      {% for path, content in outputs.files.items() if path.startswith('.output/writing/') and path.endswith('.adoc') %}
+      ### {{ path }}
+
+      {{ content }}
+
+      {% endfor %}
+
+  - name: reference_comparison
+    module: eval.scripts.reference_judge
+    function: judge
+    arguments:
+      model: claude-opus-4-6
+
+  - name: intent_alignment
+    type: prompt
+    prompt: |
+      You are evaluating whether AI-generated documentation fulfills the intent
+      of the original JIRA ticket that requested it.
+
+      ## JIRA ticket intent
+
+      {{ annotations }}
+
+      ## Documentation produced
+
+      {% for path, content in outputs.files.items() if path.startswith('.output/writing/') and path.endswith('.adoc') %}
+      ### {{ path }}
+
+      {{ content }}
+
+      {% endfor %}
+
+      ## Scoring criteria
+
+      Score on a 1-5 scale based on how well the documentation fulfills the ticket's intent:
+
+      1 - Off-target: documentation covers unrelated topics or misunderstands the request
+      2 - Partially relevant: touches on the right area but misses the core ask
+      3 - Addresses the intent: covers the main topic but misses key acceptance criteria or scope items
+      4 - Strong alignment: covers the intent well, addresses most acceptance criteria, correct audience
+      5 - Full alignment: directly addresses the ticket intent, covers all acceptance criteria, matches the target audience, stays within scope
+
+      Consider:
+      - **Scope match**: does the output address what the ticket asked for, not more, not less?
+      - **Acceptance criteria coverage**: are the specific deliverables listed in the ticket addressed?
+      - **Audience alignment**: does the content match the target audience (admin vs developer vs data scientist)?
+      - **Focus**: does the output stay on-topic or wander into areas outside the ticket's scope?
+
+  - name: pairwise
+    type: prompt
+    prompt_file: eval/config/pairwise-judge.md
+
+thresholds:
+  files_exist:
+    min_pass_rate: 1.0
+  step_results_valid:
+    min_pass_rate: 1.0
+  pipeline_complete:
+    min_pass_rate: 1.0
+  doc_quality:
+    min_mean: 3.0
+  # pairwise: no threshold — informational only

@@ -1,0 +1,15 @@
+ticket: RHAISTRAT-853
+summary: "Implement Model Cache in RHOAI"
+intent: |
+  Document how to enable and use the KServe Model Cache feature in RHOAI — a shared
+  persistent caching layer that pre-pulls and stores models on disk to reduce cold
+  start latency during autoscaling.
+acceptance_criteria:
+  - "Document how to enable model caching"
+  - "Document how to configure node groups for cached models"
+  - "Document how to deploy inference services with cached models"
+  - "Explain the performance benefit — faster pod start and scale-up"
+audience: "admin (enabling/configuring cache), data scientist / ML engineer (understanding behavior)"
+scope:
+  in: "KServe model cache integration, enablement guidance, CRD configuration"
+  out: "KServe internals, upstream implementation details"
