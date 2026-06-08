@@ -138,49 +138,28 @@ The default workflow includes a **create-merge-request** step that is off by def
 
 Without the flag, the workflow ends at style-review and leaves the files as uncommitted changes in the repo, so you can create your own branch and MR manually.
 
-### Source repo in the default workflow
+### Code-analysis workflow
 
-The default workflow includes **scope-req-audit** as a conditional step. Source repo discovery is attempted automatically from JIRA links, description URLs, and PR references. If a repo is found, scope-req-audit runs:
-
-1. **requirements** — analyze documentation requirements from the JIRA ticket
-2. **scope-req-audit** — classify each requirement as grounded, partial, or absent by querying the source repo
-3. **planning** — create the documentation plan, scoping modules based on evidence status
-4. **writing** — write documentation with access to the source repo for grounding
-5. **technical-review** — verify technical accuracy against the source code
-6. **style-review** — check style guide compliance
-7. **create-merge-request** _(optional, pass `--create-merge-request` to enable)_
-
-If no repo can be discovered after both pre-flight and post-requirements resolution, the workflow **stops** with instructions. You can then resume with one of:
-
-```bash
-# Provide a repo explicitly
-/docs-orchestrator PROJ-123 --source-code-repo https://github.com/org/operator
-
-# Or skip source-dependent steps entirely
-/docs-orchestrator PROJ-123 --no-source-repo
-```
-
-The `--no-source-repo` flag skips source resolution and all source-dependent steps (scope-req-audit). The workflow runs without source grounding, producing documentation from the JIRA ticket and plan only.
-
-### Strict code-evidence variant
-
-The `workflow-code-evidence` variant is a strict-mode alternative: it adds `requires: has_source_repo` at the workflow level, failing immediately at pre-flight if no repo can be resolved (no opt-out). Use it when a source repo is mandatory:
+The `workflow-code-analysis` variant adds code-learner analysis steps to the standard pipeline: **code-analysis** (runs learn-code to produce structured analysis of the source repository — module registry, per-module summaries, cross-module relationships) and optionally **pr-analysis** (analyzes PR changes against the module registry). This workflow requires a source code repository — the orchestrator fails at load time if neither `--source-code-repo` nor `--pr` is provided.
 
 ```bash
 /docs-orchestrator PROJ-123 \
-  --workflow workflow-code-evidence \
+  --workflow workflow-code-analysis \
   --source-code-repo https://github.com/org/operator
 ```
 
 ### Multi-repo evidence retrieval
 
-When a feature spans multiple repositories, the scope-req-audit step identifies secondary repos from gap classification (absent/partial requirements whose `recommended_action` references a companion repo). The orchestrator then:
+1. **requirements** — analyze documentation requirements from the JIRA ticket
+2. **code-analysis** — run learn-code to produce ONBOARDING.md, module registry, per-module summaries, and cross-module relationship data
+3. **pr-analysis** _(conditional, runs when a PR URL is available)_ — analyze PR changes against the module registry
+4. **planning** — create the documentation plan, scoping modules based on onboarding priority (read-first, read-second, skip)
+5. **writing** — write documentation grounded in the code-learner analysis
+6. **technical-review** — verify technical accuracy with claim validation against code-learner analysis
+7. **style-review** — check style guide compliance
+8. **create-merge-request** _(optional, pass `--create-merge-request` to enable)_ — create a branch (if needed), commit, push, and open a merge request or pull request
 
-1. Presents discovered repos to the user for confirmation (or auto-confirms with `--auto-discover-repos`)
-2. Shallow-clones confirmed repos as secondary sources
-3. Makes them available to downstream steps (writing, technical review)
-4. The planner promotes absent requirements to partial when secondary evidence is available
-5. The writer uses secondary evidence for context but marks exact technical details with `[NEEDS VERIFICATION]` below 0.8 adjusted score
+Compared to the default workflow, the code-analysis variant produces documentation with fewer technical review issues because the writer has structured code understanding (module APIs, data flows, dependencies) to work from, rather than generating from the JIRA description alone.
 
 Maximum 3 secondary repos per run (configurable with `--max-secondary-repos`). Repos are ranked by the number of associated requirements.
 
@@ -251,13 +230,26 @@ In update-in-place mode, the orchestrator detects your repo's documentation fram
 
 ### Grounding documentation in source code
 
-When documenting a feature that lives in a source code repository, pass `--repo` to provide the code repository. The orchestrator clones the repo, indexes it using AST chunking and hybrid search, and retrieves relevant code snippets for each topic in the documentation plan. The writer then uses this evidence to ground its output in actual function signatures, class definitions, and configuration — rather than generating from the JIRA description alone.
+When documenting a feature that lives in a source code repository, pass `--repo` to provide the code repository. The orchestrator clones the repo, runs code-learner analysis (tree-sitter AST parsing + fan-out agents), and produces structured understanding of the codebase — module registry, per-module summaries, cross-module relationships, and an ONBOARDING.md guide. The writer then uses this analysis to ground its output in actual module APIs, data flows, and dependencies — rather than generating from the JIRA description alone.
 
 ```bash
 /docs-orchestrator PROJ-123 --repo https://github.com/org/repo
 ```
 
-When a source repo is available, the scope-req-audit step classifies each requirement against the codebase, and the writing step gets direct repo access for grounding. Without a source repo, the default workflow stops after requirements and asks the user to provide a repo or pass `--no-source-repo` to proceed without source grounding.
+The code-analysis step runs automatically when `--repo` is provided. It:
+
+1. Clones the repository (or uses it if it's a local path)
+2. Detects modules using tree-sitter AST parsing and language-specific heuristics
+3. Builds a module registry with onboarding priorities (read-first, read-second, skip)
+4. Runs per-module deep analysis agents in parallel
+5. Analyzes cross-module relationships
+6. Produces `ONBOARDING.md`, `registry.json`, per-module summaries, and relationship data
+
+Without `--repo`, the code-analysis step is skipped and the writer works from the JIRA ticket and documentation plan only.
+
+!!! tip
+
+    Code analysis is most effective when the JIRA ticket has a detailed description. A well-described ticket combined with structured code analysis produces documentation with significantly fewer technical review issues.
 
 ### Including PR context
 
@@ -273,7 +265,7 @@ Multiple `--pr` flags can be passed. The requirements analyst will read the PR d
 
 | Flag | Description |
 |------|-------------|
-| `--repo <url-or-path>` | Source code repository for scope audit and grounding |
+| `--repo <url-or-path>` | Source code repository for code-learner analysis |
 | `--pr <url>` | PR/MR URL to include in requirements analysis (repeatable) |
 | `--no-source-repo` | Skip source resolution and all source-dependent steps |
 | `--auto-discover-repos` | Skip confirmation when secondary repos are discovered |

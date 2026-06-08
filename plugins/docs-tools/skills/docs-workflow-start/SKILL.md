@@ -19,7 +19,7 @@ Same argument set as docs-orchestrator:
 - `--mkdocs` — Use Material for MkDocs format instead of AsciiDoc. Propagates to the writing step (generates `.md` with MkDocs front matter) and style-review step (applies Markdown-appropriate rules). Sets `options.format` to `"mkdocs"` in the progress file
 - `--draft` — Write documentation to the staging area (`.agent_workspace/<ticket>/writing/`) instead of directly into the repo. Uses DRAFT placement mode: no framework detection, no file placement into the target repo. Without this flag, UPDATE-IN-PLACE is the default
 - `--docs-repo-path <path>` — Target documentation repository for UPDATE-IN-PLACE mode. The docs-writer explores this directory for framework detection (Antora, MkDocs, Docusaurus, etc.) and writes files there instead of the current working directory. Propagates to `writing` and `create-merge-request` steps (mapped to their internal `--repo-path` flag). **Precedence**: if both `--docs-repo-path` and `--draft` are passed, `--docs-repo-path` wins — log a warning and ignore `--draft`
-- `--source-code-repo <url-or-path>...` — Source code repository/repositories for scope audit and requirements enrichment (space-delimited, one or more). Accepts remote URLs (https://, git@, ssh:// — each shallow-cloned to `.agent_workspace/<ticket>/code-repo/<repo_name>/`) or local paths (used directly). The first repo is treated as primary; additional repos are returned as `additional_repos` in the result. Passed to requirements, scope-req-audit, writing, and technical-review steps (mapped to their internal `--repo` flag). Without `--pr`, the entire repo is the subject matter; with `--pr`, the PR branch is checked out on the primary repo so the scope audit reflects the PR's state. Takes highest priority in source resolution, overriding `source.yaml` and PR-derived URLs
+- `--source-code-repo <url-or-path>...` — Source code repository/repositories for code analysis and requirements enrichment (space-delimited, one or more). Accepts remote URLs (https://, git@, ssh:// — each shallow-cloned to `.agent_workspace/<ticket>/code-repo/<repo_name>/`) or local paths (used directly). The first repo is treated as primary; additional repos are returned as `additional_repos` in the result. Passed to requirements, code-analysis, and writing steps (mapped to their internal `--repo` flag). Without `--pr`, the entire repo is the subject matter; with `--pr`, the PR branch is checked out on the primary repo so code-analysis reflects the PR's state. Takes highest priority in source resolution, overriding `source.yaml` and PR-derived URLs
 - `--create-merge-request` — Create a branch, commit, push, and open a merge request or pull request after reviews complete. Activates the `create-merge-request` workflow step (guarded by `when: create_merge_request`). Off by default
 - `--no-source-repo` — Skip source repo resolution and all source-dependent steps (scope-req-audit). The workflow runs without source grounding. Use for tickets with no associated source code repository, or pass on resume after the workflow stops due to no repo being found
 - `--auto-discover-repos` — Skip the confirmation prompt when secondary repos are discovered by scope-req-audit. Useful for CI/automation
@@ -82,8 +82,7 @@ You MUST call the AskUserQuestion tool now with ALL 4 questions at once. Do not 
 |--------|-------------|
 | Yes — I have a PR URL | A pull request or merge request URL |
 | Yes — I have a repo URL or path | A repository URL or local directory path |
-| Auto-discover from JIRA (Recommended) | The workflow will attempt to discover repos from the JIRA ticket's links and description. If none are found, the workflow will stop and ask you to provide a repo or skip code evidence |
-| No source code | Skip source-dependent steps entirely (uses `--no-source-repo`) |
+| No source code | Proceed without code analysis |
 
 **Q3: Where should the documentation be written?**
 
@@ -111,7 +110,7 @@ You MUST call the AskUserQuestion tool now with 1 question. Set `multiSelect: tr
 | Option | Description |
 |--------|-------------|
 | requirements | Analyze JIRA ticket and extract documentation requirements |
-| scope-req-audit | Classify requirements by code evidence status |
+| code-analysis | Analyze source repository with code-learner |
 | writing | Write documentation from an existing plan |
 | technical-review | Review existing documentation for technical accuracy |
 
@@ -122,7 +121,7 @@ For steps not listed (planning, style-review, create-merge-request), the user ca
 After receiving the answer, determine which configuration questions are relevant:
 
 - **Format?** — include if any of these steps are selected: writing, style-review
-- **Source code?** — include if scope-req-audit is selected
+- **Source code?** — include if code-analysis is selected
 - **Placement?** — include if any of these steps are selected: writing, create-merge-request
 - **Create MR/PR?** — include if create-merge-request is selected
 
@@ -308,6 +307,7 @@ Skill: <step.skill>, args: "<ticket> --base-path <BASE_PATH> <step-specific-flag
 |------|---------------------------------------|
 | requirements | `[--pr <url>]... [--repo <repo_path>]` |
 | planning | _(none)_ |
+| code-analysis | `--repo <repo_path>` |
 | writing | `--format <adoc\|mkdocs> [--draft] [--repo <repo_path>] [--repo-path <path>]` |
 | style-review | `--format <adoc\|mkdocs>` |
 | technical-review | _(none)_ |
@@ -331,4 +331,4 @@ After all steps complete, display a summary:
 > - writing: .agent_workspace/proj-123/writing/
 >
 > **Skipped steps:**
-> - scope-req-audit: no source repository configured
+> - code-analysis: no source repository configured

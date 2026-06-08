@@ -21,7 +21,6 @@ All sidecars share these fields:
 | `step` | string | Step name matching the YAML step list (e.g., `"requirements"`) |
 | `ticket` | string | JIRA ticket ID as provided by the user (preserves original case) |
 | `completed_at` | string | ISO 8601 timestamp of when the step finished |
-| `context_size_bytes` | integer (optional) | Total bytes of the step's output files. Used by the orchestrator for size logging. Consumers can estimate tokens as `context_size_bytes // 3` |
 
 ## Per-step extensions
 
@@ -50,22 +49,24 @@ All sidecars share these fields:
   "ticket": "PROJ-123",
   "completed_at": "2026-04-23T14:35:00Z",
   "recommendation": "proceed",
-  "grounded": 6,
+  "grounded": 8,
   "partial": 2,
   "absent": 1,
-  "total": 9,
-  "discovered_repos_count": 2
+  "total": 11,
+  "discovered_repos_count": 2,
+  "secondary_repos_count": 1
 }
 ```
 
 | Field | Type | Description | Consumed by |
 |---|---|---|---|
 | `recommendation` | string | `"proceed"`, `"gather-more"`, or `"review-needed"` | Orchestrator — post-step logging |
-| `grounded` | integer | Requirements with strong code evidence | Orchestrator — post-step logging |
-| `partial` | integer | Requirements with weak or ambiguous evidence | Orchestrator — post-step logging |
-| `absent` | integer | Requirements with no code evidence | Orchestrator — post-step logging |
+| `grounded` | integer | Count of grounded requirements | Orchestrator — post-step logging |
+| `partial` | integer | Count of partial requirements | Orchestrator — post-step logging |
+| `absent` | integer | Count of absent requirements | Orchestrator — post-step logging |
 | `total` | integer | Total requirements classified | Orchestrator — post-step logging |
-| `discovered_repos_count` | integer | Number of related repos found but not indexed | Orchestrator — post-step logging |
+| `discovered_repos_count` | integer | Count of repos found in README/docs | Orchestrator — post-step logging |
+| `secondary_repos_count` | integer | Count of repos from gap classification actions | Orchestrator — post-step logging |
 
 ### planning
 
@@ -82,6 +83,50 @@ All sidecars share these fields:
 | Field | Type | Description | Consumed by |
 |---|---|---|---|
 | `module_count` | integer | Number of documentation modules in the plan | Informational (orchestrator summary) |
+
+### code-analysis
+
+```json
+{
+  "schema_version": 1,
+  "step": "code-analysis",
+  "ticket": "PROJ-123",
+  "completed_at": "2026-04-23T14:40:00Z",
+  "module_count": 12,
+  "relationship_count": 8,
+  "languages_detected": ["go", "python"],
+  "repo_path": "/home/user/docs-repo/.agent_workspace/proj-123/code-repo/my-project"
+}
+```
+
+| Field | Type | Description | Consumed by |
+|---|---|---|---|
+| `module_count` | integer | Number of modules analyzed by learn-code | Informational (orchestrator summary) |
+| `relationship_count` | integer | Number of cross-module relationships discovered | Informational (orchestrator summary) |
+| `languages_detected` | string[] | Programming languages found in the repo | Informational |
+| `repo_path` | string | Absolute path to the analyzed source repository | Informational |
+
+### pr-analysis
+
+```json
+{
+  "schema_version": 1,
+  "step": "pr-analysis",
+  "ticket": "PROJ-123",
+  "completed_at": "2026-04-23T14:50:00Z",
+  "pr_number": 42,
+  "pr_url": "https://github.com/org/repo/pull/42",
+  "modules_affected": 3,
+  "platform": "github"
+}
+```
+
+| Field | Type | Description | Consumed by |
+|---|---|---|---|
+| `pr_number` | integer | PR/MR number | Informational |
+| `pr_url` | string | Full URL to the PR/MR | Informational |
+| `modules_affected` | integer | Number of modules with changes in the PR | Informational (orchestrator summary) |
+| `platform` | string | `"github"` or `"gitlab"` | Informational |
 
 ### writing
 
@@ -136,7 +181,7 @@ All sidecars share these fields:
 | `severity_counts.minor` | integer | Minor issues found | Orchestrator |
 | `severity_counts.sme` | integer | Issues requiring SME verification | Orchestrator |
 | `iteration` | integer | Which iteration of review this represents (1-based) | Orchestrator |
-| `code_grounded` | boolean | Whether the code-grounded pre-scan ran (source repo was available and `grounded_review.py` succeeded) | Informational |
+| `code_grounded` | boolean | Whether code-learner analysis was available for claim validation (code-analysis step completed) | Informational |
 
 ### style-review
 
@@ -150,26 +195,6 @@ All sidecars share these fields:
 ```
 
 No extra fields. Common schema only.
-
-### code-evidence
-
-```json
-{
-  "schema_version": 1,
-  "step": "code-evidence",
-  "ticket": "PROJ-123",
-  "completed_at": "2026-04-23T15:00:00Z",
-  "topic_count": 8,
-  "snippet_count": 42,
-  "repo_path": "/home/user/docs-repo/.agent_workspace/proj-123/code-repo/my-project"
-}
-```
-
-| Field | Type | Description | Consumed by |
-|---|---|---|---|
-| `topic_count` | integer | Number of search topics extracted from the plan | Informational (orchestrator summary) |
-| `snippet_count` | integer | Total code snippets retrieved across all topics (source + context) | Informational (orchestrator summary) |
-| `repo_path` | string | Absolute path to the source repository searched | Informational |
 
 ### create-merge-request
 

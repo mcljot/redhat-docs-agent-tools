@@ -1,27 +1,21 @@
 ---
 name: docs-workflow-scope-req-audit
-description: Classify JIRA requirements by code evidence status before planning. Fans out one subagent per requirement for isolated classification — each subagent queries the code-finder index independently, keeping context clean regardless of requirement count. Prevents hallucinated documentation for unimplemented features and surfaces gaps for implemented ones. Conditional on has_source_repo.
-argument-hint: <ticket> --base-path <path> --repo <path> [--grounded-threshold <float>] [--absent-threshold <float>]
-allowed-tools: Read, Write, Glob, Grep, Bash, Agent
+description: Classify JIRA requirements by code evidence status before planning. Uses learn-code analysis data and source code inspection to determine if each requirement is grounded, partial, or absent. Fans out one subagent per requirement for isolated classification. Prevents hallucinated documentation for unimplemented features and surfaces gaps for implemented ones. Conditional on has_source_repo.
+argument-hint: <ticket> --base-path <path> --repo <path>
+allowed-tools: Read, Write, Glob, Grep, Bash, Agent, Skill
 ---
 
 # Scope Requirements Audit Step
 
 Step skill for the docs-orchestrator pipeline. Follows the step skill contract: **parse args → fan out → merge → write output**.
 
-This skill classifies each JIRA requirement from the requirements step as grounded, partial, or absent by dispatching one subagent per requirement. Each subagent queries the code-finder index independently with a clean context window. The planning step then uses these classifications to scope documentation modules — grounded requirements get full specs, partial ones are flagged for SME review, and absent ones are deferred to prevent documenting unimplemented features.
-
-## Prerequisites
-
-- **code-finder** Python package (install with `python3 -m pip install code-finder`).
+This skill classifies each JIRA requirement from the requirements step as grounded, partial, or absent by dispatching one subagent per requirement. Each subagent receives learn-code analysis context (module registry, summaries, onboarding guide) and can inspect the actual source code with Read/Grep/Glob. The planning step then uses these classifications to scope documentation modules — grounded requirements get full specs, partial ones are flagged for SME review, and absent ones are deferred to prevent documenting unimplemented features.
 
 ## Arguments
 
 - `$1` — JIRA ticket ID (required)
 - `--base-path <path>` — Base output path (e.g., `.agent_workspace/proj-123`)
 - `--repo <path>` — Path to the source code repository (required, provided by orchestrator)
-- `--grounded-threshold <float>` — Minimum top score for grounded classification (default: 0.5)
-- `--absent-threshold <float>` — Maximum top score for absent classification (default: 0.25)
 
 ## Input
 
@@ -42,7 +36,7 @@ This skill classifies each JIRA requirement from the requirements step as ground
 
 ### 1. Parse arguments and validate inputs
 
-Extract the ticket ID, `--base-path`, `--repo`, and optional threshold overrides from the args string.
+Extract the ticket ID, `--base-path`, and `--repo` from the args string.
 
 Set the paths:
 
@@ -52,13 +46,6 @@ OUTPUT_DIR="${BASE_PATH}/scope-req-audit"
 EVIDENCE_STATUS_FILE="${OUTPUT_DIR}/evidence-status.json"
 SUMMARY_FILE="${OUTPUT_DIR}/summary.md"
 mkdir -p "$OUTPUT_DIR"
-```
-
-Set threshold defaults:
-
-```
-GROUNDED_THRESHOLD=0.5   (or value from --grounded-threshold)
-ABSENT_THRESHOLD=0.25    (or value from --absent-threshold)
 ```
 
 Validate:
@@ -107,35 +94,75 @@ For each requirement, extract:
 
 If no requirements are found matching this pattern, STOP with error: "No requirements found in requirements.md. Expected REQ-NNN pattern."
 
-### 4. Pre-flight: warm the code-finder index and extract API surface
+### 4. Pre-flight: resolve and load learn-code analysis data
 
-Warm the code-finder index before fanning out. This ensures the index is built once (expensive) and all subagents reuse the cached index at `{repo}/.vibe2doc/index.db`. Run one throwaway query:
+Resolve and load the structured code analysis produced by learn-code. This data provides module-level understanding of the codebase that classifiers use alongside direct source inspection.
 
-```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/code-evidence/scripts/find_evidence.py --repo "$REPO_PATH" --query "initialization" --limit 1
-```
+#### 4a. Resolve analysis location
 
-Discard the output. If this fails, STOP with error including the stderr output — the index cannot be built.
-
-Extract the API surface for use as supplementary evidence during classification:
+Derive the repo name and check for existing analysis:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/code-evidence/scripts/api_surface.py \
-  --target "$REPO_PATH" > "${OUTPUT_DIR}/api-surface.json"
+REPO_NAME="$(basename "$REPO_PATH")"
+GIT_ROOT="$(cd "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" && pwd)"
+ANALYSIS_PATH="${GIT_ROOT}/.agent_workspace/${REPO_NAME}"
 ```
 
-Set `API_SURFACE_FILE="${OUTPUT_DIR}/api-surface.json"` if the command succeeds. If it fails, log a warning and set `API_SURFACE_FILE=""` — classifiers will rely on NL search alone.
+Check for existing analysis at `${ANALYSIS_PATH}/synthesis/ONBOARDING.md`.
+
+**If it does not exist:**
+
+Check if `${ANALYSIS_PATH}/workflow/` contains a progress file with `status: "in_progress"`.
+
+- If a progress file exists with in-progress status: report that a learn-code analysis is incomplete and offer to resume it.
+- If no progress file exists or analysis directory does not exist: run learn-code:
+
+```
+Skill: learn-code, args: "${REPO_PATH}"
+```
+
+Wait for it to complete. If it fails, STOP with error including the failure details.
+
+After learn-code completes (or if analysis already existed), verify `${ANALYSIS_PATH}/synthesis/ONBOARDING.md` exists. If not, STOP with error: "learn-code analysis failed to produce ONBOARDING.md at `${ANALYSIS_PATH}/synthesis/ONBOARDING.md`."
+
+#### 4b. Verify analysis files and record paths
+
+Verify that the expected analysis files exist at `${ANALYSIS_PATH}/`. Do **not** read their contents into context — agents read them directly from disk.
+
+Check these files:
+
+| File | Required |
+|------|----------|
+| `detection/detection.json` | Yes |
+| `module-registry/registry.json` | Yes |
+| `module-analysis/summary.json` | Yes |
+| `relationships/relationships.json` | No (may not exist for small repos) |
+| `synthesis/ONBOARDING.md` | Yes (verified in 4a) |
+
+For each missing required file (other than ONBOARDING.md, already verified in 4a), log a warning but continue — agents handle missing data gracefully. For missing optional files, log a note.
+
+Write the discovered repos list from step 2 to a shared file so agents can read it from disk instead of receiving it inline:
+
+```bash
+# Write to disk — agents read from DISCOVERED_REPOS_FILE
+cat > "${OUTPUT_DIR}/discovered-repos.json" << 'JSONEOF'
+<JSON array of discovered_repos from step 2, or [] if none>
+JSONEOF
+```
+
+Record `ANALYSIS_PATH` for use in agent prompts. Do not read or assemble any analysis file contents.
 
 ### 5. Fan out: dispatch one agent per requirement
 
 For each requirement extracted in step 3, dispatch one Agent call. Launch ALL requirement agents in a **single message** (parallel execution).
 
+Each agent reads the analysis data from disk and writes its result to a per-requirement JSON file on disk. This keeps the orchestrator's context lean — agent prompts are compact (~0.3KB each) and agent results are one-line confirmations (~0.1KB each).
+
 For each requirement, use:
 
 ```
 Agent:
-  subagent_type: docs-tools:evidence-classifier
-  model: haiku
+  subagent_type: docs-tools:requirement-classifier
   description: "Classify REQ-NNN: <title truncated to 40 chars>"
   prompt: |
     Classify this requirement by code evidence status.
@@ -145,148 +172,151 @@ Agent:
     - Title: <title>
     - Summary: <summary>
 
-    CONFIGURATION:
-    - REPO_PATH: <absolute repo path>
-    - GROUNDED_THRESHOLD: <threshold>
-    - ABSENT_THRESHOLD: <threshold>
-    - API_SURFACE_FILE: <API_SURFACE_FILE or omit this line if empty>
+    ANALYSIS_PATH: <ANALYSIS_PATH>
+    Read analysis files from this directory:
+    - detection/detection.json
+    - module-registry/registry.json
+    - module-analysis/summary.json
+    - relationships/relationships.json (if it exists)
+    - synthesis/ONBOARDING.md
 
-    DISCOVERED_REPOS:
-    <JSON array of discovered_repos from step 2, or [] if none>
+    REPO_PATH: <absolute repo path>
+
+    DISCOVERED_REPOS_FILE: <OUTPUT_DIR>/discovered-repos.json
+
+    You may Read, Grep, and Glob files in REPO_PATH to find specific
+    code evidence. Always include file paths when citing code.
+
+    OUTPUT_FILE: <OUTPUT_DIR>/evidence-<NNN>.json
+    Write your JSON result to OUTPUT_FILE using the Write tool.
+    After writing, print ONLY: Written <OUTPUT_DIR>/evidence-<NNN>.json
 ```
+
+Where `<NNN>` is the zero-padded requirement number extracted from the REQ-NNN id (e.g., REQ-001 produces evidence-001.json).
 
 **Important:** All Agent calls MUST be in a single message so they run in parallel. Do not dispatch them sequentially.
 
-### 6. Merge: collect agent results
+### 6. Collect results from disk
 
-Each agent returns a JSON object. Parse each agent's response to extract the JSON.
+After all agents complete, verify which per-requirement JSON files were written:
 
-If an agent's response is not valid JSON or is missing required fields (`id`, `status`), create a fallback entry:
-
-```json
-{
-  "id": "<expected REQ-NNN>",
-  "title": "<expected title>",
-  "query": "unknown",
-  "status": "absent",
-  "error": "Agent did not return valid JSON",
-  "top_score": 0.0,
-  "snippet_count": 0,
-  "key_files": [],
-  "gap_category": null,
-  "recommended_action": null
-}
+```bash
+ls <OUTPUT_DIR>/evidence-*.json 2>/dev/null | wc -l
 ```
 
-Fallback entries use `"status": "absent"` so the downstream contract (`grounded|partial|absent`) is preserved. The optional `"error"` field carries diagnostic detail for debugging.
+For each expected requirement (from step 3's requirement list):
 
-Collect all per-requirement results into a list ordered by requirement ID.
+1. Check if `<OUTPUT_DIR>/evidence-<NNN>.json` exists
+2. If the file exists, it will be read by the merge agent in the next step
+3. If the file is missing (agent failed or was skipped), the merge agent will create a fallback entry
 
-Compute summary counts:
-- `grounded` — count of requirements with status `grounded`
-- `partial` — count of requirements with status `partial`
-- `absent` — count of requirements with status `absent`
-- `total` — total requirements
+Log: `"<found_count>/<total_count> classification files written to disk"`
 
-Compute the recommendation:
-- **`proceed`** — no absent requirements
-- **`gather-more`** — some absent requirements, but grounded outnumber absent
-- **`review-needed`** — absent requirements equal or outnumber grounded, or more than half of all requirements are absent
+### 7. Assemble output via merge agent
 
-### 7. Write output
+Delegate the assembly of `evidence-status.json` and `summary.md` to a merge subagent. This keeps the full classification data (~20-50KB) out of the orchestrator's context.
 
-#### evidence-status.json
+```
+Agent:
+  description: "Merge evidence classifications for <TICKET>"
+  prompt: |
+    Assemble evidence-status.json and summary.md from per-requirement classification files.
 
-Write the merged classification results to `$EVIDENCE_STATUS_FILE`:
+    TICKET: <TICKET>
+    REPO_PATH: <REPO_PATH>
+    ANALYSIS_PATH: <ANALYSIS_PATH>
+    OUTPUT_DIR: <OUTPUT_DIR>
+    EVIDENCE_STATUS_FILE: <OUTPUT_DIR>/evidence-status.json
+    SUMMARY_FILE: <OUTPUT_DIR>/summary.md
+    DISCOVERED_REPOS_FILE: <OUTPUT_DIR>/discovered-repos.json
+    EXPECTED_REQUIREMENTS: <comma-separated list of REQ IDs from step 3>
 
-```json
-{
-  "ticket": "<TICKET>",
-  "repo_path": "<REPO_PATH>",
-  "thresholds": { "grounded": 0.5, "absent": 0.25 },
-  "recommendation": "proceed|gather-more|review-needed",
-  "requirements": [
-    {
-      "id": "REQ-001",
-      "title": "...",
-      "query": "...",
-      "status": "grounded|partial|absent",
-      "top_score": 0.87,
-      "snippet_count": 4,
-      "key_files": ["path/to/file.go"],
-      "gap_category": null,
-      "recommended_action": null
-    }
-  ],
-  "summary": {
-    "grounded": 0,
-    "partial": 0,
-    "absent": 0,
-    "total": 0
-  },
-  "discovered_repos": [
-    {
-      "url": "https://github.com/org/repo",
-      "source": "README.md",
-      "relevance": "..."
-    }
-  ],
-  "secondary_repos": [
-    {
-      "url": "https://github.com/org/companion-repo",
-      "source": "gap_classification",
-      "requirements": ["REQ-002", "REQ-004"],
-      "pr_refs": ["#262", "#317"],
-      "priority": "secondary",
-      "suggested_scope": ["pkg/controller/", "pkg/mutator/"]
-    }
-  ]
-}
+    Instructions:
+    1. Read DISCOVERED_REPOS_FILE for the discovered_repos array
+    2. For each expected requirement ID, read <OUTPUT_DIR>/evidence-<NNN>.json
+       - Map agent output fields: confidence → top_score, evidence_summary → evidence_summary.
+         All other fields pass through directly.
+       - If a file is missing, create a fallback entry:
+         {"id": "<REQ-NNN>", "title": "<expected title>", "status": "absent",
+          "error": "Agent did not return valid JSON", "top_score": 0.0,
+          "key_files": [], "evidence_summary": null,
+          "gap_category": null, "recommended_action": null}
+    3. Collect all per-requirement results ordered by requirement ID
+    4. Compute summary counts by counting the `status` field of each entry in the
+       collected requirements array: count entries where `status == "grounded"`,
+       `status == "partial"`, and `status == "absent"`. Set `total` to the length
+       of the requirements array. Do NOT compute these counts independently —
+       derive them directly from the array entries to ensure consistency
+    5. Compute recommendation:
+       - "proceed" — no absent requirements
+       - "gather-more" — some absent, but grounded outnumber absent
+       - "review-needed" — absent >= grounded, or more than half are absent
+    6. Write EVIDENCE_STATUS_FILE:
+       {"ticket": "<TICKET>", "repo_path": "<REPO_PATH>",
+        "analysis_path": "<ANALYSIS_PATH>",
+        "recommendation": "<recommendation>",
+        "requirements": [<per-requirement entries>],
+        "summary": {"grounded": N, "partial": N, "absent": N, "total": N},
+        "discovered_repos": <from DISCOVERED_REPOS_FILE>,
+        "secondary_repos": []}
+       Note: secondary_repos is populated by step 9 (extract_secondary_repos.py),
+       so initialize it as an empty array here.
+    7. Write SUMMARY_FILE in markdown:
+       # Scope Requirements Audit
+       **Ticket:** <TICKET>
+       **Repository:** <REPO_PATH>
+       **Analysis:** <ANALYSIS_PATH>
+       **Recommendation:** <recommendation>
+       ## Classification Summary
+       [table with grounded, partial, absent, total counts]
+       ## Grounded Requirements
+       - **REQ-NNN: [title]** — confidence: N.NN, files: `path/to/file`
+         Evidence: [evidence_summary]
+       ## Partial Requirements
+       - **REQ-NNN: [title]** — confidence: N.NN, category: <gap_category>, files: `path`
+         Evidence: [evidence_summary]
+         Action: [recommended_action]
+       ## Absent Requirements
+       - **REQ-NNN: [title]** — confidence: N.NN, category: <gap_category>
+         Evidence: [evidence_summary]
+         Action: [recommended_action]
+       ## Discovered Repos (not indexed)
+       - [url](url) — referenced in <source>
+    8. After writing both files, print ONLY:
+       Written <EVIDENCE_STATUS_FILE>
+       Written <SUMMARY_FILE>
 ```
 
-The output format is identical to the previous single-pass implementation. Downstream consumers (planning step, orchestrator) see no change.
+### 8. Verify merge output
 
-#### summary.md
+Verify that `$EVIDENCE_STATUS_FILE` and `$SUMMARY_FILE` were written by the merge agent:
 
-Write a human-readable summary to `$SUMMARY_FILE`:
-
-```markdown
-# Scope Requirements Audit
-
-**Ticket:** <TICKET>
-**Repository:** <REPO_PATH>
-**Thresholds:** grounded >= <GROUNDED_THRESHOLD>, absent < <ABSENT_THRESHOLD>
-**Recommendation:** proceed|gather-more|review-needed
-
-## Classification Summary
-
-| Status | Count |
-|--------|-------|
-| Grounded | N |
-| Partial | N |
-| Absent | N |
-| **Total** | **N** |
-
-## Grounded Requirements
-
-- **REQ-001: [title]** — score: 0.87, files: `path/to/file.go`, `path/to/other.go`
-
-## Partial Requirements
-
-- **REQ-003: [title]** — score: 0.41, category: implementation, files: `path/to/stub.go`
-  Action: [recommended_action]
-
-## Absent Requirements
-
-- **REQ-002: [title]** — score: 0.12, category: sdk
-  Action: [recommended_action]
-
-## Discovered Repos (not indexed)
-
-- [https://github.com/org/companion-sdk](https://github.com/org/companion-sdk) — referenced in README.md
+```bash
+test -f "$EVIDENCE_STATUS_FILE" && test -f "$SUMMARY_FILE" && echo "OK" || echo "MISSING"
 ```
 
-### 8. Extract secondary repo references
+If either file is missing, treat it as a step failure.
+
+Extract summary counts from evidence-status.json for the sidecar using a compact bash command (do not read the full file into context):
+
+```bash
+python3 -c "
+import json
+d = json.load(open('$EVIDENCE_STATUS_FILE'))
+s = d.get('summary', {})
+print(json.dumps({
+    'recommendation': d.get('recommendation', 'unknown'),
+    'grounded': s.get('grounded', 0),
+    'partial': s.get('partial', 0),
+    'absent': s.get('absent', 0),
+    'total': s.get('total', 0)
+}))
+"
+```
+
+Use these values for the sidecar in step 10.
+
+### 9. Extract secondary repo references
 
 After writing evidence-status.json, run the secondary repo extraction script to identify repos referenced in gap classification actions:
 
@@ -327,7 +357,7 @@ Also update `summary.md` to include a "Secondary Repos (from gap analysis)" sect
 - [https://github.com/org/companion-repo](https://github.com/org/companion-repo) — REQ-002, REQ-004 (3 PRs, scope: pkg/controller/, pkg/mutator/)
 ```
 
-### 9. Write step-result.json
+### 10. Write step-result.json
 
 Write the sidecar to `${OUTPUT_DIR}/step-result.json`:
 
@@ -343,19 +373,16 @@ Write the sidecar to `${OUTPUT_DIR}/step-result.json`:
   "absent": <absent count>,
   "total": <total count>,
   "discovered_repos_count": <length of discovered_repos list>,
-  "secondary_repos_count": <length of secondary_repos list>,
-  "context_size_bytes": <total_bytes>
+  "secondary_repos_count": <length of secondary_repos list>
 }
 ```
-
-After writing the sidecar, sum the byte sizes of all output files in the step's output folder and add `context_size_bytes` to the sidecar.
 
 - `recommendation`: the `recommendation` field from `evidence-status.json`
 - `grounded`, `partial`, `absent`, `total`: the counts from `evidence-status.json`'s `summary` object
 - `discovered_repos_count`: length of the `discovered_repos` array
 - `secondary_repos_count`: length of the `secondary_repos` array
 
-### 10. Verify output
+### 11. Verify output
 
 Verify that `$EVIDENCE_STATUS_FILE`, `$SUMMARY_FILE`, and `${OUTPUT_DIR}/step-result.json` exist.
 
@@ -372,11 +399,11 @@ If `evidence-status.json` does not exist (step was skipped or not configured), t
 ## Notes
 
 - **Fanout pattern:** Each requirement is classified by an independent subagent with a clean context window. This prevents context degradation when processing many requirements — classification quality for REQ-015 is identical to REQ-001
-- **Index warming:** The code-finder index is built once in step 4 (pre-flight) and cached at `{repo}/.vibe2doc/index.db`. All subagents reuse this cached index, so only the first query pays the indexing cost
+- **Disk-based data flow:** Agents write their JSON classifications to per-requirement files (`evidence-NNN.json`) on disk instead of returning them to the orchestrator context. The merge agent reads from disk to assemble `evidence-status.json` and `summary.md`. This prevents 15+ agent results and ~300KB of analysis context from accumulating in the orchestrator's context window
+- **Compact prompts:** Agent prompts reference `ANALYSIS_PATH` by path instead of embedding the full analysis JSON. Each agent reads analysis files directly from disk. This reduces per-agent prompt size from ~200KB to ~0.3KB
+- **Learn-code analysis:** Analysis data is produced by learn-code and cached at `.agent_workspace/<repo-name>/`. If analysis already exists from a prior run, it is reused. The first workflow run for a repo pays the analysis cost; subsequent runs skip it. Analysis files are referenced by path in agent prompts — never read into the orchestrator context
+- **Source inspection:** Subagents inspect actual source files using Read/Grep/Glob. The learn-code analysis provides a structural map (modules, APIs, relationships) that guides where to look, but the final classification is based on direct evidence in the source code
 - **Parallel execution:** All subagent Agent calls are dispatched in a single message for parallel execution. The orchestrator waits for all to complete before merging
-- **Error isolation:** A failed subagent does not affect other requirements — the merge step creates a fallback entry with `"status": "absent"` and an `"error"` field for diagnostics
-- **Model choice:** Subagents use `model: haiku` since the task is mechanical (run script, parse JSON, apply thresholds). The gap classification requires minimal language understanding
-- **Intermediate artifacts:** The previous version wrote a `queries.json` file to the output directory. This file is no longer produced — each subagent builds its query internally. The file was not consumed by any downstream step
-- The thresholds (0.5 grounded, 0.25 absent) are based on empirical data from the comparison report — known-good matches scored 0.87+, known-absent items scored below 0.2
-- This step queries the primary source repo only. The `secondary_repos` output enables the orchestrator to clone and index companion repos for the code-evidence step
-- `discovered_repos` (step 2) surfaces repos found in README/docs. `secondary_repos` (step 8) surfaces repos referenced in gap classification actions — these are more targeted because they're tied to specific absent/partial requirements
+- **Error isolation:** A failed subagent does not affect other requirements — the merge agent creates a fallback entry with `"status": "absent"` and an `"error"` field for diagnostics
+- This step queries the primary source repo only. The `secondary_repos` output enables the orchestrator to clone and index companion repos if needed
+- `discovered_repos` (step 2) surfaces repos found in README/docs. `secondary_repos` (step 9) surfaces repos referenced in gap classification actions — these are more targeted because they're tied to specific absent/partial requirements

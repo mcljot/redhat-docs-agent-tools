@@ -87,6 +87,16 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py extract --dump https://gith
 python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py extract --validate https://github.com/owner/repo/pull/123 comments.json
 ```
 
+#### metadata — Get combined PR/MR metadata
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py metadata https://github.com/owner/repo/pull/123
+python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py metadata https://gitlab.com/group/project/-/merge_requests/456
+python3 ${CLAUDE_SKILL_DIR}/scripts/git_pr_reader.py metadata https://github.com/owner/repo/pull/123 --diff-output /path/to/diff.patch
+```
+
+Returns combined metadata: platform, pr_number, title, description, state, author, base_branch, head_branch, labels, commits, changed_files, and url. With `--diff-output`, also saves the unified diff to the specified file.
+
 #### detect — Auto-detect PR/MR for current branch
 
 ```bash
@@ -120,6 +130,9 @@ info = api.get_pr_info()
 
 # Get changed files
 files = api.get_changed_files()
+
+# Get combined metadata (author, labels, commits, files, state)
+metadata = api.get_metadata()
 
 # Get review comments
 comments = api.get_review_comments()

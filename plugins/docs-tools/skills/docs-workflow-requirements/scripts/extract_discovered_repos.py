@@ -204,6 +204,47 @@ def _serialize_repo_groups(repo_groups):
     }
 
 
+def _traverse_linked_tickets(graph_data, jira_reader_path):
+    """Run --graph on each issue_link to capture their children's git links.
+
+    Returns a merged tickets dict containing all linked tickets and their
+    children, suitable for feeding into the same extraction logic.
+    """
+    import subprocess
+
+    linked_keys = []
+    for link in graph_data.get("issue_links", {}).get("links", []):
+        key = link.get("key")
+        if key:
+            linked_keys.append(key)
+
+    if not linked_keys:
+        return {}
+
+    extra_tickets = {}
+    for key in linked_keys:
+        try:
+            result = subprocess.run(  # noqa: S603
+                ["python3", jira_reader_path, "--graph", key, "--max-graph-tokens", "10000"],  # noqa: S607
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if result.returncode != 0:
+                print(f"WARNING: --graph {key} failed: {result.stderr.strip()}", file=sys.stderr)
+                continue
+            linked_graph = json.loads(result.stdout)
+            extra_tickets[key] = linked_graph
+            for child in linked_graph.get("children", {}).get("issues", []):
+                child_key = child.get("key")
+                if child_key:
+                    extra_tickets[child_key] = child
+        except (subprocess.TimeoutExpired, json.JSONDecodeError, OSError) as e:
+            print(f"WARNING: --graph {key} error: {e}", file=sys.stderr)
+
+    return extra_tickets
+
+
 def main():
     parser = argparse.ArgumentParser(description="Extract repo/PR URLs from JIRA ticket graph data")
     parser.add_argument(
@@ -212,6 +253,12 @@ def main():
     parser.add_argument(
         "--merge-discovery",
         help="Path to discovery.json to merge text-discovered PRs",
+    )
+    parser.add_argument(
+        "--traverse-links",
+        metavar="JIRA_READER_PATH",
+        help="Path to jira_reader.py; runs --graph on each "
+        "issue_link to find PRs on linked tickets' children",
     )
     args = parser.parse_args()
 
@@ -222,6 +269,27 @@ def main():
         sys.exit(1)
 
     result = extract_repos_from_graph(graph_data)
+
+    if args.traverse_links:
+        extra_tickets = _traverse_linked_tickets(graph_data, args.traverse_links)
+        if extra_tickets:
+            extra_result = extract_repos_from_graph({"tickets": extra_tickets})
+            repo_groups = _rebuild_repo_groups(result)
+            for repo in extra_result.get("repos", []):
+                normalized = repo["normalized"]
+                if normalized not in repo_groups:
+                    repo_groups[normalized] = {
+                        "repo_url": repo["repo_url"],
+                        "pr_urls": set(),
+                        "source_tickets": set(),
+                    }
+                repo_groups[normalized]["pr_urls"].update(repo.get("pr_urls", []))
+                repo_groups[normalized]["source_tickets"].update(repo.get("source_tickets", []))
+            result = _serialize_repo_groups(repo_groups)
+            print(
+                f"Traversed {len(extra_tickets)} linked tickets",
+                file=sys.stderr,
+            )
 
     if args.merge_discovery:
         repo_groups = _rebuild_repo_groups(result)

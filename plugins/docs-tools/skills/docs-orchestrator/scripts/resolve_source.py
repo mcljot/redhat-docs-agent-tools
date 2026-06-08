@@ -1,27 +1,21 @@
 #!/usr/bin/env python3
 """Resolve and clone/verify a source code repository for a docs workflow.
 
-Extracts the deterministic repo-resolution logic from the orchestrator skill
-into a standalone script. The orchestrator calls this script and makes
-decisions (user prompts, deferred step management) based on the JSON output.
+Handles repo cloning, source.yaml management, PR branch checkout, and
+progress file synchronization. JIRA-based repo discovery is handled
+upstream by the requirements step (extract_discovered_repos.py writes
+discovered_repos.json, which this script reads at Priority 4).
 
-Modes:
+Resolution priority:
+    1. Explicit --repo flag
+    2. Per-ticket source.yaml
+    3. PR-derived (--pr without --repo)
+    4. discovered_repos.json (from requirements step)
+    5. Scan requirements.md for PR URLs (--scan-requirements)
 
-1. Explicit source (--repo and/or --pr):
-    python3 resolve_source.py --base-path .agent_workspace/proj-123 \
-        --repo https://github.com/org/repo.git --pr https://github.com/org/repo/pull/42
-
-2. From existing source.yaml:
-    python3 resolve_source.py --base-path .agent_workspace/proj-123
-
-3. From discovered_repos.json (written by extract_discovered_repos.py):
-    python3 resolve_source.py --base-path .agent_workspace/proj-123
-
-4. Scan requirements.md for PR URLs (post-requirements discovery):
-    python3 resolve_source.py --base-path .agent_workspace/proj-123 --scan-requirements
-
-5. Dry-run check (CI pre-flight — resolve without cloning):
-    python3 resolve_source.py --base-path .agent_workspace/proj-123 --dry-run
+When --progress-file is passed, writes resolved source info into the
+workflow progress JSON and flips deferred steps to pending (or skipped
+if --skip-deferred-on-no-source and no source found).
 
 Output: JSON to stdout with the resolved source info, or an error status.
 
@@ -56,47 +50,11 @@ def _is_remote_url(value):
     return value.startswith(("https://", "git@", "ssh://"))
 
 
-def _run_git(args, cwd=None, check=True):
-    """Run a git command and return stdout."""
-    result = subprocess.run(  # noqa: S603
-        ["git"] + args,
-        cwd=cwd,
-        capture_output=True,
-        text=True,
+def _git_pr_reader_path():
+    """Locate git_pr_reader.py relative to this script."""
+    return str(
+        Path(__file__).resolve().parents[2] / "git-pr-reader" / "scripts" / "git_pr_reader.py"
     )
-    if check and result.returncode != 0:
-        raise subprocess.CalledProcessError(
-            result.returncode, ["git"] + args, result.stdout, result.stderr
-        )
-    return result
-
-
-def _run_gh(args, check=True):
-    """Run a gh CLI command and return stdout."""
-    result = subprocess.run(  # noqa: S603
-        ["gh"] + args,
-        capture_output=True,
-        text=True,
-    )
-    if check and result.returncode != 0:
-        raise subprocess.CalledProcessError(
-            result.returncode, ["gh"] + args, result.stdout, result.stderr
-        )
-    return result.stdout.strip()
-
-
-def _run_glab(args, check=True):
-    """Run a glab CLI command and return stdout."""
-    result = subprocess.run(  # noqa: S603
-        ["glab"] + args,
-        capture_output=True,
-        text=True,
-    )
-    if check and result.returncode != 0:
-        raise subprocess.CalledProcessError(
-            result.returncode, ["glab"] + args, result.stdout, result.stderr
-        )
-    return result.stdout.strip()
 
 
 def _read_source_yaml(base_path):
@@ -183,95 +141,24 @@ def repo_name_from_url(url):
 def _resolve_pr_info(pr_url):
     """Extract repo URL and branch from a GitHub PR or GitLab MR URL.
 
-    Dispatches to gh CLI for GitHub PRs and glab CLI for GitLab MRs.
-    Derives the clone URL from the PR/MR URL (base repo), not the
-    head/source repository (which may be a fork).
+    Delegates to git_pr_reader.py resolve, which uses PyGithub/python-gitlab.
+    Returns (repo_url, branch) where branch is None for merged PRs.
     """
-    if GITLAB_MR_RE.match(pr_url):
-        return _resolve_mr_info(pr_url)
-
-    match = GITHUB_PR_RE.match(pr_url)
-    if match:
-        repo_slug = match.group(1)
-        repo_url = f"https://github.com/{repo_slug}.git"
-    else:
-        repo_url = _run_gh(
-            [
-                "pr",
-                "view",
-                pr_url,
-                "--json",
-                "url",
-                "--jq",
-                '.url | split("/pull/")[0] + ".git"',
-            ]
-        )
-
-    pr_data = _run_gh(
-        [
-            "pr",
-            "view",
-            pr_url,
-            "--json",
-            "headRefName,state",
-        ]
+    result = subprocess.run(  # noqa: S603
+        ["python3", _git_pr_reader_path(), "resolve", pr_url, "--json"],  # noqa: S607
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
-    data = json.loads(pr_data)
-    pr_branch = data["headRefName"]
-
-    if data["state"] == "MERGED":
-        return repo_url, None
-
-    return repo_url, pr_branch
-
-
-def _resolve_mr_info(mr_url):
-    """Extract repo URL and branch from a GitLab MR URL using glab CLI.
-
-    Parses the project path and MR number from the URL, then uses
-    glab mr view <number> -R <project> with GITLAB_HOST set for the
-    correct instance.
-    """
-    import os
-    from urllib.parse import urlparse
-
-    match = GITLAB_MR_RE.match(mr_url)
-    if not match:
-        raise ValueError(f"Not a valid GitLab MR URL: {mr_url}")
-    project_path = match.group(1)
-    mr_number = match.group(2)
-    hostname = urlparse(mr_url).hostname
-
-    prev_host = os.environ.get("GITLAB_HOST")
-    os.environ["GITLAB_HOST"] = f"https://{hostname}"
-    try:
-        mr_json = _run_glab(
-            [
-                "mr",
-                "view",
-                mr_number,
-                "-R",
-                project_path,
-                "--output",
-                "json",
-            ]
+    if result.returncode != 0:
+        raise subprocess.CalledProcessError(
+            result.returncode,
+            ["git_pr_reader.py", "resolve"],
+            result.stdout,
+            result.stderr,
         )
-    finally:
-        if prev_host is None:
-            os.environ.pop("GITLAB_HOST", None)
-        else:
-            os.environ["GITLAB_HOST"] = prev_host
-
-    mr_data = json.loads(mr_json)
-    source_branch = mr_data.get("source_branch", "")
-
-    base_url = mr_url.split("/-/merge_requests/")[0]
-    repo_url = f"{base_url}.git"
-
-    if mr_data.get("state") == "merged":
-        return repo_url, None
-
-    return repo_url, source_branch
+    data = json.loads(result.stdout)
+    return data["repo_url"], data["branch"]
 
 
 def _scan_requirements_for_prs(base_path):
@@ -437,90 +324,32 @@ def extract_repo_url(link_url):
     return None
 
 
-def _extract_pr_number(pr_url):
-    """Extract the PR/MR number from a GitHub PR or GitLab MR URL."""
-    if not pr_url:
-        return None
-    m = re.search(r"/pull/(\d+)", pr_url)
-    if m:
-        return int(m.group(1))
-    m = re.search(r"/merge_requests/(\d+)", pr_url)
-    if m:
-        return int(m.group(1))
-    return None
-
-
 def _clone_repo(repo_url, clone_dir, ref=None, pr_url=None, dry_run=False):
     """Clone a repo to clone_dir. Returns True on success.
 
-    When ref is a branch from a fork-based PR, --branch and fetch will
-    both fail because the branch only exists in the fork.  Falls back to
-    fetching refs/pull/<N>/head (GitHub) or refs/merge-requests/<N>/head
-    (GitLab) when a pr_url is provided.
+    Delegates to git_pr_reader.py clone which handles fork-aware PR ref
+    fallback (refs/pull/N/head, refs/merge-requests/N/head).
     """
-    if dry_run:
-        return True
-    clone_dir = str(clone_dir)
-
+    cmd = [
+        "python3",
+        _git_pr_reader_path(),
+        "clone",
+        repo_url,
+        "--output-dir",
+        str(clone_dir),
+    ]
     if ref:
-        result = _run_git(
-            ["clone", "--depth", "1", "--branch", ref, repo_url, clone_dir],
-            check=False,
-        )
-        if result.returncode == 0:
-            return True
+        cmd += ["--ref", ref]
+    if pr_url:
+        cmd += ["--pr-url", pr_url]
+    if dry_run:
+        cmd += ["--dry-run"]
 
-        # Fallback: clone default branch, then try to checkout the ref
-        result = _run_git(
-            ["clone", "--depth", "1", repo_url, clone_dir],
-            check=False,
-        )
-        if result.returncode != 0:
-            return False
-
-        fetch = _run_git(["fetch", "origin", ref], cwd=clone_dir, check=False)
-        if fetch.returncode == 0:
-            checkout = _run_git(["checkout", "FETCH_HEAD"], cwd=clone_dir, check=False)
-            return checkout.returncode == 0
-
-        # Branch not on origin — try PR ref for fork-based PRs
-        pr_number = _extract_pr_number(pr_url)
-        if pr_number:
-            pr_ref = (
-                f"refs/merge-requests/{pr_number}/head"
-                if "gitlab" in repo_url
-                else f"refs/pull/{pr_number}/head"
-            )
-            pr_fetch = _run_git(
-                ["fetch", "origin", pr_ref],
-                cwd=clone_dir,
-                check=False,
-            )
-            if pr_fetch.returncode == 0:
-                checkout = _run_git(
-                    ["checkout", "FETCH_HEAD"],
-                    cwd=clone_dir,
-                    check=False,
-                )
-                if checkout.returncode == 0:
-                    print(
-                        f"Checked out PR #{pr_number} via {pr_ref}"
-                        f" (fork branch '{ref}' not on origin).",
-                        file=sys.stderr,
-                    )
-                    return True
-
-        print(
-            f"WARNING: Cloned {repo_url} but ref '{ref}' not found"
-            f" (branch may be in a fork or deleted after merge)."
-            f" Using default branch.",
-            file=sys.stderr,
-        )
-        return True
-
-    result = _run_git(
-        ["clone", "--depth", "1", repo_url, clone_dir],
-        check=False,
+    result = subprocess.run(  # noqa: S603
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=300,
     )
     return result.returncode == 0
 
@@ -528,66 +357,24 @@ def _clone_repo(repo_url, clone_dir, ref=None, pr_url=None, dry_run=False):
 def _verify_existing_clone(clone_dir, ref=None, expected_repo_url=None, dry_run=False):
     """Verify an existing clone is valid. Optionally checkout a different ref.
 
-    Assumes the remote is named "origin". This is always true for repos cloned
-    by this script. For user-provided local paths where the remote was renamed,
-    the origin check will fail gracefully (returns False).
+    Delegates to git_pr_reader.py clone --verify.
     """
     if dry_run:
         return True
-    result = _run_git(["rev-parse", "HEAD"], cwd=str(clone_dir), check=False)
-    if result.returncode != 0:
-        return False
 
-    if expected_repo_url:
-        origin = _run_git(
-            ["remote", "get-url", "origin"],
-            cwd=str(clone_dir),
-            check=False,
-        )
-        if origin.returncode != 0:
-            return False
-        if normalize_git_url(origin.stdout.strip()) != normalize_git_url(expected_repo_url):
-            return False
-
+    cmd = ["python3", _git_pr_reader_path(), "clone", "--verify", str(clone_dir)]
     if ref:
-        current = _run_git(
-            ["rev-parse", "--abbrev-ref", "HEAD"],
-            cwd=str(clone_dir),
-            check=False,
-        )
-        current_branch = current.stdout.strip()
-        if current_branch != ref:
-            fetch = _run_git(
-                ["fetch", "origin", ref],
-                cwd=str(clone_dir),
-                check=False,
-            )
-            if fetch.returncode != 0:
-                print(
-                    f"WARNING: Could not fetch ref '{ref}' in {clone_dir} "
-                    f"(branch may have been deleted after merge). "
-                    f"Using clone at HEAD.",
-                    file=sys.stderr,
-                )
-            else:
-                checkout = _run_git(
-                    ["checkout", ref],
-                    cwd=str(clone_dir),
-                    check=False,
-                )
-                if checkout.returncode != 0:
-                    fallback = _run_git(
-                        ["checkout", "FETCH_HEAD"],
-                        cwd=str(clone_dir),
-                        check=False,
-                    )
-                    if fallback.returncode != 0:
-                        print(
-                            f"WARNING: Fetched ref '{ref}' but checkout failed "
-                            f"in {clone_dir}. Using clone at HEAD.",
-                            file=sys.stderr,
-                        )
-    return True
+        cmd += ["--ref", ref]
+    if expected_repo_url:
+        cmd += ["--expected-url", expected_repo_url]
+
+    result = subprocess.run(  # noqa: S603
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    return result.returncode == 0
 
 
 def _write_source_yaml(base_path, repo, ref, dry_run=False):
@@ -842,7 +629,7 @@ def resolve(args):
     if pr_urls:
         return _resolve_multiple_prs(pr_urls, base_path, dry_run=dry_run)
 
-    # --- Priority 4: discovered_repos.json (from requirements-step graph walk) ---
+    # --- Priority 4: discovered_repos.json (from requirements step) ---
     discovered = _read_discovered_repos(base_path)
     if discovered:
         result = _resolve_discovered_repos(discovered, base_path, dry_run=dry_run)
@@ -862,6 +649,51 @@ def resolve(args):
 
     # --- Priority 6: No source ---
     return {"status": "no_source"}
+
+
+def _sync_progress(result, progress_file, skip_deferred_on_no_source=False):
+    """Write resolved source info into a workflow progress file.
+
+    On success: records options.source and flips deferred steps to pending.
+    On no_source with skip flag: flips deferred steps to skipped.
+    Returns the result dict with an added progress_updated field.
+    """
+    from datetime import datetime, timezone
+
+    with open(progress_file) as f:
+        progress = json.load(f)
+
+    options = progress.setdefault("options", {})
+    progress_updated = False
+
+    if result["status"] == "resolved":
+        options["source"] = {
+            "repo_path": result["repo_path"],
+            "repo_url": result.get("repo_url"),
+            "ref": result.get("ref"),
+            "scope": result.get("scope"),
+        }
+        options["additional_sources"] = result.get("additional_repos", [])
+        for step_data in progress.get("steps", {}).values():
+            if step_data.get("status") == "deferred":
+                step_data["status"] = "pending"
+        progress_updated = True
+    elif result["status"] == "no_source" and skip_deferred_on_no_source:
+        for step_data in progress.get("steps", {}).values():
+            if step_data.get("status") == "deferred":
+                step_data["status"] = "skipped"
+        progress_updated = True
+
+    if progress_updated:
+        progress["updated_at"] = (
+            datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        )
+        with open(progress_file, "w") as f:
+            json.dump(progress, f, indent=2)
+            f.write("\n")
+
+    result["progress_updated"] = progress_updated
+    return result
 
 
 def main():
@@ -889,6 +721,15 @@ def main():
         help="Scan requirements.md for PR URLs (post-requirements discovery)",
     )
     parser.add_argument(
+        "--progress-file",
+        help="Workflow progress JSON file to update with resolved source",
+    )
+    parser.add_argument(
+        "--skip-deferred-on-no-source",
+        action="store_true",
+        help="Mark deferred steps skipped when no source is found",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Check if a source repo can be resolved without cloning or writing files",
@@ -901,12 +742,30 @@ def main():
     )
     args = parser.parse_args()
 
-    result = resolve(args)
-
-    if args.priority == "secondary":
-        result["priority"] = "secondary"
-    if args.dry_run:
-        result["dry_run"] = True
+    if args.progress_file:
+        try:
+            pr_urls = args.pr
+            if not pr_urls:
+                with open(args.progress_file) as f:
+                    progress = json.load(f)
+                pr_urls = progress.get("options", {}).get("pr_urls") or None
+            resolve_args = argparse.Namespace(
+                base_path=args.base_path,
+                repo=args.repo,
+                pr=pr_urls,
+                scan_requirements=args.scan_requirements,
+                dry_run=False,
+            )
+            result = resolve(resolve_args)
+            result = _sync_progress(result, args.progress_file, args.skip_deferred_on_no_source)
+        except (OSError, json.JSONDecodeError) as e:
+            result = {"status": "error", "message": str(e)}
+    else:
+        result = resolve(args)
+        if args.priority == "secondary":
+            result["priority"] = "secondary"
+        if args.dry_run:
+            result["dry_run"] = "true"
 
     json.dump(result, sys.stdout, indent=2)
     print()

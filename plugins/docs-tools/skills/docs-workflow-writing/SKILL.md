@@ -1,7 +1,7 @@
 ---
 name: docs-workflow-writing
 description: Write documentation from a documentation plan. Dispatches the docs-writer agent. Supports AsciiDoc (default) and MkDocs formats. Default placement is UPDATE-IN-PLACE; use --draft for staging area. Also supports fix mode for applying technical review corrections.
-argument-hint: <ticket> --base-path <path> --format <adoc|mkdocs> [--draft] [--repo <path>] [--repo-path <path>] [--fix-from <review_path>]
+argument-hint: <ticket> --base-path <path> --format <adoc|mkdocs> [--draft] [--repo <path>]... [--repo-path <path>] [--fix-from <review_path>]
 allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, Agent
 ---
 
@@ -27,14 +27,16 @@ Pass through the full args string. The script emits JSON on stdout:
   "ticket":              "PROJ-123",
   "format":              "adoc | mkdocs",
   "input_file":          "<base-path>/planning/plan.md",
-  "evidence_file":       "<base-path>/code-evidence/evidence.json | null",
-  "has_evidence":        true | false,
-  "evidence_status":     "<base-path>/scope-req-audit/evidence-status.json | null",
-  "has_evidence_status": true | false,
+  "code_analysis_dir":   "<base-path>/code-analysis/ | null",
+  "has_code_analysis":   true | false,
+  "pr_analysis_dir":     "<base-path>/pr-analysis/ | null",
+  "has_pr_analysis":     true | false,
   "output_dir":          "<base-path>/writing",
   "output_file":         "<base-path>/writing/_index.md",
   "docs_repo_path":      "<path> | null",
   "source_repo_path":    "<path> | null",
+  "additional_repo_paths": ["<path>", ...],
+  "additional_code_analysis_dirs": ["<path>", ...],
   "fix_from":            "<path> | null",
   "verify_output":       true | false
 }
@@ -46,7 +48,7 @@ If the script exits non-zero, stop and report the error from stderr.
 
 **You MUST use the Agent tool** to invoke the `docs-writer` subagent. Do NOT read the agent's markdown file or attempt to perform the agent's work yourself — the agent has a specialized system prompt and must run as an isolated subagent.
 
-Select the prompt based on `mode` and `format` from the JSON output. In every prompt below, substitute the `<TICKET>`, `<INPUT_FILE>`, `<OUTPUT_FILE>`, `<OUTPUT_DIR>`, `<DOCS_REPO_PATH>`, `<FIX_FROM>`, and `<EVIDENCE_FILE>` placeholders with the corresponding values from the script's JSON.
+Select the prompt based on `mode` and `format` from the JSON output. In every prompt below, substitute the `<TICKET>`, `<INPUT_FILE>`, `<OUTPUT_FILE>`, `<OUTPUT_DIR>`, `<DOCS_REPO_PATH>`, `<FIX_FROM>`, `<CODE_ANALYSIS_DIR>`, `<PR_ANALYSIS_DIR>`, `<SOURCE_REPO>`, `<ADDITIONAL_REPO_PATHS>`, and `<ADDITIONAL_CODE_ANALYSIS_DIRS>` placeholders with the corresponding values from the script's JSON.
 
 **Agent tool parameters for all modes:**
 - `subagent_type`: `docs-tools:docs-writer`
@@ -64,14 +66,18 @@ Select the prompt based on `mode` and `format` from the JSON output. In every pr
 >
 > Read the plan from: `<INPUT_FILE>`
 >
-> **[Include only if HAS_EVIDENCE=true]** Code evidence is available at `<EVIDENCE_FILE>`. Read it and use the `source_results` for accurate function signatures, parameter types, and code examples. Use `context_results` for narrative context, installation steps, and architectural patterns. Prefer evidence over assumptions — if the evidence contradicts the plan, follow the evidence. Each result includes a `repo_priority` field (`"primary"` or `"secondary"`) and an `adjusted` score. For **primary** evidence: use directly for technical claims. For **secondary** evidence (from companion repos): use for architectural context and cross-references, but mark exact technical details (function signatures, config keys, parameter values) with `[NEEDS VERIFICATION]` unless the `adjusted` score is 0.8 or above.
+> **[Include only if HAS_CODE_ANALYSIS=true]** Code-learner analysis is available at `<CODE_ANALYSIS_DIR>`. Read `ONBOARDING.md` for architecture overview and module relationships. Read relevant module summaries from `summaries/` for accurate function signatures (`public_api`), dependencies, and data flow patterns. Prefer analysis over assumptions — if the analysis contradicts the plan, follow the analysis.
 >
-> **[Include only if HAS_EVIDENCE_STATUS=true]** Evidence classifications are available at `<EVIDENCE_STATUS>`. Read it and apply these rules per requirement:
-> - **Grounded** requirements have strong code evidence — write with full technical detail
-> - **Partial** requirements have weak or ambiguous evidence — write the content but mark unverified technical details (API names, parameter values, configuration keys) with `[NEEDS VERIFICATION]`
-> - **Absent** requirements have no code evidence — if they appear in the plan, skip them and note the omission in the manifest. Do NOT fabricate API signatures, SDK imports, CRD schemas, or configuration examples for absent requirements
+> Use the module registry (`registry.json`) to understand module priority:
+> - **read-first** modules: write with full technical detail using the module's summary data
+> - **read-second** modules: write concise coverage, focusing on key APIs and purpose
+> - **skip** modules: do not write standalone content — mention only if relevant to a documented module
 >
-> **[Include only if SOURCE_REPO is not null]** Source code repository is available at `<SOURCE_REPO>`. You may read specific source files for additional detail when the code evidence does not contain sufficient information for a section. Use this to verify function signatures, check parameter types, or find code examples — do not browse the entire repo.
+> **[Include only if HAS_PR_ANALYSIS=true]** PR analysis is available at `<PR_ANALYSIS_DIR>`. Read `PR-*-ANALYSIS.md` for change-specific context — what code was modified, why, and what impact it has. Use this to ensure documentation accurately reflects the current state of the code after the PR changes.
+>
+> **[Include only if SOURCE_REPO is not null]** Source code repository is available at `<SOURCE_REPO>`. You may read specific source files for additional detail when the analysis data does not contain sufficient information for a section. Use this to verify function signatures, check parameter types, or find code examples — do not browse the entire repo.
+>
+> **[Include only if ADDITIONAL_REPO_PATHS is non-empty]** Additional source code repositories are available at: <list each path from ADDITIONAL_REPO_PATHS>. For each additional repo with a code-learner analysis directory in `<ADDITIONAL_CODE_ANALYSIS_DIRS>`, read its `ONBOARDING.md` for architecture overview. Use these for cross-repo context when features span multiple repositories.
 >
 > **IMPORTANT**: Write COMPLETE .adoc files, not summaries or outlines.
 >
@@ -102,14 +108,18 @@ Select the prompt based on `mode` and `format` from the JSON output. In every pr
 >
 > Read the plan from: `<INPUT_FILE>`
 >
-> **[Include only if HAS_EVIDENCE=true]** Code evidence is available at `<EVIDENCE_FILE>`. Read it and use the `source_results` for accurate function signatures, parameter types, and code examples. Use `context_results` for narrative context, installation steps, and architectural patterns. Prefer evidence over assumptions — if the evidence contradicts the plan, follow the evidence. Each result includes a `repo_priority` field (`"primary"` or `"secondary"`) and an `adjusted` score. For **primary** evidence: use directly for technical claims. For **secondary** evidence (from companion repos): use for architectural context and cross-references, but mark exact technical details (function signatures, config keys, parameter values) with `[NEEDS VERIFICATION]` unless the `adjusted` score is 0.8 or above.
+> **[Include only if HAS_CODE_ANALYSIS=true]** Code-learner analysis is available at `<CODE_ANALYSIS_DIR>`. Read `ONBOARDING.md` for architecture overview and module relationships. Read relevant module summaries from `summaries/` for accurate function signatures (`public_api`), dependencies, and data flow patterns. Prefer analysis over assumptions — if the analysis contradicts the plan, follow the analysis.
 >
-> **[Include only if HAS_EVIDENCE_STATUS=true]** Evidence classifications are available at `<EVIDENCE_STATUS>`. Read it and apply these rules per requirement:
-> - **Grounded** requirements have strong code evidence — write with full technical detail
-> - **Partial** requirements have weak or ambiguous evidence — write the content but mark unverified technical details (API names, parameter values, configuration keys) with `[NEEDS VERIFICATION]`
-> - **Absent** requirements have no code evidence — if they appear in the plan, skip them and note the omission in the manifest. Do NOT fabricate API signatures, SDK imports, CRD schemas, or configuration examples for absent requirements
+> Use the module registry (`registry.json`) to understand module priority:
+> - **read-first** modules: write with full technical detail using the module's summary data
+> - **read-second** modules: write concise coverage, focusing on key APIs and purpose
+> - **skip** modules: do not write standalone content — mention only if relevant to a documented module
 >
-> **[Include only if SOURCE_REPO is not null]** Source code repository is available at `<SOURCE_REPO>`. You may read specific source files for additional detail when the code evidence does not contain sufficient information for a section. Use this to verify function signatures, check parameter types, or find code examples — do not browse the entire repo.
+> **[Include only if HAS_PR_ANALYSIS=true]** PR analysis is available at `<PR_ANALYSIS_DIR>`. Read `PR-*-ANALYSIS.md` for change-specific context — what code was modified, why, and what impact it has. Use this to ensure documentation accurately reflects the current state of the code after the PR changes.
+>
+> **[Include only if SOURCE_REPO is not null]** Source code repository is available at `<SOURCE_REPO>`. You may read specific source files for additional detail when the analysis data does not contain sufficient information for a section. Use this to verify function signatures, check parameter types, or find code examples — do not browse the entire repo.
+>
+> **[Include only if ADDITIONAL_REPO_PATHS is non-empty]** Additional source code repositories are available at: <list each path from ADDITIONAL_REPO_PATHS>. For each additional repo with a code-learner analysis directory in `<ADDITIONAL_CODE_ANALYSIS_DIRS>`, read its `ONBOARDING.md` for architecture overview. Use these for cross-repo context when features span multiple repositories.
 >
 > **IMPORTANT**: Write COMPLETE .md files with YAML frontmatter (title, description). Use Material for MkDocs conventions: admonitions, content tabs, code blocks with titles, heading hierarchy starting at `# h1`.
 >
@@ -140,14 +150,18 @@ Select the prompt based on `mode` and `format` from the JSON output. In every pr
 >
 > Read the plan from: `<INPUT_FILE>`
 >
-> **[Include only if HAS_EVIDENCE=true]** Code evidence is available at `<EVIDENCE_FILE>`. Read it and use the `source_results` for accurate function signatures, parameter types, and code examples. Use `context_results` for narrative context, installation steps, and architectural patterns. Prefer evidence over assumptions — if the evidence contradicts the plan, follow the evidence. Each result includes a `repo_priority` field (`"primary"` or `"secondary"`) and an `adjusted` score. For **primary** evidence: use directly for technical claims. For **secondary** evidence (from companion repos): use for architectural context and cross-references, but mark exact technical details (function signatures, config keys, parameter values) with `[NEEDS VERIFICATION]` unless the `adjusted` score is 0.8 or above.
+> **[Include only if HAS_CODE_ANALYSIS=true]** Code-learner analysis is available at `<CODE_ANALYSIS_DIR>`. Read `ONBOARDING.md` for architecture overview and module relationships. Read relevant module summaries from `summaries/` for accurate function signatures (`public_api`), dependencies, and data flow patterns. Prefer analysis over assumptions — if the analysis contradicts the plan, follow the analysis.
 >
-> **[Include only if HAS_EVIDENCE_STATUS=true]** Evidence classifications are available at `<EVIDENCE_STATUS>`. Read it and apply these rules per requirement:
-> - **Grounded** requirements have strong code evidence — write with full technical detail
-> - **Partial** requirements have weak or ambiguous evidence — write the content but mark unverified technical details (API names, parameter values, configuration keys) with `[NEEDS VERIFICATION]`
-> - **Absent** requirements have no code evidence — if they appear in the plan, skip them and note the omission in the manifest. Do NOT fabricate API signatures, SDK imports, CRD schemas, or configuration examples for absent requirements
+> Use the module registry (`registry.json`) to understand module priority:
+> - **read-first** modules: write with full technical detail using the module's summary data
+> - **read-second** modules: write concise coverage, focusing on key APIs and purpose
+> - **skip** modules: do not write standalone content — mention only if relevant to a documented module
 >
-> **[Include only if SOURCE_REPO is not null]** Source code repository is available at `<SOURCE_REPO>`. You may read specific source files for additional detail when the code evidence does not contain sufficient information for a section. Use this to verify function signatures, check parameter types, or find code examples — do not browse the entire repo.
+> **[Include only if HAS_PR_ANALYSIS=true]** PR analysis is available at `<PR_ANALYSIS_DIR>`. Read `PR-*-ANALYSIS.md` for change-specific context — what code was modified, why, and what impact it has. Use this to ensure documentation accurately reflects the current state of the code after the PR changes.
+>
+> **[Include only if SOURCE_REPO is not null]** Source code repository is available at `<SOURCE_REPO>`. You may read specific source files for additional detail when the analysis data does not contain sufficient information for a section. Use this to verify function signatures, check parameter types, or find code examples — do not browse the entire repo.
+>
+> **[Include only if ADDITIONAL_REPO_PATHS is non-empty]** Additional source code repositories are available at: <list each path from ADDITIONAL_REPO_PATHS>. For each additional repo with a code-learner analysis directory in `<ADDITIONAL_CODE_ANALYSIS_DIRS>`, read its `ONBOARDING.md` for architecture overview. Use these for cross-repo context when features span multiple repositories.
 >
 > **IMPORTANT**: Write COMPLETE .adoc files, not summaries or outlines.
 >
@@ -182,14 +196,18 @@ Select the prompt based on `mode` and `format` from the JSON output. In every pr
 >
 > Read the plan from: `<INPUT_FILE>`
 >
-> **[Include only if HAS_EVIDENCE=true]** Code evidence is available at `<EVIDENCE_FILE>`. Read it and use the `source_results` for accurate function signatures, parameter types, and code examples. Use `context_results` for narrative context, installation steps, and architectural patterns. Prefer evidence over assumptions — if the evidence contradicts the plan, follow the evidence. Each result includes a `repo_priority` field (`"primary"` or `"secondary"`) and an `adjusted` score. For **primary** evidence: use directly for technical claims. For **secondary** evidence (from companion repos): use for architectural context and cross-references, but mark exact technical details (function signatures, config keys, parameter values) with `[NEEDS VERIFICATION]` unless the `adjusted` score is 0.8 or above.
+> **[Include only if HAS_CODE_ANALYSIS=true]** Code-learner analysis is available at `<CODE_ANALYSIS_DIR>`. Read `ONBOARDING.md` for architecture overview and module relationships. Read relevant module summaries from `summaries/` for accurate function signatures (`public_api`), dependencies, and data flow patterns. Prefer analysis over assumptions — if the analysis contradicts the plan, follow the analysis.
 >
-> **[Include only if HAS_EVIDENCE_STATUS=true]** Evidence classifications are available at `<EVIDENCE_STATUS>`. Read it and apply these rules per requirement:
-> - **Grounded** requirements have strong code evidence — write with full technical detail
-> - **Partial** requirements have weak or ambiguous evidence — write the content but mark unverified technical details (API names, parameter values, configuration keys) with `[NEEDS VERIFICATION]`
-> - **Absent** requirements have no code evidence — if they appear in the plan, skip them and note the omission in the manifest. Do NOT fabricate API signatures, SDK imports, CRD schemas, or configuration examples for absent requirements
+> Use the module registry (`registry.json`) to understand module priority:
+> - **read-first** modules: write with full technical detail using the module's summary data
+> - **read-second** modules: write concise coverage, focusing on key APIs and purpose
+> - **skip** modules: do not write standalone content — mention only if relevant to a documented module
 >
-> **[Include only if SOURCE_REPO is not null]** Source code repository is available at `<SOURCE_REPO>`. You may read specific source files for additional detail when the code evidence does not contain sufficient information for a section. Use this to verify function signatures, check parameter types, or find code examples — do not browse the entire repo.
+> **[Include only if HAS_PR_ANALYSIS=true]** PR analysis is available at `<PR_ANALYSIS_DIR>`. Read `PR-*-ANALYSIS.md` for change-specific context — what code was modified, why, and what impact it has. Use this to ensure documentation accurately reflects the current state of the code after the PR changes.
+>
+> **[Include only if SOURCE_REPO is not null]** Source code repository is available at `<SOURCE_REPO>`. You may read specific source files for additional detail when the analysis data does not contain sufficient information for a section. Use this to verify function signatures, check parameter types, or find code examples — do not browse the entire repo.
+>
+> **[Include only if ADDITIONAL_REPO_PATHS is non-empty]** Additional source code repositories are available at: <list each path from ADDITIONAL_REPO_PATHS>. For each additional repo with a code-learner analysis directory in `<ADDITIONAL_CODE_ANALYSIS_DIRS>`, read its `ONBOARDING.md` for architecture overview. Use these for cross-repo context when features span multiple repositories.
 >
 > **IMPORTANT**: Write COMPLETE .md files with YAML frontmatter (title, description). Use Material for MkDocs conventions: admonitions, content tabs, code blocks with titles, heading hierarchy starting at `# h1`.
 >
@@ -231,6 +249,10 @@ Select the prompt based on `mode` and `format` from the JSON output. In every pr
 > 3. Do NOT rewrite content that was not flagged
 >
 > Edit files in place. Do NOT create copies or new files.
+>
+> **[Include only if SOURCE_REPO is not null]** Source code repository is available at `<SOURCE_REPO>`. You may read specific source files to verify fixes and resolve ambiguous review findings.
+>
+> **[Include only if ADDITIONAL_REPO_PATHS is non-empty]** Additional source code repositories are available at: <list each path from ADDITIONAL_REPO_PATHS>. Use these for cross-repo verification of review findings.
 
 In fix mode, the skill does not create new modules or restructure content.
 
@@ -261,9 +283,6 @@ Write the sidecar to `<OUTPUT_DIR>/step-result.json` using the `mode` and `forma
     "/absolute/path/to/file2.adoc"
   ],
   "mode": "<mode from script JSON>",
-  "format": "<format from script JSON>",
-  "context_size_bytes": <total_bytes>
+  "format": "<format from script JSON>"
 }
 ```
-
-After writing the sidecar, sum the byte sizes of all output files in the step's output folder and add `context_size_bytes` to the sidecar.
