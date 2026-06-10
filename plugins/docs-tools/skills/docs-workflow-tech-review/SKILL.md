@@ -128,37 +128,44 @@ Agent:
     After writing, print ONLY: Written <OUTPUT_DIR>/claims-list.json
 ```
 
-After the agent completes, extract the claim count and IDs from disk without reading the full file into context:
+After the agent completes, extract the claims grouped by doc file from disk without reading the full file into context:
 
 ```bash
 python3 -c "
 import json
 claims = json.load(open('<OUTPUT_DIR>/claims-list.json'))
+by_file = {}
+for c in claims:
+    by_file.setdefault(c.get('file', 'unknown'), []).append(c)
 print(json.dumps({
-    'count': len(claims),
-    'items': [{'id': c['id'], 'text': c['text'][:60]} for c in claims]
+    'total_claims': len(claims),
+    'batch_count': len(by_file),
+    'batches': [{'file': f, 'count': len(cs), 'claims': [{'id': c['id'], 'text': c['text'][:60]} for c in cs]} for f, cs in sorted(by_file.items())]
 }))
 "
 ```
 
-This gives the orchestrator enough to dispatch code-questioner agents (claim IDs and truncated text for agent descriptions) without loading full claim details.
+This gives the orchestrator the claim batches grouped by doc file — enough to dispatch one code-questioner agent per batch without loading full claim details into context.
 
-#### 3b. Dispatch code-questioner agents for validation
+#### 3b. Dispatch code-questioner agents for validation (batched by doc file)
 
-For each claim (from the step 3a compact output), dispatch a `code-questioner` agent. Launch ALL agents in a **single message** (parallel execution).
+For each doc-file batch (from the step 3a grouped output), dispatch a single `code-questioner` agent that verifies ALL claims from that file. Launch ALL batch agents in a **single message** (parallel execution).
 
-Each agent reads analysis data from disk and writes its verdict to a per-claim file. This keeps the orchestrator's context lean — agent prompts are compact (~0.3KB each) and agent results are one-line confirmations.
+Each agent reads analysis data from disk and writes its verdicts to a per-batch file. This keeps the orchestrator's context lean — agent prompts are compact (~0.5KB each) and agent results are one-line confirmations.
 
-For each claim, use:
+For each batch, use:
 
 ```
 Agent:
   subagent_type: docs-tools:code-questioner
-  description: "Verify claim-NNN: <text truncated to 40 chars>"
+  description: "Verify <N> claims from <file>"
   prompt: |
-    Verify a documentation claim against the source code.
+    Verify documentation claims from <DOC_FILE> against the source code.
 
-    QUESTION: "Verify: <claim text>. Is this accurate according to the source code? Report the actual implementation details."
+    CLAIMS:
+    1. [<claim-id>] "<claim text>"
+    2. [<claim-id>] "<claim text>"
+    ...
 
     Read the learn-code analysis data from: <CODE_ANALYSIS_DIR>/
     Files available:
@@ -170,34 +177,33 @@ Agent:
 
     REPO_PATH: <repo_path>
 
-    OUTPUT_FILE: <OUTPUT_DIR>/verdict-<NNN>.json
+    OUTPUT_FILE: <OUTPUT_DIR>/batch-verdict-<sanitized_file>.json
 
-    IMPORTANT: Write a JSON verdict to OUTPUT_FILE (not a markdown answer):
-    {
-      "claim_id": "<claim-id>",
-      "claim_text": "<claim text>",
-      "verdict": "supported|partially_supported|unsupported|no_evidence_found",
-      "evidence": "<brief excerpt of what you found — 1-2 sentences>"
-    }
+    Write a JSON array of verdicts — one entry for EVERY claim listed above:
+    [
+      {"claim_id": "<id>", "claim_text": "<text>", "verdict": "supported|partially_supported|unsupported|no_evidence_found", "evidence": "<1-2 sentences with file:line refs>"},
+      ...
+    ]
 
-    After writing, print ONLY: Written <OUTPUT_DIR>/verdict-<NNN>.json
+    IMPORTANT: You must produce a verdict for ALL claims. Do not skip any.
+    After writing, print ONLY: Written <OUTPUT_FILE>
 ```
 
-Where `<NNN>` is the zero-padded claim number (e.g., claim-1 produces verdict-001.json).
+Where `<sanitized_file>` is the doc filename with `.adoc`/`.md` extension stripped and non-alphanumeric characters replaced with hyphens (e.g., `pre-loaded-mcp-servers.adoc` → `pre-loaded-mcp-servers`).
 
 **Important:** All Agent calls MUST be in a single message so they run in parallel.
 
 #### 3c. Collect verdicts from disk
 
-After all code-questioner agents complete, verify which verdict files were written:
+After all code-questioner agents complete, verify which batch verdict files were written:
 
 ```bash
-ls <OUTPUT_DIR>/verdict-*.json 2>/dev/null | wc -l
+ls <OUTPUT_DIR>/batch-verdict-*.json 2>/dev/null | wc -l
 ```
 
-Log: `"<found_count>/<total_count> verdict files written to disk"`
+Log: `"<found_count>/<batch_count> batch verdict files written to disk"`
 
-For any missing verdict files (agent failed or was skipped), the merge agent in step 3d will create a fallback entry with verdict `no_evidence_found`.
+For any missing batch verdict files (agent failed or was skipped), the merge agent in step 3d will create fallback entries with verdict `no_evidence_found` for all claims in that batch.
 
 #### 3d. Assemble claim-validation.json and validation summary via merge agent
 
@@ -207,7 +213,7 @@ Delegate the assembly of the claim validation output to a merge subagent. This k
 Agent:
   description: "Merge claim verdicts for <TICKET>"
   prompt: |
-    Assemble claim-validation.json and validation-summary.md from per-claim verdict files.
+    Assemble claim-validation.json and validation-summary.md from batch verdict files.
 
     CLAIMS_LIST_FILE: <OUTPUT_DIR>/claims-list.json
     OUTPUT_DIR: <OUTPUT_DIR>
@@ -217,12 +223,16 @@ Agent:
 
     Instructions:
     1. Read CLAIMS_LIST_FILE for the full claims list (id, text, file, line)
-    2. For each claim, read <OUTPUT_DIR>/verdict-<NNN>.json
-       - If a verdict file is missing, create a fallback:
+    2. Read all batch verdict files matching <OUTPUT_DIR>/batch-verdict-*.json
+       - Each file contains a JSON array of verdict objects with fields:
+         claim_id, claim_text, verdict, evidence
+       - Collect all verdicts across all batch files into a single map keyed by claim_id
+    3. Cross-reference against the claims list:
+       - For any claim in the claims list that has no matching verdict, create a fallback:
          {"claim_id": "<id>", "claim_text": "<text>",
           "verdict": "no_evidence_found",
-          "evidence": "Agent did not return a verdict"}
-    3. Assemble CLAIMS_FILE:
+          "evidence": "Agent did not return a verdict for this claim"}
+    4. Assemble CLAIMS_FILE:
        {
          "claims": [
            {"id": "<claim-id>", "text": "...", "verdict": "supported|...",
@@ -235,12 +245,12 @@ Agent:
            "no_evidence_found": N
          }
        }
-    4. Read <CODE_ANALYSIS_DIR>/registry.json for module coverage context
-    5. Write SUMMARY_FILE as markdown containing:
+    5. Read <CODE_ANALYSIS_DIR>/registry.json for module coverage context
+    6. Write SUMMARY_FILE as markdown containing:
        - Count of claims by verdict
        - List of unsupported and partially_supported claims with their evidence
        - Module coverage summary from registry.json
-    6. After writing both files, print ONLY:
+    7. After writing both files, print ONLY:
        Written <CLAIMS_FILE>
        Written <SUMMARY_FILE>
 ```
