@@ -1,0 +1,136 @@
+:_mod-docs-content-type: CONCEPT
+
+[id="understanding-model-cache_{context}"]
+= Model cache for faster model loading
+
+[role="_abstract"]
+You can use model cache to pre-download large machine learning models to local node storage or persistent volumes before inference pods need them.
+Model cache reduces cold-start latency from 15-20 minutes to about one minute for large models, such as Llama 3 70B, and enables faster autoscaling during traffic spikes.
+
+:feature-name: Model cache
+include::snippets/developer-preview.adoc[]
+
+[id="how-model-cache-works_{context}"]
+== How model cache works
+
+Without model cache, each inference pod must download the full model from remote storage before it can serve requests.
+For models that exceed 100 GB, this download can take 15-20 minutes per pod.
+During autoscaling events, newly created pods experience the same download delay, which prevents the system from responding to traffic spikes in a timely manner.
+
+Model cache addresses this problem by pre-downloading models to local node storage.
+When an `InferenceService` or `LLMInferenceService` references a model that has been cached, a mutating webhook automatically rewrites the storage URI to point to the local cached copy.
+The inference pod then loads the model from the local persistent volume instead of downloading it from remote storage.
+This process is transparent to data scientists who deploy inference services.
+No annotations or YAML modifications are required to use a cached model.
+
+If the `storageUri` in an `InferenceService` does not match any cached model, the service falls back to downloading from remote storage.
+
+[id="model-cache-architecture_{context}"]
+== Model cache architecture
+
+Model cache introduces three cluster-scoped custom resource definitions (CRDs) that work together to manage the caching lifecycle:
+
+`LocalModelCache`:: Defines which model to cache, specified by a `sourceModelUri`, a `modelSize`, and one or more `nodeGroups`.
+When you create a `LocalModelCache` resource, the controller creates download jobs that fetch the model to local storage on each node in the specified node groups.
+`LocalModelCache` is a cluster-scoped resource.
+
+`LocalModelNodeGroup`:: Defines a group of nodes where models are cached.
+Each node group specifies a `storageLimit`, a `persistentVolumeSpec` with a local storage path and node affinity rules, and a `persistentVolumeClaimSpec`.
+The controller creates an agent DaemonSet that runs on each node in the group.
+
+`LocalModelNode`:: Represents a single node that participates in model caching.
+The controller creates one `LocalModelNode` resource per node.
+Each `LocalModelNode` tracks the download status of models assigned to that node.
+
+The model cache controller manages the lifecycle of these resources, creates download jobs in a dedicated namespace, and runs an agent DaemonSet on each participating node to manage local model files.
+
+The following components operate at the cluster level:
+
+* *Model cache controller*: Watches `LocalModelCache` and `LocalModelNodeGroup` resources, creates download jobs, and manages persistent volumes and persistent volume claims for cached models.
+* *Agent DaemonSet*: Runs on each node in a node group. Manages local model files, reports download status to the `LocalModelNode` resource, and handles file cleanup during model deletion.
+* *Mutating webhook*: Intercepts `InferenceService` and `LLMInferenceService` creation requests. If the `storageUri` matches a cached model, the webhook rewrites the pod spec to mount the local persistent volume instead of downloading from remote storage.
+* *Download jobs*: Kubernetes `Job` resources created by the controller in a dedicated namespace. Each job runs on a specific node and downloads the model from the remote `storageUri` to local storage.
+
+[id="model-cache-pv-management_{context}"]
+== Persistent volume management
+
+For local disk caching, the controller creates one persistent volume and one persistent volume claim per model per namespace.
+This enables cross-namespace sharing of cached models.
+When an `InferenceService` in a new namespace references a cached model, the controller creates a new persistent volume claim in that namespace that binds to the existing persistent volume.
+
+For network volume caching with a custom `StorageClass`, the controller uses the `StorageClass` provisioner to dynamically create persistent volumes.
+Cross-namespace sharing is not supported for network volume caching.
+
+[id="model-cache-scheduling_{context}"]
+== Pod scheduling for cached models
+
+When the mutating webhook rewrites a pod spec to use a cached model, the pod is scheduled to a node where the model is available.
+If the model download has not completed on any node, the pod might enter a `CrashLoopBackOff` state until the download finishes.
+
+You can monitor the download status of a model by checking the `nodeStatus` field in the `LocalModelCache` status.
+A status value of `NodeDownloaded` indicates that the model is ready for use on that node.
+
+[id="model-cache-caching-modes_{context}"]
+== Caching modes
+
+Model cache supports two caching modes:
+
+Local disk (`hostPath`):: Models are stored on local disk, such as NVMe storage, and shared across namespaces through `hostPath` volumes.
+This mode is suitable when GPU nodes have fast local storage and you want all inference services across namespaces to share the same cached models.
+The `LocalModelNodeGroup` resource specifies the local storage path in its `persistentVolumeSpec.local.path` field.
++
+Local disk caching requires a `LocalModelNodeGroup` to define target nodes and storage limits.
+
+Custom `StorageClass`:: Models are stored on persistent volumes provisioned by a custom `StorageClass`.
+This mode is suitable for environments that require dynamic volume provisioning or network-attached storage.
++
+Network volume caching does not require a `LocalModelNodeGroup`.
+Instead, you specify a `storageClassName` directly in the `LocalModelCache` resource.
+Cross-namespace sharing is not supported for this mode.
+
+[id="model-cache-security-requirements_{context}"]
+== {openshift-platform} security requirements
+
+Model cache requires specific security configurations on {openshift-platform} clusters:
+
+* *Security context constraints (SCCs)*: The model cache controller applies custom SCCs to the download job namespace and agent DaemonSet pods. These SCCs grant the elevated permissions required for reading and writing model files on local node storage.
+* *Namespace pod security admission*: The download job namespace might require elevated pod security admission labels to allow the download jobs to run with the required security context.
+* *File system permissions*: The host directory for local model storage must have correct ownership. Set the ownership to `1000:1000` to match the default user in the download job container.
+
+[id="model-cache-immutability_{context}"]
+== Model immutability
+
+Cached models are immutable after download.
+You cannot update a cached model in place.
+To cache a new version of a model, delete the existing `LocalModelCache` resource, and then create a new resource with the updated `sourceModelUri`.
+
+Model cache does not support automatic model eviction.
+You must manually delete `LocalModelCache` resources to reclaim storage space.
+
+[id="model-cache-and-autoscaling_{context}"]
+== Model cache and autoscaling
+
+Model cache significantly improves autoscaling response times for inference workloads.
+Without caching, when a horizontal pod autoscaler creates a new pod during a traffic spike, the pod must download the entire model before it can serve requests.
+For a 140 GB model, this delay can exceed 15 minutes, during which the autoscaler cannot respond to demand.
+
+With model cache, new pods load the model from local storage in about one minute.
+This enables autoscaling to respond to traffic spikes quickly enough to keep service level agreements (SLAs).
+
+[NOTE]
+====
+Model cache is distinct from KV cache offloading, which is a separate feature for managing key-value caches during inference.
+====
+
+[id="model-cache-disconnected-environments_{context}"]
+== Disconnected environments
+
+Model cache downloads models from external storage URIs, such as Hugging Face or S3-compatible endpoints.
+In disconnected or restricted-network environments, the `sourceModelUri` must point to an internally accessible model registry or storage endpoint.
+
+The download jobs run as Kubernetes `Job` resources on the target nodes.
+These nodes must have network access to the storage endpoint specified in the `sourceModelUri`.
+
+[role="_additional-resources"]
+.Additional resources
+* link:https://kserve.github.io/website/docs/model-serving/generative-inference/modelcache/localmodel[`KServe` model cache upstream documentation]

@@ -1,0 +1,281 @@
+:_mod-docs-content-type: REFERENCE
+
+[id='developer-preview-features_{context}']
+= Developer Preview features
+
+[role='_abstract']
+You can use Developer Preview features to test early-access {productname-long} functionality and provide feedback. Developer Preview features are not supported for production or business-critical workloads.
+
+[IMPORTANT]
+====
+The following Developer Preview features are available in {productname-long} {vernum}. Developer Preview features are not supported by Red Hat in any way and are not functionally complete or production-ready. Do not use Developer Preview features for production or business-critical workloads. Developer Preview features provide early access to functionality in advance of possible inclusion in a Red Hat product offering. Customers can use these features to test functionality and provide feedback during the development process. Developer Preview features might not have any documentation, are subject to change or removal at any time, and have received limited testing. Red Hat might provide ways to submit feedback on Developer Preview features without an associated SLA.
+
+For more information about the support scope of Red Hat Developer Preview features, see link:https://access.redhat.com/support/offerings/devpreview/[Developer Preview Support Scope].
+====
+
+== 3.4 GA Developer Preview features
+
+//RHAISTRAT-1213
+AgentCard support for post-deployment agent discovery::
+
+You can now discover deployed agents and their capabilities through the AgentCard custom resource. When you deploy an agent as a Kubernetes Deployment or StatefulSet with the `kagenti.io/type: agent` label and a protocol label such as `protocol.kagenti.io/a2a`, the platform automatically creates an AgentCard that advertises the agent's capabilities, endpoints, and supported protocols. This enables machine-readable agent-to-agent discovery for multi-agent workflows. For more information, see link:https://github.com/kagenti/kagenti-operator[Kagenti Operator Repository].
+
+//RHAISTRAT-1216
+Agent deploy and runtime management::
+
+You can now manage the runtime concerns of deployed agents by using the AgentRuntime custom resource. Create an AgentRuntime that references your agent's Deployment or StatefulSet via `spec.targetRef`, and the operator automatically injects authentication and identity sidecars into agent pods. This includes an Envoy-based AuthBridge proxy for inbound JWT validation and outbound token exchange, SPIFFE-based workload identity via a spiffe-helper sidecar, and per-agent OpenTelemetry trace configuration. Agents labeled with `kagenti.io/type: agent` are injected by default, but you can opt out with `kagenti.io/inject: disabled`. The AgentRuntime also supports per-workload overrides for SPIFFE trust domains, OTEL collector endpoints, and trace sampling rates. For more information, see link:https://github.com/kagenti/kagenti-operator[Kagenti Operator Repository].
+
+//RHAISTRAT-1198
+Distributed Tracing for {llmd}::
+
+Platform Operators can trace distributed inference with llm-d requests end-to-end across service boundaries by using OpenTelemetry-compatible distributed tracing. Traces correlate latency and errors across the full request path, from gateway through router-scheduler to model servers.
+//RHAISTRAT-964
+Batch inference compatible with OpenAI batch APIs in {llmd}::
+
+Platform Operators can submit large request volumes asynchronously through the OpenAI-compatible `/v1/batches` API and retrieve results without maintaining an active connection. Batch workloads run at lower priority than real-time traffic and are scheduled during periods of low cluster activity. For more information, see link:https://github.com/llm-d-incubation/batch-gateway/blob/main/README.md[Batch Gateway] and link:https://github.com/llm-d-incubation/batch-gateway/blob/main/docs/guides/deploy-k8s.md[Deploy Batch Gateway on Kubernetes].
+
+//RHAISTRAT-545
+Existing vector stores available as RAG knowledge sources in Gen AI Studio Playground::
+
+You can surface previously-created vector stores as retrieval-augmented generation (RAG) knowledge sources in the Gen AI Studio Playground. Platform engineers define vector stores through ConfigMaps, and AI engineers can select them as knowledge sources when chatting with models in the Playground. This enables rapid RAG experimentation without writing code or re-ingesting data.
++
+
+This release includes the following capabilities:
+
+ * Platform engineers can declare vector stores through ConfigMaps with connection details, collection names, and optional metadata
+ * Available vector stores appear under RAG / Knowledge Sources in the Playground
+ * Users can enable or disable a vector store per chat session
+ * Queries are routed through Llama Stack RAG primitives
+
+[NOTE]
+====
+This feature does not include document upload, ingestion, chunking, indexing, or vector store lifecycle management. Only read-only query and retrieval of pre-existing vector data is supported.
+====
+
+//RHOAIENG-57820    
+Interact with {productname-long} using MCP clients::                                  
+
+{productname-long} provides an MCP (Model Context Protocol) server that enables MCP-compatible clients to interact with your environment through natural-language conversations. When you describe your goals, the MCP server recommends the optimal model from your model registry by matching your intent against benchmarks such as MMLU and HumanEval, with cost comparisons. You can also manage data science projects, create workbenches, and monitor pipeline runs. 
++
+
+When you are ready to deploy, the MCP server generates three production-ready Kubernetes manifests for model serving, auto-scaling, and observability. The MCP server works with AI coding assistants such as Claude Code, OpenCode, and Gemini CLI. For more information, see link:https://github.com/opendatahub-io/rhoai-mcp/blob/main/README.md[RHOAI MCP server].
+
+//RHAISTRAT-1262
+Tool calling metadata on model cards in the model catalog::
+
+{productname-long} now displays tool calling, also known as function calling, configuration metadata directly in the model catalog. This update ensures that users have immediate access to the specific CLI arguments and chat templates required to successfully deploy models for agentic or tool-use workflows.
++
+
+Previously, users had to manually identify which arguments were necessary for a model to interact with external APIs or functions. Validated models in the catalog now include this technical metadata as a single source of truth, accessible directly on the model card.
++
+
+Key features of this update include:
+
+* Metadata visibility: Tool-calling commands and configuration requirements are now rendered in the YAML frontmatter of the model card. Users can view and copy these parameters directly from the UI to ensure deployment accuracy.
+
+* New Tool calling filter: A *Tool calling* task filter has been added to the left navigation pane in the model catalog. Users can quickly filter the catalog for models specifically validated by the {org-name} Model Validation team for tool-calling capabilities.
+
+* Validated parameters: For supported models, the catalog now provides specific CLI requirements, such as `--enable-auto-tool-choice`, `--tool-call-parser`, and the correct `chat_template` in the metadata on the tool calling section of the model card in the model catalog. 
+
+To identify models that support external tool integration:
+
+. In the {productname-short} dashboard, from the left navigation menu, click *AI hub → Catalog*. 
+. In the left filter pane, under the *Task* section, select *Tool calling*.
++
+The catalog refreshes to show only models that have been validated for tool-use compatibility.
+
+To view and copy the specific arguments required for a tool-calling deployment:
+
+. Select a model from the *Tool calling* filtered list, for example, `Ministral-3-14B-Instruct-2512`.
+. Click the model to view its model card and scroll to the model details frontmatter section to locate the tool-calling metadata.
+. Copy the validated CLI arguments for use in your model-serving configuration in the additional arguments text box. 
+
+//RHAIENG-51120
+MCP Catalog for enterprise management of MCP servers::
+
+The MCP Catalog provides a centralized experience for discovering, deploying, and experimenting with Model Context Protocol (MCP) servers in {productname-long}. AI Operators and Platform Engineers can browse available MCP servers in a catalog UI, view descriptive metadata about each server's capabilities and tools, and deploy MCP servers into their namespace directly from the catalog. After deployment, a platform engineer can register deployed MCP servers in the gen AI studio configuration, making them available in the playground for interactive experimentation.
++
+
+The MCP Catalog ships pre-loaded with MCP servers from {org-name}, technology partners, and the open source community. These servers can be deployed directly from the catalog without sourcing container images or configuring transport manually. Some additional prerequisite steps, such as mirroring images might be required for disconnected deployments or configuring server-specific credentials.
+
+* {org-name} MCP servers:
+** Red Hat OpenShift - Cluster management and troubleshooting
+** Red Hat Ansible Automation Platform - playbook execution and configuration orchestration
+** Red Hat Insights - platform intelligence and remediation recommendations.
+
+* Technology partner MCP servers:
+** Confluent Cloud - Kafka and Flink streaming
+** EDB Postgres AI - database queries and schema management
+** HashiCorp Terraform - infrastructure as code
+** Microsoft Azure - cloud resource management
+** Dynatrace - performance monitoring and troubleshooting.
+* Other MCP servers: MongoDB (document collections and RAG workflows) and MariaDB (relational database connectivity).
+
++
+The MCP Catalog relies on the following pre-requisite upstream community components:
+
+* mcp-lifecycle-operator: A Kubernetes operator that provides a declarative API to deploy, manage, and roll out MCP servers. When an MCPServer custom resource is created, the operator automatically provisions the required Deployments, Services, and cluster-internal URLs for service discovery. The MCP lifecycle operator must be installed on the cluster before deploying MCP servers from the catalog. For more information, see kubernetes-sigs/mcp-lifecycle-operator on GitHub.
+
+* mcp-gateway: A Kubernetes-native gateway that provides a unified runtime endpoint for accessing deployed MCP servers. The MCP Gateway aggregates tools from multiple registered MCP servers behind a single endpoint, enabling centralized access control and routing. For more information, see the mcp-gateway/docs/guides/quick-start.md on GitHub.
+
+The deploy action in the catalog UI is gated on the presence of the MCP lifecycle operator. If the operator is not installed, the deployment option is not available.
+
+== 3.4 EA2 Developer Preview features
+
+//RHAIENG-3508
+Automate machine learning model training with AutoML::
+AutoML is available as a Developer Preview feature in Red Hat OpenShift AI 3.4. You can use AutoML to automatically train and compare machine learning models for your tabular data. AutoML evaluates multiple models and ranks the results in a leaderboard. For the top-performing models, AutoML generates trained model artifacts and a notebook that you can use to deploy the best model. For more information, see link:https://github.com/red-hat-data-services/red-hat-ai-examples/blob/main/examples/automl/readme.md[AutoML] on GitHub.
+
+//RHIAIENG-3498 
+Automate RAG optimization with AutoRAG::
+AutoRAG is available as a Developer Preview feature in Red Hat OpenShift AI 3.4. You can use AutoRAG to find optimal RAG configurations for your documents and use cases. AutoRAG evaluates multiple configurations and ranks the results in a leaderboard. For the top-performing configurations, AutoRAG generates Jupyter notebooks that you can use to deploy your RAG application. For more information, see link:https://github.com/red-hat-data-services/red-hat-ai-examples/blob/main/examples/autorag/readme.md[AutoRAG] on GitHub.
+
+//RHAISTRAT-979
+Core Evaluation Stack control plane::
+The Evaluation Stack control plane provides an API REST routing and orchestration layer for AI evaluation, benchmarking, and profiling backends on OpenShift AI. AI engineers can deploy and manage a comprehensive evaluation platform that supports multiple frameworks and execution modes through a unified interface.
++
+The Evaluation Stack control plane includes the following capabilities:
+
+* REST API endpoints for programmatic evaluation triggering from web UI interfaces and other components
+* Built-in support for LM Evaluation Harness, RAGAS, Garak, and GuideLLM evaluation frameworks
+* Custom framework integration by using container images or Python package specifications for Kubeflow Pipelines
+* Evaluation results tracked in MLflow with a standardized schema
+* Evaluation job monitoring and progress tracking through Kubernetes constructs
+* Concurrent evaluation jobs with resource isolation
+* Support for air-gapped and disconnected environments
+* Installable Python package for local development
+
+== 3.4 EA1 Developer Preview features
+
+//RHOAIENG-48677
+Automatic MLflow experiment creation in EvalHub::
+The EvalHub service automatically creates an MLflow experiment when you specify `experiment.name` in the evaluation job request. If the experiment creation fails due to missing MLflow configuration, authentication issues, or other problems, the job request returns an error.
+
+//RHAISTRAT-948
+Kubeflow Spark Operator for distributed data processing::
+The Kubeflow Spark Operator is now available in {productname-short} as a Developer Preview. This feature provides Apache Spark integration with {productname-short}, enabling the full lifecycle of Spark applications on Kubernetes. This enables unified orchestration and monitoring of large-scale data processing and preparation Spark jobs alongside ML training and inference workflows.
++
+To enable the Kubeflow Spark Operator, navigate to your `dsc.yaml` CR and update the `kubeflowsparkoperator` parameter to the `Managed` state.
++
+This feature introduces the following capabilities:
++
+* Integration with the OpenShift AI distributed workloads ecosystem.
+* `SparkApplication` custom resources (CRs) for defining Spark jobs. 
+* Automatic submission, monitoring and restart of Spark applications with configuration retry policies. 
+* Pod customization via mutating webhooks, supporting ConfigMaps, volumes, and affinity rules.
+
+// 3.3 and earlier Developer Preview features
+
+// RHAISTRAT-537
+Run evaluations for TrustyAI-Llama Stack by using LM-Eval::
+
+You can now run evaluations by using LM-Eval on Llama Stack with TrustyAI as a Developer Preview feature, using the built-in LM-Eval component and advanced content moderation tools. To use this feature, ensure TrustyAI is enabled, the FMS Orchestrator and detectors are set up, and KServe RawDeployment mode is in use for full compatibility if needed. There is no manual set up required.
++
+Then, in the `DataScienceCluster` custom resource for the {productname-long} Operator, set the `spec.llamastackoperator.managementState` field to `Managed`.
++
+For more information, see the following resources on GitHub:
++
+* link:https://github.com/trustyai-explainability/llama-stack-provider-lmeval[Trusty AI Eval Provider]
+* link:https://github.com/opendatahub-io/llama-stack-k8s-operator[LLama Stack Operator]
+
+
+// RHAISTRAT-425
+LLM Compressor integration::
+
+LLM Compressor capabilities are now available in {productname-long} as a Developer Preview feature. A new workbench image with the `llm-compressor` library and a corresponding data science pipelines runtime image make it easier to compress and optimize your large language models (LLMs) for efficient deployment with vLLM. For more information, see link:https://github.com/vllm-project/llm-compressor[`llm-compressor`] in GitHub. 
++
+You can use LLM Compressor capabilities in two ways:
++
+* Use a Jupyter notebook with the workbench image available at link:https://quay.io/repository/opendatahub/llmcompressor-workbench[{org-name} Quay.io: `opendatahub / llmcompressor-workbench`]. +
+For an example Jupyter notebook, see link:https://github.com/red-hat-data-services/red-hat-ai-examples/blob/main/examples/llmcompressor/workbench_example.ipynb[`examples/llmcompressor/workbench_example.ipynb`] in the `red-hat-ai-examples` repository.
+* Run a data science pipeline that executes model compression as a batch process with the runtime image available at link:https://quay.io/repository/opendatahub/llmcompressor-pipeline-runtime[{org-name} Quay.io: `opendatahub / llmcompressor-pipeline-runtime`]. +
+For an example pipeline, see link:https://github.com/red-hat-data-services/red-hat-ai-examples/blob/main/examples/llmcompressor/oneshot_pipeline.py[`examples/llmcompressor/oneshot_pipeline.py`] in the `red-hat-ai-examples` repository.
+
+
+//RHAISTRAT-122
+MLflow integration::
+MLflow integration, previously available as a Developer Preview, has been promoted to Generally Available (GA) in {productname-long} 3.4.
+For information about the GA feature, see the xref:new-features-and-enhancements_{context}[New features and enhancements] section.
+
+//RHAISTRAT-864
+AI Available Assets integration with Model-as-a-Service (MaaS)::
+This feature is available as a Developer Preview.  
++
+You can now access and consume Model-as-a-Service (MaaS) models directly from the *AI Available Assets* page in the GenAI Studio.  
++
+Administrators can configure a MaaS by enabling the toggle in the *Model Deployments* page. When a model is marked as a service, it becomes global and visible across all projects in the cluster.  
+
+//RHAISTRAT-507
+Additional fields added to Model Deployments for AI Available Assets integration::
+This feature is available as a Developer Preview.  
++
+Administrators can now add metadata to models during deployment so that they are automatically listed on the *AI Available Assets* page.  
++
+The following table describes the new metadata fields that streamline the process of making models discoverable and consumable by other teams:
+
+[cols="1,1,3", options="header"]
+|===
+|Field name |Field type |Description
+
+|*Use Case*
+|Free-form text
+|Describes the model's primary purpose, for example, "Customer Churn Prediction" or "Image Classification for Product Catalog."
+
+|*Description*
+|Free-form text
+|Provides more detailed context and functionality notes for the model.
+
+|*Add to AI Assets*
+|Checkbox
+|When enabled, automatically publishes the model and its metadata to the *AI Available Assets* page.
+|===
+
+//RHAISTRAT-705
+Compatibility of Llama Stack remote providers and SDK with MCP HTTP streaming protocol::
+This feature is available as a Developer Preview.  
++
+Llama Stack remote providers and the SDK are now compatible with the Model Context Protocol (MCP) HTTP streaming protocol.  
++
+This enhancement enables developers to build fully stateless MCP servers, simplify deployment on standard Llama Stack infrastructure (including serverless environments), and improve scalability. It also prepares for future enhancements such as connection resumption and provides a smooth transition away from Server-Sent Events (SSE).
+
+//RHAISTRAT-77
+Packaging of ITS Hub dependencies to the Red Hat–maintained Python index::
+This feature is available as a Developer Preview.  
++
+All Inference Time Scaling (ITS) runtime dependencies are now packaged in the Red Hat-maintained Python index, allowing Red Hat AI and {productname-short} customers to install `its_hub` and its dependencies directly by using `pip`.  
++
+This enhancement enables users to build custom inference images with ITS algorithms focused on improving model accuracy at inference time without requiring model retraining, such as:
+
+* Particle filtering
+* Best-of-N
+* Beam search  
+* Self-consistency
+* Verifier or PRM-guided search
++
+For more information, see the link:https://github.com/Red-Hat-AI-Innovation-Team/its_hub[ITS Hub on GitHub].
+
+//RHAISTRAT-76
+Dynamic hardware-aware continual training strategy::
+Static hardware profile support is now available to help users select training methods, models, and hyperparameters based on VRAM requirements and reference benchmarks. This approach ensures predictable and reliable training workflows without dynamic hardware discovery.  
++
+The following components are included:
+
+* *API Memory Estimator*: Accepts model, training method, data set metadata, and assumed hyperparameters as input and returns an estimated VRAM requirement for the training job. Delivered as an API within Training Hub.  
+* *Reference Profiles and Benchmarks*: Provides end-to-end training time benchmarks for OpenShift AI Innovation (OSFT) and Performance Team (LAB SFT) baselines, delivered as static tables and documentation in Training Hub.  
+* *Hyperparameter Guidance*: Publishes safe starting ranges for key hyperparameters such as learning rate, batch size, epochs, and LoRA rank. Integrated into example notebooks maintained by the AI Innovation team.  
++
+[IMPORTANT]
+====
+Hardware discovery is not included in this release. Only static reference tables and guidance are provided; automated GPU or CPU detection is not yet supported.
+====
+
+//RHAISTRAT-20
+Human-in-the-Loop (HIL) functionality in the Llama Stack agent::
+Human-in-the-Loop (HIL) functionality has been added to the Llama Stack agent to allow users to approve unread tool calls before execution.  
++
+This enhancement includes the following capabilities:
+
+* Users can approve or reject unread tool calls through the responses API.
+* Configuration options specify which tool calls require HIL approval.
+* Tool calls pause until user approval is received for HIL-enabled tools.
+* Tool calls that do not require HIL continue to run without interruption.

@@ -1,0 +1,228 @@
+:_mod-docs-content-type: REFERENCE
+
+[id="llama-stack-sdk-migration-reference_{context}"]
+= Llama Stack SDK API changes in version 0.3.1
+
+[role="_abstract"]
+The Llama Stack SDK version 0.3.1 introduces breaking API changes that affect all vector store providers, including inline Milvus, remote Milvus, inline FAISS, and PostgreSQL with pgvector.
+If you have existing Jupyter notebooks or scripts that use the Llama Stack SDK version 0.2.x, you must update your code to use the new API patterns.
+
+Review the breaking changes, before-and-after code comparisons, and affected SDK methods to update your code.
+
+== Summary of breaking changes
+
+The following table lists the breaking API changes introduced in Llama Stack SDK version 0.3.1.
+
+.Llama Stack SDK 0.3.1 breaking changes
+[options="header"]
+|===
+|Change |Old API pattern (SDK 0.2.x) |New API pattern (SDK 0.3.1)
+
+|Vector store creation
+|`client.vector_dbs.register(vector_db_id=..., embedding_model=..., embedding_dimension=..., provider_id=...)`
+|`client.vector_stores.create(name=..., extra_body={"embedding_model": ..., "embedding_dimension": ..., "provider_id": ...})`
+
+|Document ingestion
+|`RAGDocument` objects with `client.tool_runtime.rag_tool.insert()`
+|`client.vector_stores.files.create(vector_store_id=..., file_id=..., chunking_strategy={...})`
+
+|Content querying
+|`client.tool_runtime.rag_tool.query()`
+|`client.responses.create(tools=[{"type": "file_search", "vector_store_ids": [...]}])`
+
+|Vector store identifier parameter
+|`vector_db_id` and `vector_db_ids`
+|`vector_store_id` and `vector_store_ids`
+
+|Minimum SDK version
+|`llama_stack_client >= 0.2.22`
+|`llama_stack_client >= 0.3.1`
+
+|`fire` dependency
+|Required (`pip install fire`)
+|Removed from dependencies
+|===
+
+== Vector store creation with `extra_body`
+
+In SDK 0.3.1, you pass vector store creation parameters such as `embedding_model`, `embedding_dimension`, and `provider_id` inside an `extra_body` dictionary instead of as top-level keyword arguments.
+
+.Old pattern (SDK 0.2.x)
+[source,python]
+----
+vector_db = client.vector_dbs.register(
+    vector_db_id="my_store",
+    embedding_model=embedding_model_id,
+    embedding_dimension=embedding_dimension,
+    provider_id="milvus",
+)
+----
+
+.New pattern (SDK 0.3.1)
+[source,python]
+----
+vector_store = client.vector_stores.create(
+    name="my_store",
+    extra_body={
+        "embedding_model": embedding_model_id,
+        "embedding_dimension": embedding_dimension,
+        "provider_id": "milvus",
+    },
+)
+vector_store_id = vector_store.id
+----
+
+Verify that `vector_store.id` returns a non-empty string to confirm the vector store was created successfully.
+
+This change applies to all vector store providers.
+Replace the `provider_id` value with the provider that matches your deployment: `milvus` for inline Milvus, `milvus-remote` for remote Milvus, `faiss` for inline FAISS, or `pgvector` for PostgreSQL with pgvector.
+
+== Document ingestion with the vector store files API
+
+In SDK 0.3.1, document ingestion uses the `client.vector_stores.files.create()` method with file upload instead of the `RAGDocument` class and `rag_tool.insert()` method.
+
+.Old pattern (SDK 0.2.x)
+[source,python]
+----
+from llama_stack_client.types import RAGDocument
+
+documents = [
+    RAGDocument(
+        document_id="doc-1",
+        content="https://example.com/document.pdf",
+        mime_type="application/pdf",
+        metadata={},
+    ),
+]
+
+client.tool_runtime.rag_tool.insert(
+    tool_name="builtin::rag/knowledge_search",
+    vector_db_id=vector_db_id,
+    documents=documents,
+    chunk_size_in_tokens=800,
+)
+----
+
+.New pattern (SDK 0.3.1)
+[source,python]
+----
+# Upload the file first
+with open("document.pdf", "rb") as f:
+    file_info = client.files.create(
+        file=("document.pdf", f),
+        purpose="assistants",
+    )
+
+# Add the file to a vector store with chunking
+vector_store_file = client.vector_stores.files.create(
+    vector_store_id=vector_store_id,
+    file_id=file_info.id,
+    chunking_strategy={
+        "type": "static",
+        "static": {
+            "max_chunk_size_tokens": 800,
+            "chunk_overlap_tokens": 400,
+        },
+    },
+)
+----
+
+Verify that `vector_store_file.id` returns a non-empty string to confirm the file was ingested successfully.
+
+The following list describes the key differences:
+
+* SDK 0.3.1 removes the `RAGDocument` class. Remove it from your import statements.
+* You must upload files to Llama Stack with `client.files.create()` before ingestion.
+Documents must be available as local files.
+URL-based document references, such as `content="https://example.com/document.pdf"`, are no longer directly supported.
+If your existing code loads documents by URL, you must download the file to local storage before uploading it with `client.files.create()`.
+* You specify chunking parameters in a `chunking_strategy` dictionary instead of as a `chunk_size_in_tokens` argument.
+Tune the `chunk_overlap_tokens` value based on your use case.
+The value of `400` in this example is a high overlap (50% of `max_chunk_size_tokens`) chosen for illustration.
+A typical starting value is 100 to 200 tokens.
+Higher overlap values increase index size but can improve retrieval quality for context-dependent content.
+* The method returns metadata about the ingested file, which you can use for verification.
+
+== Content querying with the responses API
+
+In SDK 0.3.1, RAG queries use the `client.responses.create()` method with a `file_search` tool instead of the `rag_tool.query()` method.
+
+.Old pattern (SDK 0.2.x)
+[source,python]
+----
+response = client.tool_runtime.rag_tool.query(
+    tool_name="builtin::rag/knowledge_search",
+    vector_db_ids=[vector_db_id],
+    content="What is retrieval-augmented generation?",
+)
+----
+
+.New pattern (SDK 0.3.1)
+[source,python]
+----
+response = client.responses.create(
+    model=model_id,
+    input="What is retrieval-augmented generation?",
+    instructions="Use retrieved context when available.",
+    tools=[
+        {
+            "type": "file_search",
+            "vector_store_ids": [vector_store_id],
+        }
+    ],
+)
+
+print(response.output_text)
+----
+
+Verify that `response.output_text` contains a model-generated answer that incorporates the retrieved context from your ingested documents.
+
+The following list describes the key differences:
+
+* The `responses.create()` method with a `file_search` tool type replaces the `rag_tool.query()` method.
+* The `response.output_text` attribute contains a model-generated answer that incorporates the retrieved context.
+Unlike the old `rag_tool.query()` method, which returned raw retrieved chunks, the Responses API returns text generated by the LLM.
+To access the raw retrieved chunks, inspect the `output` array in the full response object for file search results.
+* You must specify the `model` parameter to indicate which LLM generates the response.
+* Customize the `instructions` parameter for your specific use case to improve response quality.
+For a more detailed example, see xref:querying-ingested-content-in-a-llama-model_{context}[Querying ingested content in a Llama model].
+
+== Parameter rename: `vector_db_id` to `vector_store_id`
+
+SDK 0.3.1 renames all occurrences of `vector_db_id` and `vector_db_ids` to `vector_store_id` and `vector_store_ids`.
+
+.Affected parameters
+[options="header"]
+|===
+|Old parameter name |New parameter name |Context
+
+|`vector_db_id`
+|`vector_store_id`
+|Vector store creation, file ingestion, direct queries
+
+|`vector_db_ids`
+|`vector_store_ids`
+|`file_search` tool configuration, agent tool arguments
+|===
+
+Update all references in your code, including any variables, function arguments, and configuration dictionaries that use the old naming convention.
+
+== SDK installation
+
+.Old installation (SDK 0.2.x)
+[source,terminal]
+----
+%pip install llama_stack_client fire
+----
+
+.New installation (SDK 0.3.1)
+[source,terminal]
+----
+%pip install llama_stack_client
+----
+
+The `%pip` command is a Jupyter notebook magic command.
+If you are running the command outside a Jupyter notebook, use `pip install` instead.
+
+The `fire` package is no longer required as a dependency.
+Verify that your environment installs version 0.3.1 or later.

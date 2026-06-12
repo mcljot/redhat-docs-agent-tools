@@ -1,0 +1,103 @@
+:_mod-docs-content-type: CONCEPT
+
+[id="model-catalog-source-types_{context}"]
+= Model catalog source types
+
+[role='_abstract']
+You can configure model catalog sources to control which AI models are available to your organization's data scientists.
+{productname-short} supports two types of catalog sources, each with distinct behaviors for model naming, filtering, and management.
+Understanding the differences between source types helps you configure include and exclude filters correctly and avoid common misconfiguration errors.
+
+[id="yaml-file-sources_{context}"]
+== YAML-file sources
+
+YAML-file sources define models by using a YAML catalog specification stored in a ConfigMap.
+The default {org-name} AI and {org-name} AI validated sources are YAML-file sources.
+
+YAML-file sources have the following characteristics:
+
+* Model names use the `__organization__/__model-name__` format, for example, `RedHat/granite-3.1-8b-instruct`.
+* Include and exclude filter entries must use the full `__organization__/__model-name__` format.
+* You can define multiple organizations in a single YAML-file source.
+* YAML-file sources work in both connected and disconnected environments.
+
+[id="hugging-face-sources_{context}"]
+== Hugging Face sources
+
+Hugging Face sources sync models from a specified organization on huggingface.co.
+Each Hugging Face source connects to a single organization and retrieves the publicly available models from that organization.
+
+Hugging Face sources have the following characteristics:
+
+* Model names use the bare `__model-name__` format, for example, `granite-3.1-8b-instruct`, because the organization is specified separately.
+* Include and exclude filter entries use only the model name, without an organization prefix.
+* Each Hugging Face source is limited to one organization.
+* The allowed organization name is case-sensitive and must match the URL slug from the Hugging Face website, not the display name.
+For example, use `meta-llama` from `huggingface.co/meta-llama`, not the display name "Meta Llama".
+* Only public, non-gated models are supported for catalog-based deployment.
+Private and gated Hugging Face model support is planned for a future release.
+
+[IMPORTANT]
+====
+Hugging Face sources require network connectivity to huggingface.co to sync models.
+In disconnected (air-gapped) environments, Hugging Face sources are not available.
+Use YAML-file sources instead.
+====
+
+[id="comparison-of-source-types_{context}"]
+== Comparison of source types
+
+The following table summarizes the key differences between YAML-file and Hugging Face source types.
+
+.Model catalog source type comparison
+[cols="1,1,1", options="header"]
+|===
+|Characteristic
+|YAML-file source
+|Hugging Face source
+
+|Model name format
+|`__organization__/__model-name__`
+|`__model-name__`
+
+|Include/exclude filter format
+|`__organization__/__model-name__`
+|`__model-name__`
+
+|Organizations per source
+|Multiple
+|One
+
+|Organization name format
+|Defined in the YAML file
+|Case-sensitive URL slug from huggingface.co
+
+|Disconnected environment support
+|Yes
+|No
+
+|Private or gated model support
+|Not applicable
+|Not supported in this release
+|===
+
+[id="how-sources-interact-with-catalog-governance_{context}"]
+== How sources interact with catalog governance
+
+Model catalog sources feed models into the catalog, and governance controls determine which models are visible to non-administrator users.
+The filtering pipeline works as follows:
+
+. Source-level include and exclude filters are applied first, controlling which models from each source are added to the catalog.
+. The disallow list is applied next, hiding individually restricted models from non-administrator users regardless of their source.
+
+This means that even if a model passes source-level filters, an administrator can still disallow-list it to enforce organizational policies.
+Conversely, a model that is excluded at the source level is never available in the catalog and does not need to be disallow-listed.
+
+[id="dashboard-based-source-management_{context}"]
+== Dashboard-based source management
+
+You can manage model catalog sources from the AI Catalog Settings page in the {productname-short} dashboard instead of editing ConfigMaps directly.
+The dashboard provides a graphical interface for adding, editing, enabling, disabling, and removing catalog sources of both types.
+
+//[role="_additional-resources"]
+//.Additional resources

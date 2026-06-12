@@ -1,0 +1,41 @@
+:_mod-docs-content-type: CONCEPT
+
+[id='overview-of-model-registries_{context}']
+= Overview of the model catalog and model registries
+
+[role='_abstract']
+
+The model catalog provides a curated library where data scientists and AI engineers can discover and evaluate the available generative AI (gen AI) models to find the best fit for their use cases.
+
+A model registry acts as a central repository for administrators, data scientists, and AI engineers to register, version, and manage the lifecycle of AI models before configuring them for deployment. A model registry is a key component for AI model governance.
+
+== Model catalog
+
+Data scientists and AI engineers can use the model catalog to discover and evaluate the gen AI models that are available and ready for their organization to register, deploy, and customize. 
+
+The model catalog provides models from different providers that you can search, discover, and evaluate before you register models in a model registry and deploy them to a model serving runtime. Third-party gen AI models are benchmarked by {org-name} for performance and quality by using open source evaluation datasets. You can compare performance metrics for specific hardware configurations and determine the most suitable option for deployment.
+
+{productname-short} provides a default model catalog that includes models from different source providers. {productname-short} administrators can manage and govern model catalog sources to control which models are available to data scientists and AI engineers. For more information, see link:{rhoaidocshome}{default-format-url}/manage_and_govern_model_catalog_sources[Manage and govern model catalog sources].
+
+For more information about how data scientists and AI engineers discover and evaluate models in the catalog, see link:{rhoaidocshome}{default-format-url}/working_with_the_model_catalog[Working with the model catalog].
+
+== Model registry
+
+A model registry is an important component in the lifecycle of an artificial intelligence/machine learning (AI/ML) model, and is a vital part of any machine learning operations (MLOps) platform or workflow. A model registry acts as a central repository, storing metadata related to machine learning models from development to deployment. This metadata ranges from high-level information such as the deployment environment and project, to specific details such as training hyperparameters, performance metrics, and deployment events.
+
+A model registry acts as a bridge between model experimentation and serving, offering a secure, collaborative metadata store interface for stakeholders in the ML lifecycle. Model registries provide a structured and organized way to store, share, version, deploy, and track models.
+
+{productname-short} supports three storage backends for model artifacts:
+
+* *S3-compatible object storage*: Store model artifacts in S3-compatible storage such as Amazon S3 or MinIO.
+* *URI*: Reference model artifacts by URL.
+* *OCI-compliant registries*: Store model artifacts as OCI images in container registries such as Red Hat Quay.
+OCI storage uses the `ModelCar` format for fast deployment with `KServe` and enables unified versioning with your existing container infrastructure.
+You can register and store models as OCI images by using the {productname-short} dashboard or upload locally-trained models programmatically by using the `model-registry` Python client.
+
+{productname-short} administrators can create model registries in {productname-short} and grant model registry access to data scientists and AI engineers. For more information, see link:{rhoaidocshome}{default-format-url}/managing_model_registries[Managing model registries].
+
+Data scientists and AI engineers with access to a model registry can use it to store, share, version, deploy, and track models. For more information, see link:{rhoaidocshome}{default-format-url}/working_with_model_registries[Working with model registries].
+//[role="_additional-resources"]
+//.Additional resources
+//*

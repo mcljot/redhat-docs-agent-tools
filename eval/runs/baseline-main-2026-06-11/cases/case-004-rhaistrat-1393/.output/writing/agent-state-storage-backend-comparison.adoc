@@ -1,0 +1,140 @@
+:_mod-docs-content-type: REFERENCE
+
+[id="agent-state-storage-backend-comparison_{context}"]
+= Agent state storage backend comparison
+
+[role="_abstract"]
+You can choose from several storage backends for LangGraph agent state persistence on {productname-long}.
+Each backend offers different trade-offs for latency, durability, scaling, and operational complexity.
+The following tables help you select the right backend for your workload requirements.
+
+== Storage backend comparison
+
+The following table compares the available storage backends for LangGraph agent state.
+
+.Agent state storage backend comparison
+[cols="1,1,1,1,1,1", options="header"]
+|===
+|Backend
+|Latency
+|Durability
+|Scaling
+|Persistence across pod restarts
+|Recommended use case
+
+|MemorySaver (in-memory)
+|Sub-millisecond
+|None -- all data is lost when the process exits
+|Single process only
+|No
+|Local development and testing
+
+|SQLite
+|Low (local filesystem)
+|Persists to local file -- lost if the pod's filesystem is ephemeral
+|Single process only -- does not support concurrent access from multiple pods
+|Only with a persistent volume
+|Local development and single-pod testing
+
+|PostgreSQL
+|Low to moderate (network round-trip)
+|Full ACID durability with write-ahead logging
+|Supports multiple concurrent pods -- horizontal scaling is possible
+|Yes
+|Production deployments on {productname-short}
+
+|Redis
+|Sub-millisecond to low (network round-trip)
+|Configurable -- depends on Redis persistence settings (RDB, AOF, or both)
+|Supports multiple concurrent pods -- horizontal scaling with Redis Cluster
+|Yes, when Redis persistence is enabled
+|High-throughput production workloads that require low checkpoint latency
+|===
+
+== Llama Stack memory API compatibility
+
+Not all storage backends are supported through the Llama Stack memory API.
+The following table shows which backends are available for each persistence layer.
+
+.Llama Stack memory API compatibility by backend
+[cols="1,1,1,1", options="header"]
+|===
+|Backend
+|Llama Stack `persistence_store` (agent metadata)
+|Llama Stack `responses_store` (response history)
+|LangGraph checkpointer (graph checkpoints)
+
+|MemorySaver
+|No
+|No
+|Yes -- via `langgraph.checkpoint.memory.MemorySaver`
+
+|SQLite
+|Yes -- set `type: sqlite` in `run.yaml`
+|Yes -- set `type: sqlite` in `run.yaml`
+|Yes -- via `langgraph.checkpoint.sqlite.SqliteSaver` (requires the `langgraph-checkpoint-sqlite` package)
+
+|PostgreSQL
+|Yes -- set `type: postgres` in `run.yaml`
+|Yes -- set `type: postgres` in `run.yaml`
+|Yes -- via `langgraph.checkpoint.postgres.PostgresSaver`
+
+|Redis
+|No
+|No
+|Yes -- via `langgraph.checkpoint.redis.RedisSaver`
+|===
+
+[NOTE]
+====
+The Llama Stack `persistence_store` and `responses_store` require either SQLite or PostgreSQL.
+If you use Redis for LangGraph checkpoints, you must still configure PostgreSQL or SQLite for the Llama Stack metadata stores.
+====
+
+== When to use PostgreSQL or Redis
+
+PostgreSQL is the recommended backend for most production deployments on {productname-short}.
+PostgreSQL provides full ACID compliance, integrates with {productname-short} backup and monitoring infrastructure, and can serve as both the Llama Stack metadata store and the LangGraph checkpoint store.
+
+Redis is appropriate when your workload requires checkpoint latency under 1 millisecond and you can accept the additional operational complexity of managing a separate Redis deployment alongside PostgreSQL.
+
+Consider the following factors when choosing between PostgreSQL and Redis:
+
+.Decision factors for PostgreSQL or Redis
+[cols="1,1,1", options="header"]
+|===
+|Factor
+|PostgreSQL
+|Redis
+
+|Operational simplicity
+|Single database for all state layers
+|Requires both Redis and PostgreSQL
+
+|Checkpoint latency
+|Low to moderate (1-5 ms typical)
+|Sub-millisecond to low (<1 ms typical)
+
+|Durability guarantees
+|Full ACID -- every committed transaction is durable
+|Configurable -- RDB snapshots can lose up to the last snapshot interval
+
+|Backup integration
+|Standard PostgreSQL backup tools (pg_dump, WAL archiving)
+|Requires Redis-specific backup procedures
+
+|Scaling approach
+|Vertical scaling -- read replicas for read-heavy workloads
+|Horizontal scaling with Redis Cluster for high-throughput workloads
+
+|{productname-short} integration
+|Supported as Llama Stack metadata store and LangGraph checkpointer
+|Supported as LangGraph checkpointer only
+|===
+
+[role="_additional-resources"]
+.Additional resources
+
+* xref:configuring-persistent-state-langgraph-agents_{context}[Configure persistent state for LangGraph agents on {productname-short}]
+* xref:configuring-postgresql-langgraph-agent-state_{context}[Configure PostgreSQL for LangGraph agent state persistence]
+* link:https://langchain-ai.github.io/langgraph/concepts/persistence/[LangGraph persistence documentation]

@@ -1,0 +1,32 @@
+:_mod-docs-content-type: ASSEMBLY
+
+ifdef::context[:parent-context: {context}]
+
+[id="maintaining-agent-state-in-production"]
+= Maintain agent state and reliability in production
+
+:context: maintaining-agent-state
+
+[role="_abstract"]
+You can configure persistent state backends for LangGraph agents on {productname-long} to ensure that conversation history, agent checkpoints, and accumulated context survive pod restarts, scaling events, and cluster maintenance.
+By default, LangGraph agents use in-memory or file-based storage that is lost when a pod is rescheduled.
+Transitioning to PostgreSQL provides production-grade durability for agent state.
+
+To maintain agent state in production, you must understand the two-layer state model, choose the appropriate storage backend, provision PostgreSQL, and configure both the Llama Stack metadata store and the LangGraph checkpointer.
+
+.Prerequisites
+
+* A LangGraph agent is deployed to {productname-short}. See xref:deploying-langgraph-agents-from-local-to-rhoai[Deploy LangGraph agents from local development to {productname-short}].
+* You have `cluster-admin` access or a namespace administrator can provision PostgreSQL resources.
+* A `StorageClass` that supports dynamic provisioning of `PersistentVolumeClaim` resources is available on the cluster.
+
+include::modules/agent-state-persistence-langgraph.adoc[leveloffset=+1]
+
+include::modules/agent-state-storage-backend-comparison.adoc[leveloffset=+1]
+
+include::modules/configuring-postgresql-langgraph-agent-state.adoc[leveloffset=+1]
+
+include::modules/configuring-persistent-state-langgraph-agents.adoc[leveloffset=+1]
+
+ifdef::parent-context[:context: {parent-context}]
+ifndef::parent-context[:!context:]

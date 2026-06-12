@@ -1,0 +1,104 @@
+:_mod-docs-content-type: CONCEPT
+
+[id="openai-file-citation-annotations-in-llama-stack_{context}"]
+= OpenAI-compatible file citation annotations in Llama Stack
+
+[role="_abstract"]
+{productname-short} provides OpenAI-compatible file citation annotations in Responses API outputs when you use retrieval-augmented generation (RAG) with the `file_search` tool.
+You can use these annotations to trace generated responses back to the source files used during retrieval without changing existing OpenAI client code.
+When you use the Responses API with the `file_search` tool, Llama Stack returns citation metadata that references the source file used to generate the response.
+Annotations are enabled by default and require no additional configuration in {productname-short} {vernum}.
+
+ifndef::upstream[]
+[IMPORTANT]
+====
+ifdef::self-managed[]
+This feature is currently available in {productname-long} {vernum} as a Technology Preview feature.
+endif::[]
+ifdef::cloud-service[]
+This feature is currently available in {productname-long} as a Technology Preview feature.
+endif::[]
+Technology Preview features are not supported with {org-name} production service level agreements (SLAs) and might not be functionally complete.
+{org-name} does not recommend using them in production.
+These features provide early access to upcoming product features, enabling customers to test functionality and provide feedback during the development process.
+
+For more information about the support scope of {org-name} Technology Preview features, see link:https://access.redhat.com/support/offerings/techpreview/[Technology Preview Features Support Scope].
+====
+endif::[]
+
+[id="openai-compatibility-for-annotations_{context}"]
+== OpenAI compatibility for file citation annotations
+
+Llama Stack implements the same annotation schema as the OpenAI Responses API.
+The request schemas, including `file_search` tool configuration and `vector_store_ids`, are identical to the OpenAI specification.
+The response schemas, including the `annotations` array and `file_citation` fields (`type`, `file_id`, `filename`, `index`), also match the OpenAI specification.
+This means that existing OpenAI client applications can consume file citation annotations from Llama Stack without any code changes.
+
+You can use the standard OpenAI Python SDK or any HTTP client that targets the OpenAI Responses API to send requests to Llama Stack and receive annotation data in the same format that OpenAI returns.
+The only required change is updating the `base_url` in the client configuration to point to your Llama Stack server endpoint.
+
+Only the `file_citation` annotation type is supported.
+The `url_citation`, `container_file_citation`, and `file_path` annotation types that are defined in the OpenAI schema are not produced by Llama Stack.
+For a detailed comparison of supported and unsupported annotation types, see xref:openai-annotation-type-compatibility_{context}[the OpenAI annotation type compatibility table].
+
+[id="annotation-capabilities_{context}"]
+== Annotation capabilities and limitations
+
+Llama Stack returns `file_citation` annotations when the `file_search` tool retrieves content from a vector store during a RAG query.
+Annotations are enabled by default and require no additional configuration.
+Llama Stack attributes citations at the document level, meaning each annotation references the source file rather than a specific chunk or token.
+
+In the Llama Stack UI, annotations display the source filename as a clickable link.
+You can click the filename to download the corresponding source file.
+For more information about viewing annotations in the UI, see xref:viewing-file-citation-annotations-in-llama-stack-ui_{context}[].
+
+The following capabilities are not available in {productname-short} {vernum}:
+
+* Confidence scores are not included in annotations.
+* Chunk-level and token-level attribution are not supported.
+* Configurable annotation levels, such as basic, detailed, or comprehensive, are not implemented.
+
+[NOTE]
+====
+Configurable annotation levels are not available in {productname-short} {vernum}.
+====
+
+[id="metadata-flow-through-the-rag-pipeline_{context}"]
+== Metadata flow through the RAG pipeline
+
+When you build a RAG application that uses file citation annotations, it is important to understand which metadata is preserved at each stage of the pipeline.
+Not all metadata that you attach during file ingestion is included in the final annotation output.
+
+The metadata flows through the following stages:
+
+. *File ingestion*: When you upload a file to a vector store and attach it by using the Vector Store Files API, the system records the `file_id`, `filename`, and any custom attributes that you specify (such as `title` or `author`).
+Custom attributes are passed as the `attributes` parameter during the `client.vector_stores.files.create()` call.
+ifdef::upstream[]
+For more information, see link:{odhdocshome}/working-with-llama-stack/#openai-compatible-apis-in-Llama-Stack_rag[OpenAI-compatible APIs in Llama Stack].
+endif::[]
+ifndef::upstream[]
+For more information, see link:{rhoaidocshome}{default-format-url}/working_with_llama_stack/index#openai-compatible-apis-in-Llama-Stack_rag[OpenAI-compatible APIs in Llama Stack].
+endif::[]
+The file is chunked and each chunk inherits the `filename` from the parent file record.
+. *Vector store storage*: The vector store persists chunked embeddings along with the chunk metadata.
+Custom attributes that you specified during ingestion are preserved in the chunk metadata at this stage.
+. *Search results*: When the `file_search` tool retrieves relevant chunks during a RAG query, the search results include the `file_id`, `filename`, custom attributes, relevance scores, and chunk text.
+You can access these extended search result details by using the `include` parameter in your Responses API request.
+. *File citation annotations*: The final `file_citation` annotation objects in the Responses API output contain only the `file_id`, `filename`, and `index` fields.
+Custom attributes, relevance scores, and chunk text are not included in the annotation output.
+
+If you need to access metadata beyond what annotations provide, such as relevance scores, chunk text, or custom attributes, use the `include` parameter with the value `file_search_call.results` in your Responses API request.
+For more information, see xref:viewing-file-citation-annotations-in-responses-api-output_{context}[].
+
+[role="_additional-resources"]
+.Additional resources
+
+ifndef::upstream[]
+* link:{rhoaidocshome}{default-format-url}/working_with_llama_stack/index#openai-compatibility-for-rag-apis-in-llama-stack_rag[OpenAI compatibility for RAG APIs in Llama Stack]
+* link:{rhoaidocshome}{default-format-url}/working_with_llama_stack/index#openai-compatible-apis-in-llama-stack_rag[OpenAI-compatible APIs in Llama Stack]
+endif::upstream[]
+
+ifdef::upstream[]
+* link:{odhdocshome}/working-with-llama-stack/#openai-compatibility-for-rag-apis-in-llama-stack_rag[OpenAI compatibility for RAG APIs in Llama Stack]
+* link:{odhdocshome}/working-with-llama-stack/#openai-compatible-apis-in-llama-stack_rag[OpenAI-compatible APIs in Llama Stack]
+endif::upstream[]

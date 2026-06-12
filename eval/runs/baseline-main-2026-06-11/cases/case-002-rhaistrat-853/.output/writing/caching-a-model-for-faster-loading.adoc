@@ -1,0 +1,130 @@
+:_mod-docs-content-type: PROCEDURE
+
+[id="caching-a-model-for-faster-loading_{context}"]
+= Cache a model on local node disks
+
+[role="_abstract"]
+You can cache a model on local node storage by creating a `LocalModelCache` resource with a reference to a `LocalModelNodeGroup`.
+After the model is cached, any `InferenceService` or `LLMInferenceService` with a matching `storageUri` automatically loads the model from the local cache instead of downloading it from remote storage.
+Local disk caching supports cross-namespace sharing, which means that inference services in any namespace can use the cached model.
+
+.Prerequisites
+
+* You have cluster administrator privileges for your {openshift-platform} cluster.
+* You have enabled model cache on the cluster.
+For more information, see xref:enabling-model-cache_{context}[Enable model cache].
+* You have configured at least one model cache node group.
+For more information, see xref:configuring-model-cache-node-groups_{context}[Configure model cache node groups].
+* If the model is stored in a private registry, you have configured download credentials.
+For more information, see xref:configuring-model-download-credentials_{context}[Configure model download credentials].
+* You know the model URI, for example `hf://meta-llama/Llama-3-70B`, and the estimated size of the model.
+
+.Procedure
+
+. Create a `LocalModelCache` resource:
++
+[source,yaml]
+----
+apiVersion: serving.kserve.io/v1alpha1
+kind: LocalModelCache
+metadata:
+  name: <model_cache_name> <1>
+spec:
+  sourceModelUri: "<model_uri>" <2>
+  modelSize: "<model_size>" <3>
+  nodeGroups:
+    - "<node_group_name>" <4>
+----
++
+--
+Where:
+
+`<model_cache_name>`:: Specifies a unique name for this cached model, such as `llama3-70b`.
+`<model_uri>`:: Specifies the URI of the model in remote storage, such as `hf://meta-llama/Llama-3-70B`.
+This URI must match the `storageUri` used in your `InferenceService` or `LLMInferenceService` resources.
+`<model_size>`:: Specifies the estimated size of the model, such as `140Gi`.
+The model size must not exceed the `storageLimit` defined in the node group.
+`<node_group_name>`:: Specifies the name of the `LocalModelNodeGroup` where the model should be cached.
+--
++
+Optionally, if you configured credentials by using method 2 (service account), add the `serviceAccountName` field:
++
+[source,yaml]
+----
+spec:
+  serviceAccountName: "<service_account_name>"
+----
+
+. Apply the resource:
++
+[source,terminal]
+----
+$ oc apply -f <model_cache_file>.yaml
+----
++
+The controller creates download jobs on each node in the specified node group.
+Each job downloads the model from the `sourceModelUri` to local storage.
+
+. Monitor the download job progress:
++
+[source,terminal]
+----
+$ oc get jobs -n <job_namespace>
+----
++
+Replace `<job_namespace>` with the namespace configured for download jobs in the `inferenceservice-config` ConfigMap.
++
+[NOTE]
+====
+Cached models are immutable.
+You cannot update a cached model in place.
+To cache a new version of a model, delete the existing `LocalModelCache` resource, and then create a new resource with the updated `sourceModelUri`.
+====
+
+.Verification
+
+. Verify that the `LocalModelCache` status shows the model is downloaded on all target nodes:
++
+[source,terminal]
+----
+$ oc get localmodelcache <model_cache_name> -o jsonpath='{.status.nodeStatus}'
+----
++
+The output shows `NodeDownloaded` for each target node.
++
+The following table describes the possible `NodeStatus` values:
++
+[cols="1,2", options="header"]
+|===
+|Status
+|Description
+
+|`NodeNotReady`
+|The node is not ready to download the model.
+
+|`NodeDownloadPending`
+|The download job has been created but has not started.
+
+|`NodeDownloading`
+|The model is being downloaded to the node.
+
+|`NodeDownloaded`
+|The model has been downloaded and is available for use.
+
+|`NodeDownloadError`
+|The download job failed. Check the job logs for details.
+|===
+
+. Verify the `LocalModelNode` resources show the model as cached:
++
+[source,terminal]
+----
+$ oc get localmodelnodes -o jsonpath='{range .items[*]}{.metadata.name}: {.status.modelStatus}{"\n"}{end}'
+----
++
+The output shows `ModelDownloaded` for the cached model on each target node.
+
+.Next steps
+
+* xref:deploying-inferenceservice-with-cached-model_{context}[Deploy an `InferenceService` with a cached model]
+* xref:deploying-llminferenceservice-with-cached-model_{context}[Deploy an `LLMInferenceService` with a cached model]

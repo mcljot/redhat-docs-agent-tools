@@ -1,0 +1,101 @@
+:_mod-docs-content-type: CONCEPT
+
+[id="agent-state-persistence-langgraph_{context}"]
+= Agent state persistence for LangGraph agents
+
+[role="_abstract"]
+You can configure persistent state backends for LangGraph agents on {productname-long} to ensure that conversation history, agent checkpoints, and Retrieval-Augmented Generation (RAG) context survive pod restarts and scaling events.
+Without persistent state, agents lose all in-progress conversations and accumulated context when a pod is rescheduled, which causes failures in production workloads that require continuity.
+
+LangGraph agents maintain state at two layers: short-term checkpoints that track individual conversation threads, and long-term memory that persists context across threads.
+Understanding these layers helps you choose the right storage backend for your workload and configure the Llama Stack provider swap from local to production storage.
+
+== Two-layer state model
+
+LangGraph agents separate state into two layers, each serving a different purpose.
+
+Short-term checkpoints (thread-level)::
+Checkpoints capture the state of a LangGraph graph execution at each node change within a single conversation thread.
+Each checkpoint records the graph node, input, output, and any accumulated state variables for a specific `thread_id`.
++
+In local development, checkpoints use the `MemorySaver` class, which stores state in the Python process memory.
+When the process stops, all checkpoint data is lost.
++
+In production, checkpoints move to durable storage backends such as PostgreSQL or Redis, which persist data independently of the agent pod lifecycle.
+
+Long-term memory (cross-thread)::
+Long-term memory enables agents to retain information across multiple conversation threads.
+This includes user preferences, accumulated knowledge, and RAG document context that should persist beyond a single conversation session.
++
+The Llama Stack memory API abstracts long-term memory storage behind a provider interface.
+In local development, the `inline::meta-reference` provider stores memory in SQLite.
+In production, the same API routes memory operations to PostgreSQL through configuration changes in the `run.yaml` file.
+
+== Local storage backends
+
+In local development, LangGraph agents use lightweight, ephemeral storage backends that require no external services.
+
+`MemorySaver`:: The default LangGraph checkpointer for local development.
+Stores all state in the Python process memory.
+Data is lost when the process exits.
+Suitable only for development and testing.
+
+SQLite:: The Llama Stack `inline::meta-reference` provider stores agent metadata, response history, and memory in SQLite databases on the local filesystem.
+The `run.yaml` configuration specifies the file paths through the `persistence_store` and `responses_store` settings.
+SQLite databases persist across process restarts but are not suitable for multi-instance or multi-pod deployments.
+
+== Production storage backends
+
+Production deployments require storage backends that persist data independently of the agent pod lifecycle and support concurrent access from multiple pods.
+
+PostgreSQL::
+The recommended production backend for both Llama Stack metadata and LangGraph checkpoints.
+PostgreSQL provides ACID transactions, concurrent access support, and integration with {productname-short} backup and monitoring tools.
++
+You can configure PostgreSQL as the storage backend in two ways:
++
+* Set `persistence_store.type: postgres` in the `run.yaml` `providers.agents` section to store Llama Stack agent metadata in PostgreSQL.
+* Use the LangGraph `PostgresSaver` checkpointer in your agent application code to store graph checkpoints in PostgreSQL.
++
+Both approaches can point to the same PostgreSQL instance or use separate instances depending on isolation requirements.
+
+Redis::
+An alternative production backend for LangGraph checkpoints.
+Redis provides low-latency key-value storage suitable for high-throughput agent workloads.
++
+Use the LangGraph `RedisSaver` checkpointer in your agent application code.
+Redis does not replace the Llama Stack metadata store, which still requires PostgreSQL or SQLite.
+
+== How the Llama Stack memory API abstracts the storage swap
+
+The Llama Stack memory API provides a consistent interface for memory operations regardless of the underlying storage backend.
+Your agent application code calls the same API methods (for example, `memory_banks.create()`, `memory.insert()`, `memory.query()`) in both local and production environments.
+
+The storage backend is determined by the `providers.agents` section in the `run.yaml` configuration file.
+Changing the `persistence_store.type` from `sqlite` to `postgres` and providing connection parameters is the only modification required.
+The agent application code does not change.
+
+For LangGraph-native checkpointers (`MemorySaver`, `PostgresSaver`, `RedisSaver`), the swap is performed in the agent application code by changing the checkpointer class instantiation.
+This is typically a single-line change in the application entry point.
+
+== Llama Stack memory API and LangGraph checkpointer comparison
+
+LangGraph agents on {productname-short} can use two approaches for state persistence, and the approaches are complementary.
+
+Llama Stack memory API path::
+Use this approach for Llama Stack agent metadata, response history, and cross-thread memory.
+The storage backend is configured in `run.yaml` and does not require code changes.
+
+LangGraph checkpointer path::
+Use this approach for graph execution checkpoints within a single conversation thread.
+The checkpointer class is set in the agent application code.
+Use `PostgresSaver` or `RedisSaver` for production deployments.
+
+In many production deployments, you use both approaches together.
+The Llama Stack memory API stores metadata in PostgreSQL, and the LangGraph checkpointer stores graph checkpoints in the same or a separate PostgreSQL instance.
+
+[role="_additional-resources"]
+.Additional resources
+
+* link:https://langchain-ai.github.io/langgraph/concepts/persistence/[LangGraph persistence documentation]
+* link:https://llama-stack.readthedocs.io/[Llama Stack documentation]

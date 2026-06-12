@@ -1,0 +1,108 @@
+:_mod-docs-content-type: PROCEDURE
+
+[id="caching-a-model-on-network-volumes_{context}"]
+= Cache a model on network volumes
+
+[role="_abstract"]
+You can cache a model on network-attached storage by creating a `LocalModelCache` resource with a `storageClassName` instead of a `nodeGroups` reference.
+The controller uses the specified `StorageClass` to dynamically provision persistent volumes for the model download.
+Network volume caching is namespace-scoped and does not support cross-namespace sharing.
+
+.Prerequisites
+
+* You have cluster administrator privileges for your {openshift-platform} cluster.
+* You have enabled model cache on the cluster.
+For more information, see xref:enabling-model-cache_{context}[Enable model cache].
+* A `StorageClass` that supports dynamic volume provisioning is available on the cluster.
+* If the model is stored in a private registry, you have configured download credentials.
+For more information, see xref:configuring-model-download-credentials_{context}[Configure model download credentials].
+* You know the model URI, for example `hf://meta-llama/Llama-3-70B`, and the estimated size of the model.
+
+.Procedure
+
+. Verify that a suitable `StorageClass` is available on the cluster:
++
+[source,terminal]
+----
+$ oc get storageclasses
+----
+
+. Create a `LocalModelCache` resource with a `storageClassName`:
++
+[source,yaml]
+----
+apiVersion: serving.kserve.io/v1alpha1
+kind: LocalModelCache
+metadata:
+  name: <model_cache_name> <1>
+spec:
+  sourceModelUri: "<model_uri>" <2>
+  modelSize: "<model_size>" <3>
+  storageClassName: "<storage_class_name>" <4>
+----
++
+--
+Where:
+
+`<model_cache_name>`:: Specifies a unique name for this cached model, such as `llama3-70b-nfs`.
+`<model_uri>`:: Specifies the URI of the model in remote storage, such as `hf://meta-llama/Llama-3-70B`.
+This URI must match the `storageUri` used in your `InferenceService` or `LLMInferenceService` resources.
+`<model_size>`:: Specifies the estimated size of the model, such as `140Gi`.
+`<storage_class_name>`:: Specifies the name of the `StorageClass` to use for provisioning the persistent volume, such as `gp3-csi` or `nfs-storage`.
+--
++
+[NOTE]
+====
+Do not include the `nodeGroups` field when using network volume caching.
+A `LocalModelNodeGroup` is not required for this caching mode.
+====
+
+. Apply the resource:
++
+[source,terminal]
+----
+$ oc apply -f <model_cache_file>.yaml
+----
++
+The controller provisions a persistent volume claim by using the specified `StorageClass` and creates a download job to populate the volume.
+
+. Monitor the download job progress:
++
+[source,terminal]
+----
+$ oc get jobs -n <job_namespace>
+----
++
+Replace `<job_namespace>` with the namespace configured for download jobs in the `inferenceservice-config` ConfigMap.
++
+[IMPORTANT]
+====
+Network volume caching does not support cross-namespace sharing.
+The cached model is available only to `InferenceService` or `LLMInferenceService` resources in the same namespace as the persistent volume claim.
+To use the same model in many namespaces, create a separate `LocalModelCache` resource in each namespace.
+====
+
+.Verification
+
+. Verify that the persistent volume claim is created and bound:
++
+[source,terminal]
+----
+$ oc get pvc -l localmodel.kserve.io/model=<model_cache_name>
+----
++
+The output shows the persistent volume claim in a `Bound` state.
+
+. Verify that the `LocalModelCache` status shows the model is downloaded:
++
+[source,terminal]
+----
+$ oc get localmodelcache <model_cache_name> -o jsonpath='{.status}'
+----
++
+The status shows the download as complete.
+
+.Next steps
+
+* xref:deploying-inferenceservice-with-cached-model_{context}[Deploy an `InferenceService` with a cached model]
+* xref:deploying-llminferenceservice-with-cached-model_{context}[Deploy an `LLMInferenceService` with a cached model]

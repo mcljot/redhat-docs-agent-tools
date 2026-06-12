@@ -1,0 +1,106 @@
+:_mod-docs-content-type: REFERENCE
+
+[id="troubleshooting-model-cache_{context}"]
+= Troubleshooting model cache
+
+[role="_abstract"]
+If you experience problems with model cache, use the following information to diagnose and resolve common issues.
+Each entry describes a symptom, its likely cause, and the steps to resolve it.
+
+.Troubleshooting model cache issues
+[cols="1,1,2", options="header"]
+|===
+|Symptom
+|Cause
+|Resolution
+
+|Inference pod shows `CrashLoopBackOff` status after deployment.
+|The model download has not completed on the node where the pod is scheduled. The pod attempts to load the model from local storage, but the files are not yet available.
+a|Check the download status on the target node:
+
+[source,terminal]
+----
+$ oc get localmodelcache <model_cache_name> -o jsonpath='{.status.nodeStatus}'
+----
+
+Wait for the `nodeStatus` to show `NodeDownloaded` for the node where the pod is scheduled.
+The pod recovers automatically after the download completes.
+
+|Download job pod shows `Init:OOMKilled` status.
+|Insufficient memory allocated to the download job container or model cache agent.
+|Increase the memory limits in the `ClusterStorageContainer` resource or in the `inferenceservice-config` ConfigMap agent settings. For large models, the download job might require 4 Gi or more of memory.
+
+|Duplicate download jobs are created for the same model on the same node.
+|The `local.path` in the `LocalModelNodeGroup` persistent volume spec does not match the `hostPath` configured for the agent DaemonSet.
+|Verify that the `persistentVolumeSpec.local.path` in the `LocalModelNodeGroup` resource matches the directory that the agent DaemonSet uses as its `hostPath` volume mount. Update the `LocalModelNodeGroup` to correct any mismatch.
+
+|Download job fails with permission denied errors.
+|The host directory ownership is wrong, or the security context constraints (SCC) prevent the download job from writing to the directory.
+|Run `chown 1000:1000` on the host directory on each target node. On {openshift-platform}, verify that the download job namespace has the appropriate SCC configured.
+
+|Agent DaemonSet does not schedule pods to expected nodes.
+|For Kustomize-based installations, the target nodes are missing the `kserve/localmodel=worker` label.
+|Label each target node with `kserve/localmodel=worker` by running `oc label node <node_name> kserve/localmodel=worker`. For Helm-based installations, verify that the `nodeAffinity` rules in the `LocalModelNodeGroup` persistent volume spec match the labels on your target nodes.
+
+|`LocalModelCache` status stuck at `NodeDownloading` or `NodeDownloadPending`.
+|Network connectivity issues, credential misconfiguration, or insufficient storage space on the target nodes.
+a|Check the download job logs for error details:
+
+[source,terminal]
+----
+$ oc logs job/<download_job_name> -n <job_namespace>
+----
+
+* Verify that the download job namespace has network access to the model storage endpoint.
+* Verify that storage credentials are configured correctly. For more information, see xref:configuring-model-download-credentials_{context}[Configure model download credentials].
+* Verify that the `storageLimit` in the `LocalModelNodeGroup` has enough space for the model.
+
+|`LocalModelCache` deletion is stuck and the resource is not removed.
+|The model is still in use by an active `InferenceService` or `LLMInferenceService`. A finalizer on the resource prevents deletion until all references are removed.
+a|Check which inference services reference the model:
+
+[source,terminal]
+----
+$ oc get localmodelcache <model_cache_name> -o jsonpath='{.status.inferenceServices}'
+----
+
+[source,terminal]
+----
+$ oc get localmodelcache <model_cache_name> -o jsonpath='{.status.llmInferenceServices}'
+----
+
+Remove or update the referencing inference services, and the controller removes the finalizer and completes the deletion.
+
+|Model cache controller pod is not running.
+|Model cache is not enabled in the `inferenceservice-config` ConfigMap, or the controller deployment failed.
+a|Verify the controller deployment:
+
+[source,terminal]
+----
+$ oc get pods -n {dbd-config-default-namespace} -l control-plane=localmodel-controller
+----
+
+If no pods are running, verify that the `localModel.enabled` field is set to `true` in the `inferenceservice-config` ConfigMap.
+Check the controller logs for errors:
+
+[source,terminal]
+----
+$ oc logs deployment/localmodel-controller -n {dbd-config-default-namespace}
+----
+
+|Persistent volume claim remains in `Pending` state for network volume caching.
+|The specified `StorageClass` does not exist, or the `StorageClass` provisioner cannot fulfill the storage request.
+a|Verify that the `StorageClass` exists and is available:
+
+[source,terminal]
+----
+$ oc get storageclass <storage_class_name>
+----
+
+Check the persistent volume claim events for provisioning errors:
+
+[source,terminal]
+----
+$ oc describe pvc -l localmodel.kserve.io/model=<model_cache_name>
+----
+|===

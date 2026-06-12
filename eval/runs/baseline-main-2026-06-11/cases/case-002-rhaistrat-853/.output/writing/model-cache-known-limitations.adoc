@@ -1,0 +1,78 @@
+:_mod-docs-content-type: REFERENCE
+
+[id="model-cache-known-limitations_{context}"]
+= Model cache known limitations
+
+[role="_abstract"]
+Model cache is a Developer Preview feature in {productname-long}.
+Review the following limitations and constraints before using model cache in your environment.
+
+:feature-name: Model cache
+include::snippets/developer-preview.adoc[]
+
+[id="model-cache-feature-limitations_{context}"]
+== Feature limitations
+
+The following limitations apply to model cache:
+
+.Model cache feature limitations
+[cols="1,2", options="header"]
+|===
+|Limitation
+|Description
+
+|No cross-namespace sharing for network volumes
+|Models cached by using a custom `StorageClass` are namespace-scoped.
+Only `InferenceService` or `LLMInferenceService` resources in the same namespace as the persistent volume claim can use the cached model.
+To use the same model in many namespaces, create a separate `LocalModelCache` resource in each namespace.
+Cross-namespace sharing is supported only for local disk caching.
+
+|No automatic model eviction
+|Model cache does not automatically remove cached models when storage space is low.
+You must manually delete `LocalModelCache` resources to reclaim storage space.
+Monitor the `storageLimit` and `used` fields in the `LocalModelNodeGroup` status to track storage consumption.
+
+|Models are immutable
+|You cannot update a cached model in place.
+To cache a new version of a model, delete the existing `LocalModelCache` resource, and then create a new resource with the updated `sourceModelUri`.
+
+|No built-in authentication or authorization for cached models
+|Model cache does not provide access control for cached model files.
+Any `InferenceService` with a matching `storageUri` can use a locally cached model.
+Use namespace-level access control and RBAC policies to restrict access to inference services.
+|===
+
+[id="model-cache-security-constraints_{context}"]
+== Security constraints
+
+Model cache requires specific security configurations on {openshift-platform} clusters:
+
+.Model cache security constraints
+[cols="1,2", options="header"]
+|===
+|Constraint
+|Description
+
+|Custom security context constraints (SCCs)
+|The model cache controller applies custom SCCs to download job pods and agent DaemonSet pods.
+These SCCs grant the elevated permissions required for reading and writing model files on local node storage.
+
+|Namespace pod security admission
+|The download job namespace might require elevated pod security admission labels to allow the download jobs to run with the required security context.
+
+|File system permissions
+|The host directory for local model storage must have ownership set to `1000:1000` to match the default user in the download job container.
+Wrong ownership causes download jobs to fail with permission denied errors.
+|===
+
+[id="model-cache-scheduling-constraints_{context}"]
+== Scheduling constraints
+
+Inference pods that use cached models are subject to the following scheduling behavior:
+
+* *`CrashLoopBackOff` during download*: If an inference pod is scheduled to a node where the model download has not completed, the pod might enter a `CrashLoopBackOff` state.
+The pod recovers automatically after the download finishes on that node.
+Check the `nodeStatus` field in the `LocalModelCache` status to verify the download progress on each node.
+
+* *Node affinity*: For local disk caching, inference pods are scheduled only to nodes where the model is cached.
+If no node has completed the download, the pod remains in a `Pending` state.

@@ -1,0 +1,105 @@
+:_mod-docs-content-type: PROCEDURE
+
+[id="enabling-model-cache_{context}"]
+= Enable model cache
+
+[role="_abstract"]
+You can enable model cache on your {productname-short} cluster to pre-download large models to local node storage.
+Enabling model cache requires editing the `inferenceservice-config` ConfigMap and preparing the infrastructure on your target nodes.
+
+.Prerequisites
+
+* You have cluster administrator privileges for your {openshift-platform} cluster.
+* You have installed {productname-long} 3.5 or later with `KServe`.
+* You have installed the {openshift-cli}.
+* Enough local disk space is available on the target GPU nodes, or a `StorageClass` is available for network volume provisioning.
+
+.Procedure
+
+. Edit the `inferenceservice-config` ConfigMap to enable model cache:
++
+[source,terminal]
+----
+$ oc edit configmap inferenceservice-config -n {dbd-config-default-namespace}
+----
+
+. In the ConfigMap, add or update the `localModel` section in the `data` field:
++
+[source,yaml]
+----
+data:
+  localModel: |-
+    {
+      "enabled": true,
+      "jobNamespace": "<job_namespace>", <1>
+      "defaultJobImage": "<download_job_image>", <2>
+      "fsGroup": 1000 <3>
+    }
+----
++
+--
+Where:
+
+`<job_namespace>`:: Specifies the namespace where model download jobs run.
+If you do not specify a value, download jobs run in the default namespace.
+Create this namespace if it does not exist.
+`<download_job_image>`:: Specifies the container image used for model download jobs.
+In disconnected environments, this image must be available from a mirrored registry.
+`fsGroup`:: Specifies the group ID for file system permissions on downloaded model files.
+Set this value to `1000` to match the default user in the download job container.
+--
+
+. If you specified a custom `jobNamespace`, create it:
++
+[source,terminal]
+----
+$ oc create namespace <job_namespace>
+----
+
+. On each target GPU node, set the correct ownership for the host directory where you store models:
++
+[source,terminal]
+----
+$ sudo chown 1000:1000 /mnt/models
+----
++
+Replace `/mnt/models` with the path where you plan to store cached models.
+This path must match the `local.path` value in the `LocalModelNodeGroup` persistent volume spec that you create later.
+
+. For Kustomize-based installations, label each target node to enable the model cache agent DaemonSet scheduling:
++
+[source,terminal]
+----
+$ oc label node <node_name> kserve/localmodel=worker
+----
++
+Replace `<node_name>` with the name of each GPU node where you want to cache models.
++
+[NOTE]
+====
+Helm-based installations use persistent volume `nodeAffinity` for scheduling and do not require this label.
+====
+
+.Verification
+
+. Verify that the model cache controller pod is running:
++
+[source,terminal]
+----
+$ oc get pods -n {dbd-config-default-namespace} -l control-plane=localmodel-controller
+----
++
+The output shows the controller pod in a `Running` state.
+
+. Verify that the `inferenceservice-config` ConfigMap has the `localModel` section:
++
+[source,terminal]
+----
+$ oc get configmap inferenceservice-config -n {dbd-config-default-namespace} -o jsonpath='{.data.localModel}' | python3 -m json.tool
+----
++
+The output shows the `localModel` configuration with `enabled` set to `true`.
+
+.Next steps
+
+* xref:configuring-model-cache-node-groups_{context}[Configure model cache node groups]

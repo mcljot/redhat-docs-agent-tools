@@ -1,0 +1,31 @@
+:_mod-docs-content-type: ASSEMBLY
+
+ifdef::context[:parent-context: {context}]
+
+:context: llama-stack-adv-examples
+
+[id="llama-stack-adv-examples"]
+= Llama Stack application examples
+
+[role="_abstract"]
+Use the following examples to deploy and configure Llama Stack applications on {productname-short}. These examples include deploying a Retrieval Augmented Generation (RAG) stack, evaluating RAG systems, and configuring authentication and availability options.
+
+The following documentation includes example workflows:
+
+* Deploying a RAG stack in a data science project
+* Evaluating RAG systems with Llama Stack
+* Using supported vector stores with Llama Stack
+* Configuring Llama Stack with OAuth authentication
+* Using self-signed certificates with Llama Stack
+
+include::../assemblies/deploying-a-rag-stack-in-a-project.adoc[leveloffset=+1]
+include::../assemblies/evaluating-rag-systems-with-llama-stack.adoc[leveloffset=+1]
+include::../assemblies/using-postgresql-in-llama-stack.adoc[leveloffset=+1]
+include::../assemblies/using-qdrant-in-llama-stack.adoc[leveloffset=+1]
+include::upstream-modules/auth-on-llama-stack.adoc[leveloffset=+1]
+include::upstream-modules/llama-stack-core-access-control.adoc[leveloffset=+1]
+include::upstream-modules/about-using-self-signed-certificates-with-llama-stack.adoc[leveloffset=+1]
+include::upstream-modules/llama-stack-high-avail-and-auto.adoc[leveloffset=+1]
+
+ifdef::parent-context[:context: {parent-context}]
+ifndef::parent-context[:!context:]

@@ -1,0 +1,242 @@
+:_mod-docs-content-type: REFERENCE
+
+[id="model-cache-configuration-reference_{context}"]
+= Model cache configuration reference
+
+[role="_abstract"]
+You can configure model cache by editing the `inferenceservice-config` ConfigMap and by creating `LocalModelCache`, `LocalModelNodeGroup`, and `ClusterStorageContainer` custom resource definitions (CRDs).
+The following tables describe the available fields for each resource.
+
+[id="inferenceservice-config-localmodel-fields_{context}"]
+== inferenceservice-config ConfigMap localModel fields
+
+The `localModel` section in the `inferenceservice-config` ConfigMap controls the overall model cache behavior.
+
+.localModel configuration fields
+[cols="2,1,1,3", options="header"]
+|===
+|Field
+|Type
+|Required
+|Description
+
+|`enabled`
+|Boolean
+|Yes
+|Set to `true` to enable model cache. Default is `false`.
+
+|`jobNamespace`
+|String
+|Yes
+|The namespace where model download jobs run. You must create this namespace before caching models.
+
+|`defaultJobImage`
+|String
+|No
+|The container image used for model download jobs. In disconnected environments, this image must be available from a mirrored registry.
+
+|`fsGroup`
+|Integer
+|No
+|The group ID for file system permissions on downloaded model files. Set to `1000` to match the default user in the download job container.
+
+|`jobTTLSecondsAfterFinished`
+|Integer
+|No
+|The number of seconds after a download job completes before the job is automatically deleted.
+
+|`reconcilationFrequencyInSecs`
+|Integer
+|No
+|The frequency in seconds at which the controller reconciles model cache state.
+
+|`disableVolumeManagement`
+|Boolean
+|No
+|Set to `true` to disable automatic persistent volume and persistent volume claim management. Default is `false`.
+|===
+
+[id="localmodelcache-crd-fields_{context}"]
+== LocalModelCache CRD fields
+
+The `LocalModelCache` resource defines a model to cache on local node storage or network volumes.
+This is a cluster-scoped resource.
+
+.LocalModelCache spec fields
+[cols="2,1,1,3", options="header"]
+|===
+|Field
+|Type
+|Required
+|Description
+
+|`sourceModelUri`
+|String
+|Yes
+|The URI of the model in remote storage, such as `hf://meta-llama/Llama-3-70B`. This field is immutable after creation.
+
+|`modelSize`
+|Quantity
+|Yes
+|The estimated size of the model, such as `140Gi`. The model size must not exceed the `storageLimit` of the target node group when using local disk caching.
+
+|`nodeGroups`
+|List of strings
+|Conditional
+|The names of the `LocalModelNodeGroup` resources where the model should be cached. Required for local disk caching. Do not specify when using `storageClassName`.
+
+|`storageClassName`
+|String
+|Conditional
+|The name of the `StorageClass` to use for network volume provisioning. Required for network volume caching. Do not specify when using `nodeGroups`.
+
+|`serviceAccountName`
+|String
+|No
+|The service account to use for credential lookup during model download.
+
+|`storage.key`
+|String
+|No
+|The storage key in the secret for this model.
+
+|`storage.parameters`
+|Map
+|No
+|Parameters to override the default storage credentials and configuration.
+|===
+
+.LocalModelCache status fields
+[cols="2,1,3", options="header"]
+|===
+|Field
+|Type
+|Description
+
+|`nodeStatus`
+|Map
+|A map of node names to download status. Possible values: `NodeNotReady`, `NodeDownloadPending`, `NodeDownloading`, `NodeDownloaded`, `NodeDownloadError`. Applies to local disk caching.
+
+|`copies.available`
+|Integer
+|The number of nodes where the model is available locally.
+
+|`copies.total`
+|Integer
+|The total number of nodes where the model is expected to be downloaded, including nodes that are not ready.
+
+|`copies.failed`
+|Integer
+|The number of nodes where the download failed.
+
+|`inferenceServices`
+|List
+|A list of `InferenceService` resources that are using this cached model, identified by namespace and name.
+
+|`llmInferenceServices`
+|List
+|A list of `LLMInferenceService` resources that are using this cached model, identified by namespace and name.
+|===
+
+[id="localmodelnodegroup-crd-fields_{context}"]
+== LocalModelNodeGroup CRD fields
+
+The `LocalModelNodeGroup` resource defines a group of nodes for model caching and the storage configuration for those nodes.
+This is a cluster-scoped resource.
+Node groups are required for local disk caching but are not required for network volume caching.
+
+.LocalModelNodeGroup spec fields
+[cols="2,1,1,3", options="header"]
+|===
+|Field
+|Type
+|Required
+|Description
+
+|`storageLimit`
+|Quantity
+|Yes
+|The maximum total storage for cached models per node in this node group, such as `500Gi`.
+
+|`persistentVolumeSpec`
+|PersistentVolumeSpec
+|Yes
+|The persistent volume specification used to create PVs for downloading models. Includes `local.path` for the storage path and `nodeAffinity` for targeting specific nodes.
+
+|`persistentVolumeClaimSpec`
+|PersistentVolumeClaimSpec
+|Yes
+|The persistent volume claim specification used to create PVCs for download jobs and in inference service namespaces.
+|===
+
+.LocalModelNodeGroup status fields
+[cols="2,1,3", options="header"]
+|===
+|Field
+|Type
+|Description
+
+|`used`
+|Quantity
+|The storage space used by cached models on nodes in this node group.
+
+|`available`
+|Quantity
+|The available storage space on nodes in this node group.
+|===
+
+[id="localmodelnode-crd-fields_{context}"]
+== LocalModelNode CRD fields
+
+The `LocalModelNode` resource represents a single node that participates in model caching.
+The controller creates one `LocalModelNode` resource per node.
+
+.LocalModelNode status fields
+[cols="2,1,3", options="header"]
+|===
+|Field
+|Type
+|Description
+
+|`modelStatus`
+|Map
+|A map of model names to download status on this node. Possible values: `ModelDownloadPending`, `ModelDownloading`, `ModelDownloaded`, `ModelDownloadError`.
+|===
+
+[id="clusterstoragecontainer-model-cache-fields_{context}"]
+== ClusterStorageContainer fields for model cache
+
+When using a `ClusterStorageContainer` to provide download credentials for model cache, set the `workloadType` field to `localModelDownloadJob`.
+
+.ClusterStorageContainer model cache fields
+[cols="2,1,3", options="header"]
+|===
+|Field
+|Type
+|Description
+
+|`workloadType`
+|String
+|Set to `localModelDownloadJob` to apply this storage container configuration to model cache download jobs.
+
+|`supportedUriFormats`
+|List
+|A list of URI format matchers that determine which model URIs this storage container handles. Each entry can specify a `prefix`, such as `hf://`.
+|===
+
+[id="model-cache-node-label_{context}"]
+== Node label for model cache
+
+For Kustomize-based installations, each target node must be labeled with the following label to enable the model cache agent DaemonSet scheduling:
+
+.Model cache node label
+[cols="1,1,2", options="header"]
+|===
+|Label key
+|Label value
+|Description
+
+|`kserve/localmodel`
+|`worker`
+|Enables the model cache agent DaemonSet to schedule pods on the node. Required for Kustomize-based installations. Helm-based installations use persistent volume `nodeAffinity` instead.
+|===

@@ -1,0 +1,116 @@
+:_mod-docs-content-type: PROCEDURE
+
+[id="configuring-model-cache-node-groups_{context}"]
+= Configure model cache node groups
+
+[role="_abstract"]
+You can configure node groups to define which nodes in your cluster participate in model caching and how local storage is allocated.
+Each node group creates an agent DaemonSet that manages model files on the target nodes.
+Node groups are required for local disk caching but are not required for network volume caching.
+
+.Prerequisites
+
+* You have cluster administrator privileges for your {openshift-platform} cluster.
+* You have enabled model cache on the cluster.
+For more information, see xref:enabling-model-cache_{context}[Enable model cache].
+* You have GPU nodes with local storage available, such as NVMe drives.
+* You know the local storage path on each target node where you plan to store models.
+* You have labeled the target nodes appropriately, for example, by GPU type.
+
+.Procedure
+
+. Identify the target GPU nodes and note their node labels and local storage paths.
++
+[source,terminal]
+----
+$ oc get nodes -l nvidia.com/gpu.present=true -o wide
+----
+
+. Create a `LocalModelNodeGroup` resource that defines the storage configuration and node targeting:
++
+[source,yaml]
+----
+apiVersion: serving.kserve.io/v1alpha1
+kind: LocalModelNodeGroup
+metadata:
+  name: <node_group_name> <1>
+spec:
+  storageLimit: "<storage_limit>" <2>
+  persistentVolumeSpec:
+    accessModes:
+      - ReadWriteOnce
+    capacity:
+      storage: "<pv_capacity>" <3>
+    local:
+      path: "<local_storage_path>" <4>
+    nodeAffinity:
+      required:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: "<node_label_key>" <5>
+                operator: In
+                values:
+                  - "<node_label_value>" <6>
+    storageClassName: ""
+    persistentVolumeReclaimPolicy: Retain
+  persistentVolumeClaimSpec:
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: "<pvc_size>" <7>
+    storageClassName: ""
+----
++
+--
+Where:
+
+`<node_group_name>`:: Specifies a unique name for the node group, such as `gpu-nodes`.
+`<storage_limit>`:: Specifies the maximum total storage for cached models per node, such as `500Gi`.
+This limit prevents cached models from consuming all available disk space.
+`<pv_capacity>`:: Specifies the capacity of the persistent volume on each node.
+This value must be large enough to hold the models you plan to cache.
+`<local_storage_path>`:: Specifies the path to local storage on each node, such as `/mnt/models`.
+This path must match the directory where you set ownership permissions when enabling model cache.
+`<node_label_key>`:: Specifies the label key used to select target nodes, such as `nvidia.com/gpu.present`.
+`<node_label_value>`:: Specifies the label value for the node selector, such as `true`.
+`<pvc_size>`:: Specifies the requested storage size for the persistent volume claim.
+--
+
+. Apply the resource:
++
+[source,terminal]
+----
+$ oc apply -f <node_group_file>.yaml
+----
++
+[IMPORTANT]
+====
+The `local.path` in the persistent volume spec must match the `hostPath` configured for the agent DaemonSet.
+A mismatch causes duplicate download jobs to be created.
+====
+
+.Verification
+
+. Verify that the agent DaemonSet is created and pods are scheduled to the target nodes:
++
+[source,terminal]
+----
+$ oc get daemonset -n {dbd-config-default-namespace} -l localmodel.kserve.io/nodegroup=<node_group_name>
+----
++
+The output shows the DaemonSet with the expected number of required and ready pods matching the number of target nodes.
+
+. Verify that `LocalModelNode` resources are created for each target node:
++
+[source,terminal]
+----
+$ oc get localmodelnodes
+----
++
+The output lists one `LocalModelNode` resource for each node in the node group.
+
+.Next steps
+
+* xref:configuring-model-download-credentials_{context}[Configure model download credentials] if your models are stored in a private registry.
+* xref:caching-a-model-for-faster-loading_{context}[Cache a model for faster loading]

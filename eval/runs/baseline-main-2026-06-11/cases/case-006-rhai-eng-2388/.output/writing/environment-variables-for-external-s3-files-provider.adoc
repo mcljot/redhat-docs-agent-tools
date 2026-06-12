@@ -1,0 +1,103 @@
+:_mod-docs-content-type: REFERENCE
+
+[id="environment-variables-for-external-s3-files-provider_{context}"]
+= Environment variables for the external S3-compatible files provider
+
+[role="_abstract"]
+You can configure the `remote::s3` files provider by setting environment variables in the `LlamaStackDistribution` custom resource (CR).
+The following table lists all environment variables that the provider recognizes, their default values, and whether each variable is required.
+Variables that contain credentials must be stored in a Kubernetes secret and referenced by using `secretKeyRef` in the CR.
+
+.Environment variables for the `remote::s3` files provider
+[cols="2,1,1,1,1,3", options="header"]
+|===
+|Variable
+|Type
+|Default
+|Required
+|Sensitive
+|Description
+
+|`ENABLE_S3`
+|String
+|Not set (provider disabled)
+|Yes
+|No
+|Enables the `remote::s3` files provider.
+Set to `"true"` to enable the provider.
+
+|`S3_BUCKET_NAME`
+|String
+|None
+|Yes, when `ENABLE_S3` is `"true"`
+|No
+|Specifies the name of the S3 bucket where file content is stored.
+S3 bucket names must be globally unique.
+The bucket must exist before the provider starts, unless `S3_AUTO_CREATE_BUCKET` is set to `"true"`.
+
+|`S3_ENDPOINT_URL`
+|String (URL)
+|None
+|No
+|No
+|Specifies the endpoint URL for S3-compatible backends other than AWS S3, for example, `\https://minio.example.com:9000`.
+Omit this variable when you use AWS S3.
+Set this variable for MinIO, Ceph Object Gateway, OCI Object Storage, or other S3-compatible backends.
+For more information about endpoint URL formats, see link:{rhoaidocshome}{default-format-url}/working_with_llama_stack/llama-stack-adv-examples_rag#overview-of-object-storage-endpoints_rag[Overview of object storage endpoints].
+
+|`AWS_DEFAULT_REGION`
+|String
+|`us-east-1` (via `run.yaml` substitution)
+|No
+|No
+|Specifies the AWS region for the S3 bucket, for example, `us-east-1`.
+For non-AWS backends, set this value to match the region configuration of your backend, if it requires one.
+The default of `us-east-1` is appropriate for many S3-compatible backends, including MinIO.
+The recognized variable is `AWS_DEFAULT_REGION`. The `AWS_REGION` variable is not used by this provider.
+
+|`S3_AUTO_CREATE_BUCKET`
+|String
+|`"false"`
+|No
+|No
+|When set to `"true"`, allows the provider to create the S3 bucket automatically at startup if the bucket does not exist.
+Requires the `s3:CreateBucket` IAM permission.
+{org-name} recommends pre-creating the bucket administratively rather than enabling automatic bucket creation in production environments.
+
+|`AWS_ACCESS_KEY_ID`
+|String
+|None
+|Conditional
+|Yes
+|Specifies the access key ID for the S3-compatible storage backend.
+Required unless you use IAM roles for service accounts (IRSA) for authentication.
+Store this value in a Kubernetes secret.
+
+|`AWS_SECRET_ACCESS_KEY`
+|String
+|None
+|Conditional
+|Yes
+|Specifies the secret access key for the S3-compatible storage backend.
+Required unless you use IAM roles for service accounts (IRSA) for authentication.
+Store this value in a Kubernetes secret.
+|===
+
+[NOTE]
+====
+The `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` environment variables are shared with the `remote::bedrock` inference provider.
+If you use both the `remote::s3` files provider and the `remote::bedrock` inference provider, and you require different credentials for each, use IAM roles for service accounts (IRSA) or a non-AWS S3-compatible backend.
+====
+
+[NOTE]
+====
+For production deployments, {org-name} recommends authenticating to AWS S3 by using IAM roles for service accounts (IRSA) rather than static access keys.
+When you use an IAM role, omit the `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` environment variables, and bind the IAM role to the service account that the Llama Stack pod uses.
+IRSA-based authentication has not been validated by {org-name} Quality Engineering for this provider.
+====
+
+[role="_additional-resources"]
+.Additional resources
+
+* link:{rhoaidocshome}{default-format-url}/working_with_llama_stack/using-external-s3-compatible-storage-for-the-files-api_rag#configuring-external-s3-provider-for-files-endpoint_rag[Configuring the external S3-compatible provider for the /v1/files endpoint]
+* link:{rhoaidocshome}{default-format-url}/working_with_llama_stack/using-external-s3-compatible-storage-for-the-files-api_rag#about-the-iam-policy-for-external-s3-compatible-files-providers_rag[About the IAM policy for external S3-compatible files providers]

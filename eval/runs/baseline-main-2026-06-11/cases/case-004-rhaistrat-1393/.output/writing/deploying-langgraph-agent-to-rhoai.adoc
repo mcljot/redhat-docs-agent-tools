@@ -1,0 +1,287 @@
+:_mod-docs-content-type: PROCEDURE
+
+[id="deploying-langgraph-agent-to-rhoai_{context}"]
+= Deploy a LangGraph agent from local development to {productname-short}
+
+[role="_abstract"]
+You can deploy a LangGraph agent that you developed and tested locally to {productname-long} by reconfiguring provider settings, building a container image, and deploying with the shared Helm chart.
+To complete the deployment, you verify the local agent, configure production providers, build and push a container image, and deploy to OpenShift with Helm.
+
+[NOTE]
+====
+MLflow-based observability and tracing integration for LangGraph agents is planned for a future release.
+This procedure does not include MLflow configuration steps.
+====
+
+.Prerequisites
+
+* You have access to a {productname-long} {vernum} cluster.
+* The Llama Stack operator is installed on the cluster.
+* Model serving is configured with vLLM or llm-d through a KServe `InferenceService`.
+* A vector storage service, such as Milvus or PGVector, is available and accessible from the cluster.
+* You are logged in to the cluster with the {openshift-cli} (`oc`).
+* The Helm CLI is installed on your local machine.
+* You have access to a container image registry that the cluster can pull images from.
+* Python 3.12 or later is installed on your local machine.
+* The `uv` package manager is installed on your local machine. See link:https://docs.astral.sh/uv/getting-started/installation/[uv installation documentation].
+* The `openai` Python SDK version 1.109.1 or later is installed (`openai>=1.109.1`). This version is required for `McpCall` response parsing when using Model Context Protocol (MCP) tools.
+* You have a locally-developed and tested LangGraph agent application. For example agent templates, see the link:https://github.com/red-hat-data-services/agentic-starter-kits[agentic starter kits repository].
+
+.Procedure
+
+. Verify that your agent runs locally with local providers.
++
+Start the Llama Stack server with your local `run.yaml` configuration and confirm that the agent responds correctly:
++
+[source,terminal]
+----
+$ uv run llama stack run run.yaml --image-type venv
+----
++
+In a separate terminal, start your agent application and submit a test request:
++
+[source,terminal]
+----
+$ python app.py
+----
+
+. Configure the provider swap by updating the `.env` file with production values.
++
+Create or update the `.env` file in your agent project directory with the following production settings:
++
+[source,terminal]
+----
+# Inference provider configuration
+LLAMA_STACK_SERVER_OPENAI=http://<llama_stack_route>/v1/openai/v1
+INFERENCE_MODEL=<provider_id>/<model_id>
+OPENAI_API_KEY=<api_key>
+VLLM_INFERENCE_URL=<vllm_inference_url>
+
+# MCP tool configuration (if applicable)
+MCP_TOOL_MODEL=<provider_id>/<model_id>
+GIT_TOKEN=<github_personal_access_token>
+GITHUB_URL=https://github.com/<organization>/<repository>
+GITHUB_ID=<github_user_id>
+----
++
+--
+Where:
+
+`<vllm_inference_url>`:: Specifies the URL of the vLLM inference endpoint. For in-cluster access, use the KServe `InferenceService` URL, for example `http://vllm-service.my-namespace.svc.cluster.local:8000/v1`. For external access, use the OpenShift Route URL.
+`<llama_stack_route>`:: Specifies the hostname of the Llama Stack server running on {productname-short}. Do not include the `/v1/openai/v1` path -- it is already appended in the variable value. For in-cluster access, use the Kubernetes service URL, for example `llama-stack-server.my-namespace.svc.cluster.local:8321`. For access through an OpenShift Route, use the route hostname, for example `llama-stack-my-namespace.apps.cluster.example.com`.
+`<provider_id>/<model_id>`:: Specifies the model name as registered in Llama Stack, for example `vllm/qwen3-8b-fp8`. The `vllm/` or `ollama/` prefix is a Llama Stack model registration convention. In `app.py`, `init_chat_model` always uses `model_provider="openai"` because all inference goes through Llama Stack's OpenAI-compatible API.
+`<api_key>`:: Specifies the API key for the model serving endpoint.
+`<github_personal_access_token>`:: Specifies a GitHub personal access token with permission to create issues. Required only if the agent uses the GitHub MCP Server.
+--
++
+[NOTE]
+====
+The `LLAMA_STACK_SERVER_OPENAI` URL includes the path `/v1/openai/v1` because the Llama Stack server exposes its OpenAI-compatible endpoint at this path relative to its base URL.
+Both `/v1` segments are required: the first is the Llama Stack API version prefix, and the second is the OpenAI API version prefix.
+====
+
+. Update the Llama Stack `run.yaml` provider configuration to point at production services.
++
+Modify the `providers.inference` section to use the vLLM provider instead of Ollama:
++
+[source,yaml]
+----
+providers:
+  inference:
+  - provider_id: vllm
+    provider_type: remote::vllm
+    config:
+      url: ${env.VLLM_INFERENCE_URL}
+      api_token: ${env.OPENAI_API_KEY}
+      max_tokens: 4096
+      tls_verify: false
+----
++
+If your agent uses vector storage, update the `providers.vector_io` section to point at your production Milvus or PGVector instance.
+If your agent uses persistent state, update the `providers.agents` section to use PostgreSQL instead of SQLite.
+
+. Build the container image using the provided Dockerfile and push it to your registry.
++
+The agentic starter kits provide a Dockerfile based on UBI9 with Python 3.12.
++
+[IMPORTANT]
+====
+The reference agent application (`app.py`) runs Flask with `debug=True`.
+You must replace the entrypoint with a production Web Server Gateway Interface (WSGI) server before building the production container image.
+Running Flask with `debug=True` in production exposes the interactive debugger, which allows arbitrary code execution.
+
+In `app.py`, change `debug=True` to `debug=False`.
+Then update the `CMD` instruction in your Dockerfile to use `gunicorn`:
+
+[source,docker]
+----
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "app:app"]
+----
+
+Add `gunicorn` to your project dependencies:
+
+[source,terminal]
+----
+$ uv add gunicorn
+----
+====
++
+Build the image:
++
+[source,terminal]
+----
+$ podman build -t <registry>/<namespace>/<image_name>:<tag> .
+----
++
+Push the image to your registry:
++
+[source,terminal]
+----
+$ podman push <registry>/<namespace>/<image_name>:<tag>
+----
++
+--
+Where:
+
+`<registry>`:: Specifies the container image registry URL.
+`<namespace>`:: Specifies the registry namespace or project.
+`<image_name>`:: Specifies the name for your agent container image.
+`<tag>`:: Specifies the image tag, for example `latest` or `v1.0`.
+--
+
+. Configure the Helm values for your specific agent variant.
++
+The agentic starter kits provide a shared Helm chart at `charts/agent/` with per-agent value override files.
+Copy the values override file for your agent variant and update it with your production settings:
++
+[source,terminal]
+----
+$ cp agents/langgraph/<agent_variant>/values.yaml my-values.yaml
+----
++
+Edit `my-values.yaml` to set your container image, environment variables, and resource requirements:
++
+[source,yaml]
+----
+image:
+  repository: <registry>/<namespace>/<image_name>
+  tag: <tag>
+env:
+  INFERENCE_MODEL: "<provider_id>/<model_id>"
+  LLAMA_STACK_SERVER_OPENAI: "http://<llama_stack_route>/v1/openai/v1"
+----
++
+--
+Where:
+
+`<agent_variant>`:: Specifies the agent template directory name: `react_agent`, `agentic_rag`, or `react_with_database_memory`.
+--
+
+. Deploy the agent to OpenShift by using the Helm chart.
++
+[source,terminal]
+----
+$ helm install <release_name> charts/agent/ -f my-values.yaml -n <namespace>
+----
++
+--
+Where:
+
+`<release_name>`:: Specifies a unique name for the Helm release, for example `my-react-agent`.
+`<namespace>`:: Specifies the OpenShift project where the agent is deployed.
+--
++
+Alternatively, if the agent variant provides Make targets, you can use them:
++
+[source,terminal]
+----
+$ cd agents/langgraph/<agent_variant> && make deploy
+----
+
+. Verify the deployment.
++
+Check that the agent pod is running:
++
+[source,terminal]
+----
+$ oc get pods -n <namespace> -l app=<release_name>
+----
++
+Verify that the OpenShift route is accessible:
++
+[source,terminal]
+----
+$ oc get route -n <namespace> <release_name>
+----
++
+Send a test request to the agent REST API endpoint:
++
+[source,terminal]
+----
+$ curl -X POST http://<agent_route>/submit-question \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "question=can you explain the details of the Apache 2.0 license?"
+----
++
+The `/submit-question` endpoint processes requests asynchronously and returns a submission ID.
+It does not return the agent's answer directly.
++
+To retrieve the agent's response, open the following URL in a browser:
++
+`http://<agent_route>/get-response`
++
+Enter the submission ID from the initial response to view the agent's answer.
++
+[NOTE]
+====
+The `/get-response` endpoint returns an HTML page, not a JSON or plain text REST API response.
+If you use `curl` to query this endpoint, the response body is raw HTML.
+To verify the deployment programmatically, check the pod status and route availability instead.
+====
+
+.Verification
+
+* The agent pod shows `Running` status.
+* The OpenShift route returns a valid URL.
+* The `/submit-question` endpoint returns a submission ID.
+* The `/get-response` page in the browser displays the agent's answer for the submitted question.
+
+.Troubleshooting
+
+If the agent pod is not running or is in `CrashLoopBackOff` status:
+
+* Check the pod logs for error messages:
++
+[source,terminal]
+----
+$ oc logs -n <namespace> deployment/<release_name>
+----
+
+* Verify that all required environment variables are set correctly in the Helm values file. Missing or incorrect values for `INFERENCE_MODEL`, `LLAMA_STACK_SERVER_OPENAI`, or `OPENAI_API_KEY` are common causes of startup failures.
+
+* Verify that the Llama Stack server can connect to the vLLM `InferenceService`. TLS certificate errors or network policy restrictions can prevent connectivity. Check Llama Stack pod logs for connection errors:
++
+[source,terminal]
+----
+$ oc logs -n <namespace> deployment/llama-stack
+----
+
+* If the `podman push` command fails, verify that you are authenticated to the container image registry and that the cluster can pull images from it.
+
+* To roll back a failed Helm deployment, uninstall the release:
++
+[source,terminal]
+----
+$ helm uninstall <release_name> -n <namespace>
+----
+
+.Next steps
+
+* xref:maintaining-agent-state-in-production[Maintain agent state and reliability in production]
+* xref:integrating-mcp-tools-with-langgraph-agents[Integrate MCP tools with LangGraph agents on {productname-short}]
+
+[role="_additional-resources"]
+.Additional resources
+
+* link:https://github.com/red-hat-data-services/agentic-starter-kits[Agentic starter kits repository]
+* link:https://github.com/red-hat-data-services/agentic-starter-kits/blob/main/docs/openshift-deployment.md[OpenShift deployment guide in the agentic starter kits]

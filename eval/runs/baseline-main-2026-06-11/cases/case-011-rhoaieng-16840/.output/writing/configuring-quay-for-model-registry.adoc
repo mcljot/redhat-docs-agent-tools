@@ -1,0 +1,118 @@
+:_mod-docs-content-type: PROCEDURE
+
+[id="configuring-quay-for-model-registry_{context}"]
+= Configure Red Hat Quay as the OCI storage backend
+
+[role="_abstract"]
+You can configure Red Hat Quay as the OCI-compliant registry for storing model artifacts.
+Using Quay provides built-in OCI artifact support, role-based access control, and image vulnerability scanning for your model images.
+
+Red Hat Quay supports OCI artifacts by default in Quay 3.11 and later.
+You can use robot accounts for automated service authentication, which avoids embedding user credentials in transfer jobs.
+
+.Prerequisites
+
+* Red Hat Quay is deployed and accessible from the {openshift-platform} cluster.
+* You have administrator access to a Quay organization.
+* You have `cluster-admin` privileges on the {openshift-platform} cluster.
+* The OCI storage feature is enabled in {productname-short}.
+For more information, see xref:configuring-oci-storage-backend_{context}[Configure the OCI storage backend for Model Registry].
+
+.Procedure
+
+. Log in to the Red Hat Quay web console.
+
+. Create an organization for model artifacts, or use an existing organization.
+
+.. Click *Create New Organization*.
+
+.. Enter a name for the organization, for example, `model-artifacts`.
+
+.. Click *Create Organization*.
+
+. Create a repository within the organization to store model images.
+
+.. Navigate to the organization, and click *Create New Repository*.
+
+.. Enter a name for the repository, for example, `models`.
+
+.. Set the visibility to *Private* if authentication is required.
+
+.. Click *Create Private Repository* or *Create Public Repository*.
+
+. Create a robot account for service authentication.
++
+Robot accounts provide credentials that are suitable for automated processes such as model transfer jobs.
+
+.. In the organization settings, click *Robot Accounts*.
+
+.. Click *Create Robot Account*.
+
+.. Enter a name for the robot account, for example, `model-transfer`.
+
+.. Click *Create robot account*.
+
+.. Grant the robot account *Write* permission on the repository that you created.
+
+. Export the robot account credentials.
+
+.. Click the robot account name to view its details.
+
+.. Click the *Docker Configuration* tab to view the credentials in `.dockerconfigjson` format.
+
+.. Save the credentials to a file, for example, `quay-dockerconfigjson`.
+
+. Create a Kubernetes Secret with the robot account credentials.
++
+In the following command, replace `<namespace>` with the target namespace and `<path_to_credentials>` with the path to the file that contains the robot account credentials:
++
+[source,terminal]
+----
+$ oc create secret docker-registry quay-model-registry \
+  --namespace <namespace> \
+  --from-file=.dockerconfigjson=<path_to_credentials>
+----
+
+. Configure the Quay connection in the {productname-short} dashboard.
+
+// TODO: SME verification required (RHOAIENG-16840 tech review S2).
+// Verify whether OCI connection types are pre-installed or must be
+// created manually. Update this step accordingly.
+.. In the {productname-short} dashboard, click *Settings* -> *Environment setup* -> *Connection types*.
+
+.. Click *Add connection type*.
+
+.. Select *OCI compliant registry v1* as the connection type.
+
+.. Enter the Quay registry URL, for example, `quay.io`.
+
+.. Provide the robot account credentials.
+
+.. Click *Add*.
+
+.Verification
+
+* Verify that the Kubernetes Secret was created with the correct type:
++
+[source,terminal]
+----
+$ oc get secret quay-model-registry -n <namespace> -o jsonpath='{.type}'
+----
++
+The expected output is `kubernetes.io/dockerconfigjson`.
+
+* Register a test model by using the *Register and Store* flow in the {productname-short} dashboard and verify that the model transfer job completes successfully.
++
+You can check the status of the transfer job by running the following command:
++
+[source,terminal]
+----
+$ oc get jobs -n <namespace> -l app=model-transfer
+----
+
+* In the Quay web console, navigate to the organization and repository and verify that the model image is present with the expected tag.
+
+.Additional resources
+* xref:configuring-oci-storage-backend_{context}[Configure the OCI storage backend for Model Registry]
+* xref:oci-compliant-storage-for-model-registry_{context}[OCI-compliant storage for Model Registry]
+* link:https://docs.redhat.com/en/documentation/red_hat_quay/3.11/html/use_red_hat_quay/oci-intro[Red Hat Quay OCI support]

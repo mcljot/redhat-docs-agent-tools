@@ -1,0 +1,1013 @@
+judges:
+  doc_quality:
+    mean: 4.416666666666667
+    pass_rate: null
+  files_exist:
+    mean: 0.9166666666666666
+    pass_rate: 0.9166666666666666
+  intent_alignment:
+    mean: 3.25
+    pass_rate: null
+  pipeline_complete:
+    mean: 0.9166666666666666
+    pass_rate: 0.9166666666666666
+  reference_comparison:
+    mean: 3.625
+    pass_rate: null
+  step_results_valid:
+    mean: 0.9166666666666666
+    pass_rate: 0.9166666666666666
+per_case:
+  case-001-rhoaieng-45969:
+    doc_quality:
+      judge_type: llm
+      rationale: "The documentation is comprehensive, well-structured, and follows\
+        \ Red Hat's modular documentation conventions. Here's the detailed assessment:\\\
+        n\\n**Strengths:**\\n- Proper use of AsciiDoc metadata (`:_mod-docs-content-type:`,\
+        \ `[id='...']`, `[role='_abstract']`)\\n- Correct modular documentation separation:\
+        \ reference modules (developer-preview-features, technology-preview-features)\
+        \ and procedure modules (installing via CLI, installing via web console)\\\
+        n- Thorough prerequisites, procedure steps, and verification sections in the\
+        \ installation procedures\\n- Proper use of conditional directives (`ifdef::disconnected[]`,\
+        \ `ifndef::disconnected[]`) for variant handling\\n- Consistent use of product\
+        \ name attributes (`{productname-long}`, `{productname-short}`, `{vernum}`)\\\
+        n- JIRA ticket tracking comments (e.g., `//RHAISTRAT-1213`) for traceability\\\
+        n- Appropriate admonitions (IMPORTANT, NOTE) with correct Red Hat support\
+        \ scope language\\n- Well-organized hierarchical structure with release-based\
+        \ sections (3.4 GA, EA2, EA1, earlier)\\n- Good use of definition lists for\
+        \ feature descriptions\\n- Installation procedures include both CLI and web\
+        \ console paths with proper cross-references\\n\\n**Minor Issues:**\\n- The\
+        \ developer-preview and technology-preview reference pages are very long monolithic\
+        \ files; some features could benefit from linking to dedicated concept/procedure\
+        \ modules rather than inline descriptions\\n- Some JIRA comment IDs appear\
+        \ inconsistent (e.g., `//RHIAIENG-3498` vs `//RHAIENG-` pattern, `//RHAISTRAT-47102`\
+        \ seems unusually high)\\n- The `llamastackoperator` and `mlflowoperator`\
+        \ components in the DSC YAML appear to be new additions that align with the\
+        \ JIRA scope, which is good\\n- The MLflow entry in developer-preview says\
+        \ it was 'promoted to GA' but still appears in the developer preview list\
+        \ \u2014 this is acceptable as a historical record but could confuse readers\\\
+        n- Some Technology Preview entries from older releases (3.2, 3.3) are included\
+        \ without clear indication of whether they're still TP or have been promoted/removed\\\
+        n- The DataScienceCluster YAML uses `apiVersion: datasciencecluster.opendatahub.io/v2`\
+        \ \u2014 this should be verified as the correct API version\\n- No fabricated\
+        \ commands or flags detected; all referenced CRs and configurations appear\
+        \ technically plausible\\n- Cross-references and external links are properly\
+        \ formatted"
+      value: 4
+    files_exist:
+      judge_type: check
+      rationale: Found 4 AsciiDoc files in writing output
+      value: true
+    intent_alignment:
+      judge_type: llm
+      rationale: 'The documentation produced does not address the JIRA ticket intent
+        at all. The ticket (RHOAIENG-45969) asks for documentation about how the odh-notebook-controller
+        auto-configures MLFlow SDK environment variables (MLFLOW_TRACKING_URI, MLFLOW_K8S_INTEGRATION)
+        in RHOAI workbenches. None of the four acceptance criteria are met: (1) no
+        documentation of the mlflow.request_header_provider entrypoint and auto-config,
+        (2) no working code example showing import mlflow/set_experiment/start_run
+        without manual config, (3) no documentation of the opendatahub.io/mlflow-instance
+        annotation on the Notebook CR, (4) no coverage of env var injection and ClusterRole
+        binding by the controller. The produced files are about developer preview
+        features, technology preview features, and installation procedures for OpenShift
+        AI components - completely unrelated to the specific workbench MLFlow SDK
+        auto-configuration topic. The only tangential mention is a brief note that
+        ''MLflow integration has been promoted to GA'' in the developer-preview and
+        technology-preview files, but this provides zero content about the controller''s
+        env var injection mechanism that the ticket specifically requests.'
+      value: 1
+    pipeline_complete:
+      judge_type: check
+      rationale: 'Pipeline status: completed'
+      value: true
+    reference_comparison:
+      judge_type: code
+      rationale: "The AI-generated documentation closely mirrors the reference documentation\
+        \ across all four dimensions.\n\n**Coverage (5/5):** The AI output covers\
+        \ all the same topics as the reference - developer preview features, technology\
+        \ preview features, installing components via CLI and web console, and all\
+        \ MLflow-related modules. The AI output appears to include all modules found\
+        \ in the reference.\n\n**Technical accuracy (4/5):** Commands, YAML configurations,\
+        \ API fields, and parameters match the reference documentation. The DSC YAML\
+        \ specs, environment variables, annotations, and CLI commands are identical.\
+        \ Minor differences exist in phrasing (e.g., 'by using' vs 'using') which\
+        \ are stylistic rather than technical. The MLflow-specific modules from the\
+        \ reference (enabling-mlflow-component, enabling-mlflow-integration-for-workbenches,\
+        \ disabling-mlflow-integration, troubleshooting-mlflow-annotation-removal,\
+        \ mlflow-workbench-environment-variables-reference, mlflow-workbench-integration-overview,\
+        \ using-mlflow-sdk-in-workbenches, mlflow-feature-flag-deprecation-notice,\
+        \ and the tracking-experiments assembly) are present in the reference but\
+        \ NOT in the AI output, which is a significant gap. However, the files that\
+        \ ARE present in the AI output match the reference accurately.\n\n**Structure\
+        \ (3/5):** The AI output includes the release notes modules (developer-preview-features,\
+        \ technology-preview-features) and installation modules but is missing all\
+        \ the MLflow-specific modules and assemblies that form the core of the 'Working\
+        \ with MLflow' guide. The reference has a master.adoc with a detailed assembly\
+        \ structure for MLflow documentation, plus individual procedure, concept,\
+        \ and reference modules. The AI output lacks these MLflow modules entirely.\n\
+        \n**Scope alignment (3/5):** The reference contains approximately 15+ unique\
+        \ modules/files, while the AI output contains only 5 files. The AI output\
+        \ is missing roughly 10 MLflow-specific modules (enabling-mlflow-component,\
+        \ enabling-mlflow-integration-for-workbenches, disabling-mlflow-integration,\
+        \ troubleshooting-mlflow-annotation-removal, mlflow-workbench-environment-variables-reference,\
+        \ mlflow-workbench-integration-overview, using-mlflow-sdk-in-workbenches,\
+        \ mlflow-feature-flag-deprecation-notice, master.adoc, tracking-experiments\
+        \ assembly, known-issues, new-features-and-enhancements, and troubleshooting-common-problems\
+        \ assembly). This is less than half the reference module count.\n\nWeighted:\
+        \ Coverage 0.30\xD75=1.5, Accuracy 0.30\xD74=1.2, Structure 0.20\xD73=0.6,\
+        \ Scope 0.20\xD73=0.6 = 3.9, rounded to 4."
+      value: 4
+    step_results_valid:
+      judge_type: check
+      rationale: All step results valid
+      value: true
+  case-002-rhaistrat-853:
+    doc_quality:
+      judge_type: llm
+      rationale: 'This is production-ready documentation of exceptional quality. The
+        documentation demonstrates excellent modular structure with proper separation
+        into concept (understanding-model-cache), procedure (enabling, configuring,
+        caching, deploying, deleting), and reference (configuration reference, known
+        limitations, troubleshooting) modules, all tied together by a well-organized
+        assembly file. Technical accuracy is strong throughout - the CRD names (LocalModelCache,
+        LocalModelNodeGroup, LocalModelNode), API versions (serving.kserve.io/v1alpha1),
+        field names, and workflows align with KServe''s local model cache feature.
+        The YAML examples use proper placeholder conventions with callout annotations.
+        Prerequisites are thorough and appropriately scoped per module. The reference
+        tables are comprehensive, covering all relevant CRD fields with types, required/optional
+        status, and descriptions. The troubleshooting guide is particularly well done
+        with a symptom/cause/resolution format covering realistic failure scenarios.
+        The documentation correctly identifies this as a Developer Preview feature
+        with appropriate caveats. The two caching modes (local disk vs network volume)
+        are clearly differentiated with separate procedures. Cross-references between
+        modules are consistent and logical. The assembly file provides excellent information
+        architecture with logical grouping (setup, caching, deploying, managing, reference).
+        No fabricated commands or API details were detected. Minor note: some attribute
+        references like {dbd-config-default-namespace} and {productname-short} are
+        used correctly as AsciiDoc attributes. The only very minor observation is
+        that the configuring-model-download-credentials module is referenced but not
+        included in the output, though this is likely just outside the scope of what
+        was generated.'
+      value: 5
+    files_exist:
+      judge_type: check
+      rationale: Found 11 AsciiDoc files in writing output
+      value: true
+    intent_alignment:
+      judge_type: llm
+      rationale: "The documentation comprehensively fulfills all aspects of the JIRA\
+        \ ticket. **Acceptance criteria coverage**: (1) Enabling model cache is thoroughly\
+        \ documented in `enabling-model-cache.adoc` with ConfigMap editing, namespace\
+        \ creation, node labeling, and verification steps. (2) Configuring node groups\
+        \ is fully covered in `configuring-model-cache-node-groups.adoc` with the\
+        \ `LocalModelNodeGroup` CRD, storage limits, node affinity, and PV/PVC specs.\
+        \ (3) Deploying inference services with cached models is documented in `deploying-inferenceservice-with-cached-model.adoc`\
+        \ (and the LLMInferenceService variant), showing that no special annotations\
+        \ are needed and the webhook handles URI rewriting automatically. (4) The\
+        \ performance benefit is clearly explained in `understanding-model-cache.adoc`\
+        \ \u2014 cold start reduction from 15-20 minutes to ~1 minute, and the autoscaling\
+        \ benefit is explicitly addressed in a dedicated section. **Audience alignment**:\
+        \ The documentation serves both audiences well \u2014 admins get detailed\
+        \ enablement/configuration procedures (enabling cache, configuring node groups,\
+        \ managing credentials, deleting cached models), while data scientists/ML\
+        \ engineers get a clear explanation of transparent behavior (no YAML modifications\
+        \ needed, automatic fallback). **Scope**: The documentation stays within scope,\
+        \ covering KServe model cache integration, enablement guidance, and CRD configuration\
+        \ without diving into KServe internals or upstream implementation details.\
+        \ The reference material provides CRD field documentation. Additional value\
+        \ is provided through troubleshooting guides, known limitations, network volume\
+        \ caching, and a configuration reference \u2014 all directly relevant to the\
+        \ feature without going out of scope."
+      value: 5
+    pipeline_complete:
+      judge_type: check
+      rationale: 'Pipeline status: completed'
+      value: true
+    reference_comparison:
+      judge_type: code
+      rationale: "No reference directory for case-002-rhaistrat-853 \u2014 skipping"
+      value: null
+    step_results_valid:
+      judge_type: check
+      rationale: All step results valid
+      value: true
+  case-003-rhaistrat-1432:
+    doc_quality:
+      judge_type: llm
+      rationale: 'No documentation content was provided to evaluate. The submission
+        is completely empty, which means it fails to meet any requirements: there
+        are no sections, no technical content, no procedures, no concepts, and no
+        reference material. This is unusable as documentation.'
+      value: 1
+    files_exist:
+      judge_type: check
+      rationale: Found 0 AsciiDoc files in writing output
+      value: false
+    intent_alignment:
+      judge_type: llm
+      rationale: Both the JIRA ticket intent and the documentation produced are empty/blank.
+        There is no documentation to evaluate against no stated intent. No content
+        was provided for assessment, so the output cannot be considered to fulfill
+        any ticket requirements.
+      value: 1
+    pipeline_complete:
+      judge_type: check
+      rationale: No progress file found
+      value: false
+    reference_comparison:
+      judge_type: code
+      rationale: "No reference directory for case-003-rhaistrat-1432 \u2014 skipping"
+      value: null
+    step_results_valid:
+      judge_type: check
+      rationale: 'Missing/invalid: [''requirements'', ''planning'', ''writing'']'
+      value: false
+  case-004-rhaistrat-1393:
+    doc_quality:
+      judge_type: llm
+      rationale: This documentation is production-ready quality that matches what
+        a senior technical writer would produce for Red Hat. Here's the detailed assessment:\n\n**Technical
+        Accuracy:** The documentation accurately describes LangGraph state persistence
+        concepts (MemorySaver, PostgresSaver, RedisSaver), Llama Stack provider configuration
+        (run.yaml structure, persistence_store/responses_store), and OpenShift deployment
+        patterns. The PostgreSQL deployment YAML uses the correct Red Hat container
+        image (registry.redhat.io/rhel9/postgresql-16:latest), proper readiness/liveness
+        probes with /usr/libexec/check-container, and appropriate resource specifications.
+        The Python code examples use correct class imports and context manager patterns.
+        The connection string format and setup() method usage are accurate.\n\n**Completeness:**
+        The documentation thoroughly covers the full scope implied by the ticket -
+        concept modules explain the two-layer state model, reference modules provide
+        detailed backend comparison tables, and procedure modules give step-by-step
+        instructions for both PostgreSQL setup and agent state configuration. The
+        assembly ties everything together logically. Security considerations (secretKeyRef
+        for credentials, Flask debug=True warning, gunicorn for production) are well-addressed.\n\n**Modular
+        Documentation Structure:** Excellent adherence to Red Hat's modular documentation
+        framework - proper separation into CONCEPT (agent-state-persistence-langgraph,
+        local-to-production-provider-swap-architecture), PROCEDURE (configuring-persistent-state-langgraph-agents,
+        configuring-postgresql-langgraph-agent-state, deploying-langgraph-agent-to-rhoai),
+        REFERENCE (agent-state-storage-backend-comparison), and ASSEMBLY (maintaining-agent-state-in-production)
+        modules. Each module has correct content type metadata, proper ID anchors
+        with {context}, role=\
+      value: 5
+    files_exist:
+      judge_type: check
+      rationale: Found 8 AsciiDoc files in writing output
+      value: true
+    intent_alignment:
+      judge_type: llm
+      rationale: "The documentation addresses the general intent of migrating a LangGraph\
+        \ agent from local development to production on RHOAI, but it misses several\
+        \ specific acceptance criteria and has notable gaps.\\n\\n**Acceptance Criteria\
+        \ Coverage:**\\n\\n1. **Provider swap (Ollama\u2192vLLM, Chroma\u2192Milvus,\
+        \ local memory\u2192PV/Postgres):** Partially covered. The concept doc (`local-to-production-provider-swap-architecture.adoc`)\
+        \ includes a provider mapping table and the deployment procedure covers updating\
+        \ `.env` and `run.yaml` for inference (Ollama\u2192vLLM). However, the vector\
+        \ storage swap (Chroma\u2192Milvus) is only mentioned in passing with no procedural\
+        \ detail. The memory/state swap (local\u2192PostgreSQL) is well covered across\
+        \ multiple documents.\\n\\n2. **K8s artifacts (InferenceService, LlamaStackDistribution\
+        \ CR, Deployment, PVC, Service, Route):** Weakly covered. The PostgreSQL deployment\
+        \ procedure includes Deployment, PVC, Service, and NetworkPolicy manifests.\
+        \ The deployment procedure mentions Helm-generated Deployment/Service/Route/Secret.\
+        \ However, there are no actual InferenceService or LlamaStackDistribution\
+        \ CR manifests shown \u2014 they are referenced as prerequisites but never\
+        \ documented. This is a significant gap given the ticket explicitly asks for\
+        \ K8s manifests.\\n\\n3. **Local development workflow (running agent locally\
+        \ with Ollama):** Barely covered. Step 1 of the deployment procedure has two\
+        \ lines about running locally (`uv run llama stack run run.yaml` and `python\
+        \ app.py`), but there is no substantive documentation of the local development\
+        \ workflow \u2014 no Ollama setup, no local vector DB setup, no local `run.yaml`\
+        \ example with Ollama provider configuration. The ticket specifically calls\
+        \ this out.\\n\\n4. **Observability (pod logs, MLFlow tracking via mlflow.langchain\
+        \ module):** Mostly missing. Pod logs are mentioned briefly in a troubleshooting\
+        \ section. MLflow is explicitly deferred with notes saying it's 'planned for\
+        \ a future release' and should not be configured. The ticket asks for documentation\
+        \ of MLflow tracking via mlflow.langchain, but the output explicitly excludes\
+        \ it.\\n\\n**Scope Alignment:** The documentation stays within scope by not\
+        \ covering Llama Stack internals or MCP server configuration in detail (those\
+        \ are correctly out of scope). However, it over-indexes on agent state persistence\
+        \ (4 documents totaling significant length) while under-covering the provider\
+        \ swap demo and local development workflow.\\n\\n**Audience Alignment:** The\
+        \ content is appropriately targeted at developers building agentic apps, with\
+        \ good procedural detail. However, the data scientist persona (experimenting\
+        \ locally then deploying) is poorly served due to the thin local development\
+        \ coverage.\\n\\n**Key Gaps:** No InferenceService or LlamaStackDistribution\
+        \ CR manifests, minimal local development workflow documentation, no MLflow\
+        \ observability content, and the vector storage provider swap lacks procedural\
+        \ depth."
+      value: 3
+    pipeline_complete:
+      judge_type: check
+      rationale: 'Pipeline status: completed'
+      value: true
+    reference_comparison:
+      judge_type: code
+      rationale: "No reference directory for case-004-rhaistrat-1393 \u2014 skipping"
+      value: null
+    step_results_valid:
+      judge_type: check
+      rationale: All step results valid
+      value: true
+  case-005-rhaistrat-1374:
+    doc_quality:
+      judge_type: llm
+      rationale: This documentation is production-ready quality that matches what
+        a senior technical writer at Red Hat would produce. Here's the detailed assessment:\n\n**Technical
+        Accuracy:** The content is technically precise and internally consistent.
+        The distinction between build-time (`build.yaml`) and runtime (`config.yaml`)
+        configuration is clearly articulated. Provider names, environment variables
+        (`VLLM_EMBEDDING_URL`, `MILVUS_ENDPOINT`, `ENABLE_SENTENCE_TRANSFORMERS`,
+        etc.), YAML configuration stanzas, and file paths all appear realistic and
+        consistent throughout. There are no signs of fabricated commands or API details.\n\n**Modular
+        Documentation Structure:** The assembly/module separation follows Red Hat's
+        modular documentation guidelines precisely. Each module has the correct `_mod-docs-content-type`
+        metadata (CONCEPT, REFERENCE, PROCEDURE implied by includes), proper `{context}`
+        variable usage in IDs, `[role=\
+      value: 5
+    files_exist:
+      judge_type: check
+      rationale: Found 3 AsciiDoc files in writing output
+      value: true
+    intent_alignment:
+      judge_type: llm
+      rationale: The JIRA ticket intent is empty, making it impossible to fully evaluate
+        alignment with the original request. The documentation itself is well-crafted,
+        follows Red Hat modular documentation standards, and coherently covers Llama
+        Stack provider configuration, inline provider deprecation, dependency-only
+        provider references, and migration guidance. The content is technically detailed
+        with configuration examples, support matrices, deprecation timelines, and
+        cross-references. However, without any ticket intent to compare against, I
+        cannot confirm scope match, acceptance criteria coverage, or audience alignment.
+        The middle score reflects that the documentation appears competent and topically
+        focused but cannot be verified against the (absent) original requirements.
+      value: 3
+    pipeline_complete:
+      judge_type: check
+      rationale: 'Pipeline status: completed'
+      value: true
+    reference_comparison:
+      judge_type: code
+      rationale: "No reference directory for case-005-rhaistrat-1374 \u2014 skipping"
+      value: null
+    step_results_valid:
+      judge_type: check
+      rationale: All step results valid
+      value: true
+  case-006-rhai-eng-2388:
+    doc_quality:
+      judge_type: llm
+      rationale: "This documentation is production-ready quality that matches what\
+        \ a senior technical writer at Red Hat would produce. The modular documentation\
+        \ structure is exemplary: clean separation into CONCEPT (about-using), PROCEDURE\
+        \ (configuring, using), REFERENCE (environment variables, provider support),\
+        \ and ASSEMBLY modules with proper content-type annotations. Technical accuracy\
+        \ appears solid throughout \u2014 the YAML CR examples include proper callouts,\
+        \ environment variables are consistently documented with types/defaults/required\
+        \ flags, and the curl command examples use proper substitution syntax (+quotes).\
+        \ The Developer Preview admonition is correctly placed. Prerequisites are\
+        \ thorough and link to related procedures. Verification steps are concrete\
+        \ and actionable. The reference table for environment variables is comprehensive\
+        \ with a 6-column layout covering all relevant attributes. Cross-references\
+        \ between modules are well-structured using the standard Red Hat link macro\
+        \ pattern. Response schema differences from upstream are transparently documented.\
+        \ Edge cases like CrashLoopBackOff behavior, shared credentials with the Bedrock\
+        \ provider, and TLS CA bundle handling are all addressed. The assembly file\
+        \ properly manages context variables. The provider support table update correctly\
+        \ integrates the new remote::s3 provider with disconnected support marked\
+        \ as 'Yes' and Developer Preview status. No fabricated commands or API details\
+        \ were detected."
+      value: 5
+    files_exist:
+      judge_type: check
+      rationale: Found 6 AsciiDoc files in writing output
+      value: true
+    intent_alignment:
+      judge_type: llm
+      rationale: The documentation produced is comprehensive and well-structured,
+        covering the concept, configuration procedure, environment variables reference,
+        usage procedure, provider support table update, and assembly file for external
+        S3-compatible storage for the /v1/files endpoint. However, without a JIRA
+        ticket intent to compare against, I can only evaluate the documentation on
+        its own merits and infer likely intent. The documentation covers a broad set
+        of topics (concept overview, configuration, env vars, usage, provider support
+        table) and appears thorough. Several referenced modules are missing from the
+        output (creating-secrets, about-the-iam-policy, limitations, troubleshooting,
+        using-s3-files-in-rag-workflows), which are included in the assembly but not
+        provided. This represents incomplete deliverables - the assembly references
+        9 modules but only 5 are present. The documentation that IS present is high
+        quality, well-organized, and follows Red Hat documentation standards. Since
+        there is no ticket intent provided to evaluate against, I cannot fully assess
+        scope match, acceptance criteria coverage, or audience alignment, so I'm scoring
+        at a 3 to reflect that the documentation addresses a clear main topic competently
+        but has notable gaps in the referenced-but-missing modules.
+      value: 3
+    pipeline_complete:
+      judge_type: check
+      rationale: 'Pipeline status: completed'
+      value: true
+    reference_comparison:
+      judge_type: code
+      rationale: "**Coverage (4/5):** The AI output covers all the major topics from\
+        \ the reference for the S3 external storage assembly: concept, secrets creation\
+        \ (referenced but not shown as a separate output file, though included in\
+        \ the assembly), configuration procedure, usage procedure, IAM policy, and\
+        \ limitations. It adds extra modules (environment variables reference, troubleshooting,\
+        \ RAG workflows) that aren't in the reference but are relevant. The top-level\
+        \ assembly (llama-stack-adv-examples.adoc) is missing from the AI output,\
+        \ but the S3-specific assembly and its modules are well-covered. The creating-secrets\
+        \ module is included in the assembly but not shown as a separate output file.\n\
+        \n**Technical accuracy (5/5):** The AI output is highly accurate. The YAML\
+        \ configurations, environment variables (ENABLE_S3, S3_BUCKET_NAME, AWS_DEFAULT_REGION,\
+        \ S3_ENDPOINT_URL, S3_AUTO_CREATE_BUCKET, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY),\
+        \ curl commands, JSON responses, API endpoints, and all technical details\
+        \ match the reference precisely. The callout annotations are accurate and\
+        \ consistent. No fabricated technical details were found.\n\n**Structure (4/5):**\
+        \ The AI output follows modular docs conventions with proper module types\
+        \ (CONCEPT, PROCEDURE, REFERENCE), assembly files with includes, and proper\
+        \ ID anchoring. The structure closely mirrors the reference. Minor differences:\
+        \ uses `:_mod-docs-content-type:` instead of `:_module-type:`, and procedure\
+        \ titles use imperative form (\"Configure...\") vs. gerund form (\"Configuring...\"\
+        ). These are minor style differences.\n\n**Scope alignment (3/5):** The reference\
+        \ has 8 files shown; the AI output has 8 files shown but includes 2 extra\
+        \ modules in the assembly (troubleshooting-external-s3-provider.adoc and using-s3-files-in-rag-workflows.adoc)\
+        \ plus an extra environment-variables-for-external-s3-files-provider.adoc\
+        \ module that don't exist in the reference. The creating-secrets module is\
+        \ missing as a separate output. The assembly also references modules not provided.\
+        \ The overall scope is slightly over-scoped with the extra modules, though\
+        \ it stays within 2x range.\n\nWeighted average: (4\xD70.3) + (5\xD70.3) +\
+        \ (4\xD70.2) + (3\xD70.2) = 1.2 + 1.5 + 0.8 + 0.6 = 4.1, rounded to 4."
+      value: 4
+    step_results_valid:
+      judge_type: check
+      rationale: All step results valid
+      value: true
+  case-007-rhai-eng-4485:
+    doc_quality:
+      judge_type: llm
+      rationale: 'This documentation set is production-ready quality that matches
+        what a senior technical writer at Red Hat would produce. Here''s why:\n\n**Modular
+        documentation structure:** The output correctly separates content into concept
+        modules (about-ca-bundle-configuration, about-using-self-signed-certificates),
+        procedure modules (configuring-a-ca-bundle), and reference modules (ca-bundle-configuration,
+        troubleshooting). The assembly files (working-with-certificates.adoc, llama-stack-adv-examples.adoc)
+        properly include these modules with appropriate leveloffset directives.\n\n**Technical
+        accuracy:** The documentation accurately describes Kubernetes/OpenShift concepts
+        (config maps, service accounts, Roles/RoleBindings, namespaces), uses correct
+        `oc` CLI commands with proper syntax, and provides realistic YAML examples
+        for the LlamaStackDistribution CR. The SSL_CERT_FILE environment variable,
+        PEM format details, and X.509 certificate validation are all technically sound.\n\n**Completeness:**
+        The documentation comprehensively covers: the concept (why CA bundles are
+        needed), the procedure (step-by-step with prerequisites and verification),
+        the reference (subfields, validation rules, limits, failure conditions, client
+        code usage), troubleshooting (common issues and error messages with resolutions),
+        and integration into the broader certificate management assembly.\n\n**Red
+        Hat conventions:** Proper use of AsciiDoc attributes (_mod-docs-content-type,
+        context variables), conditional processing (ifdef::disconnected/ifndef::disconnected),
+        consistent cross-reference patterns using Red Hat doc link macros, admonition
+        blocks (IMPORTANT notes about service interruptions), and proper use of replaceable
+        text markers with double underscores.\n\n**Verification steps:** The procedure
+        includes thorough verification with 6 distinct checks covering the managed
+        config map, CR status conditions, pod status, mount path, SSL_CERT_FILE variable,
+        certificate content, and TLS connectivity testing.\n\n**No fabricated content:**
+        All commands, API fields, paths, and configuration options appear consistent
+        and internally coherent across all modules. The limits table (10MB, 1000 certs)
+        and condition types (DeploymentReady, ServiceReady, HealthCheck) are documented
+        consistently throughout.'
+      value: 5
+    files_exist:
+      judge_type: check
+      rationale: Found 7 AsciiDoc files in writing output
+      value: true
+    intent_alignment:
+      judge_type: llm
+      rationale: The JIRA ticket intent is empty, making it impossible to fully evaluate
+        alignment with specific acceptance criteria or scope requirements. The documentation
+        itself is well-structured, comprehensive, and follows Red Hat documentation
+        standards, covering CA bundle configuration for Llama Stack across concept,
+        procedure, reference, and troubleshooting content types. It includes proper
+        conditional handling for disconnected environments, cross-references, and
+        verification steps. However, without knowing the actual ticket requirements,
+        I cannot confirm whether scope, acceptance criteria, audience, or focus are
+        correctly addressed. A middle score reflects that the documentation appears
+        professionally competent but cannot be verified against the original request.
+      value: 3
+    pipeline_complete:
+      judge_type: check
+      rationale: 'Pipeline status: completed'
+      value: true
+    reference_comparison:
+      judge_type: code
+      rationale: "The AI-generated documentation is an exceptionally close match to\
+        \ the reference documentation across all dimensions.\n\n**Coverage (5/5):**\
+        \ The AI output covers every topic present in the reference: the concept module\
+        \ about CA bundle configuration, the concept about self-signed certificates,\
+        \ the reference module for CA bundle configuration details (subfields, examples,\
+        \ validation rules, limits, failure conditions, client code usage), the procedure\
+        \ for configuring a CA bundle, and both assembly files (llama-stack-adv-examples\
+        \ and working-with-certificates). The AI adds a troubleshooting module and\
+        \ a note about curl alternatives, which are extra but relevant.\n\n**Technical\
+        \ accuracy (5/5):** All technical details match precisely - API fields (spec.server.tlsConfig.caBundle,\
+        \ configMapName, configMapNamespace, configMapKeys), paths (/etc/ssl/certs/ca-bundle/ca-bundle.crt),\
+        \ environment variables (SSL_CERT_FILE), limits (10 MB, 1000 certificates),\
+        \ condition types (DeploymentReady, ServiceReady, HealthCheck), YAML examples,\
+        \ oc commands, and Python code examples are all identical or functionally\
+        \ equivalent. The AI even adds helpful context about cross-namespace RBAC\
+        \ setup that's consistent with the reference's mention of service account\
+        \ access requirements.\n\n**Structure (5/5):** The module types match exactly\
+        \ - CONCEPT modules for about-ca-bundle and about-self-signed-certs, REFERENCE\
+        \ for ca-bundle-configuration, PROCEDURE for configuring-a-ca-bundle, and\
+        \ ASSEMBLY for both top-level files. The modular docs compliance is maintained\
+        \ with proper ID attributes, role abstracts, prerequisites, procedures, and\
+        \ verification sections.\n\n**Scope alignment (4/5):** The AI produces 7 files\
+        \ vs 6 in the reference (adds a troubleshooting module). This is a minor addition\
+        \ (~17% more) and stays well within the acceptable range. The depth of each\
+        \ module closely matches the reference.\n\nWeighted average: (5\xD70.3) +\
+        \ (5\xD70.3) + (5\xD70.2) + (4\xD70.2) = 1.5 + 1.5 + 1.0 + 0.8 = 4.8, which\
+        \ rounds to 5."
+      value: 5
+    step_results_valid:
+      judge_type: check
+      rationale: All step results valid
+      value: true
+  case-008-rhai-eng-2620:
+    doc_quality:
+      judge_type: llm
+      rationale: 'This documentation is production-ready quality that matches what
+        a senior technical writer would produce for Red Hat. Here''s why:\n\n**Technical
+        Accuracy**: The documentation accurately describes file citation annotations
+        in the OpenAI-compatible Responses API within Llama Stack. The JSON structures,
+        Python code examples, field descriptions, and API behavior are all internally
+        consistent and technically sound. No fabricated commands, flags, or API details
+        are apparent.\n\n**Completeness**: The documentation thoroughly covers the
+        JIRA ticket scope (RHAISTRAT-189, RHAIENG-2620) for file citation annotations.
+        It includes a concept module (what annotations are and how they work), a procedure
+        module (step-by-step instructions for viewing annotations), a reference module
+        (field definitions, compatibility tables, metadata pipeline), and proper integration
+        into the assembly and the technology-preview-features.adoc release notes.\n\n**Modular
+        Documentation Structure**: The content follows Red Hat''s modular documentation
+        best practices perfectly:\n- Assembly file (`openai-compatible-file-citation-annotations.adoc`)
+        with proper `include` directives and `leveloffset`\n- Concept module (`openai-file-citation-annotations-in-llama-stack.adoc`)
+        explaining the feature\n- Procedure module (`viewing-file-citation-annotations-in-responses-api-output.adoc`)
+        with Prerequisites, Procedure, and Verification sections\n- Reference module
+        (`file-citation-annotation-reference.adoc`) with field tables and compatibility
+        matrices\n- Each module has proper `_mod-docs-content-type` metadata and `{context}`
+        suffixed IDs\n\n**Red Hat Standards Compliance**: Technology Preview admonitions
+        are consistently applied with proper `ifdef` conditionals for self-managed
+        vs cloud-service. The `[role=\'
+      value: 5
+    files_exist:
+      judge_type: check
+      rationale: Found 6 AsciiDoc files in writing output
+      value: true
+    intent_alignment:
+      judge_type: llm
+      rationale: "The documentation strongly aligns with the ticket intent, covering\
+        \ most acceptance criteria well, but has notable gaps around confidence scores\
+        \ and the Search endpoint.\\n\\n**Acceptance Criteria Coverage:**\\n\\n1.\
+        \ **Feature overview: annotations for citations, confidence, and metadata**\
+        \ \u2014 Well covered. The concept doc (`openai-file-citation-annotations-in-llama-stack.adoc`)\
+        \ provides a thorough overview of file_citation annotations, metadata flow\
+        \ through the RAG pipeline, and capabilities/limitations. However, the ticket\
+        \ specifically asks for documentation of 'confidence scores,' and while the\
+        \ docs explicitly note that confidence scores are NOT included in annotations,\
+        \ this is documented as a limitation rather than as a feature. The docs handle\
+        \ this honestly, which is appropriate, but the ticket seemed to expect confidence\
+        \ scores as a feature to document.\\n\\n2. **Usage instructions: how to enable\
+        \ and configure in Llama Stack** \u2014 Addressed. The docs clearly state\
+        \ annotations are enabled by default and require no additional configuration.\
+        \ The procedure doc provides step-by-step instructions for accessing annotations\
+        \ via the API.\\n\\n3. **UI behavior: filename display and click-to-download**\
+        \ \u2014 Covered but thinly. The reference doc mentions that the UI displays\
+        \ filenames as clickable links for downloading source files, and that file_id/index\
+        \ are only accessible via API. However, there are no screenshots or detailed\
+        \ UI walkthrough \u2014 just brief mentions and cross-references to a `viewing-file-citation-annotations-in-llama-stack-ui`\
+        \ module that is included but not provided in the output.\\n\\n4. **Example\
+        \ API requests and responses demonstrating annotation fields** \u2014 Excellently\
+        \ covered. The procedure doc includes Python SDK examples, curl examples,\
+        \ full JSON response payloads showing annotation structure, and the reference\
+        \ doc includes a complete response payload example.\\n\\n**Scope Match:**\
+        \ The docs stay within scope \u2014 they cover the Responses API annotation\
+        \ support thoroughly and don't venture into deployment or model serving setup.\
+        \ However, the ticket mentions 'Search and Responses endpoints' but the documentation\
+        \ focuses almost exclusively on the Responses API. The Search endpoint is\
+        \ not separately documented.\\n\\n**Audience Alignment:** Strongly aligned\
+        \ with developers/API consumers. Code examples use the OpenAI Python SDK and\
+        \ curl, with clear parameter descriptions and placeholder guidance.\\n\\n**Additional\
+        \ Strengths:** The metadata availability table, annotation type compatibility\
+        \ table, and the detailed metadata flow explanation are excellent additions\
+        \ that go beyond minimum requirements. The technology-preview-features.adoc\
+        \ entry provides good release-note-style context.\\n\\n**Weaknesses:** Missing\
+        \ the UI procedure module content (referenced but not provided), limited Search\
+        \ endpoint coverage, and the confidence scores acceptance criterion is documented\
+        \ as absent rather than as a feature."
+      value: 4
+    pipeline_complete:
+      judge_type: check
+      rationale: 'Pipeline status: completed'
+      value: true
+    reference_comparison:
+      judge_type: code
+      rationale: "**Coverage (4/5):** The AI output covers all core topics from the\
+        \ reference: concept explanation, procedure for viewing annotations, and reference\
+        \ material for file citation fields. It adds extra relevant content like UI\
+        \ viewing, technology preview notes, metadata pipeline stages, curl examples,\
+        \ and extended search results. The only missing element is the master.adoc\
+        \ assembly structure showing the full book context, though the assembly file\
+        \ itself is present.\n\n**Technical accuracy (4/5):** Commands, API fields,\
+        \ and configuration parameters are consistent with the reference. The `file_citation`\
+        \ fields (type, file_id, filename, index) match. However, the AI describes\
+        \ `index` as \"character position in the output text where the citation should\
+        \ be inserted\" while the reference says \"Index of the cited file in the\
+        \ list of files\" \u2014 this is a notable discrepancy. The AI also adds details\
+        \ about `include` parameter, `file_search_call.results`, and curl examples\
+        \ that aren't in the reference but appear technically plausible rather than\
+        \ fabricated. The `url_citation` note is consistent. The AI adds Technology\
+        \ Preview disclaimers not present in the reference modules.\n\n**Structure\
+        \ (4/5):** The AI follows the same modular docs pattern: assembly file includes\
+        \ concept, procedure, and reference modules. Module types are correctly labeled.\
+        \ The AI adds an extra module (viewing-file-citation-annotations-in-llama-stack-ui.adoc,\
+        \ referenced but not provided) and a technology-preview-features.adoc that's\
+        \ outside the feature scope. The overall assembly structure mirrors the reference\
+        \ well.\n\n**Scope alignment (3/5):** The reference has 4 modules (assembly\
+        \ + 3 content modules) plus master.adoc. The AI has 6+ files: assembly, concept,\
+        \ procedure, reference, technology-preview-features.adoc, openai-compatible-apis-in-llama-stack.adoc,\
+        \ plus references a UI module. The technology-preview-features.adoc is very\
+        \ large and covers many unrelated features. The openai-compatible-apis module\
+        \ is comprehensive but goes well beyond the reference scope. This represents\
+        \ significant over-scoping, though not quite 2x the module count for the core\
+        \ feature.\n\nWeighted: Coverage 4\xD70.3=1.2, Technical accuracy 4\xD70.3=1.2,\
+        \ Structure 4\xD70.2=0.8, Scope alignment 3\xD70.2=0.6 = 3.8, rounds to 4."
+      value: 4
+    step_results_valid:
+      judge_type: check
+      rationale: All step results valid
+      value: true
+  case-009-rhai-eng-1550:
+    doc_quality:
+      judge_type: llm
+      rationale: "The documentation is well-structured, comprehensive, and follows\
+        \ Red Hat modular documentation conventions. The assembly file properly uses\
+        \ AsciiDoc attributes, conditionals for upstream/downstream, Technology Preview\
+        \ admonitions, and includes modules at appropriate levels. The migration reference\
+        \ module is particularly strong\u2014it provides clear before/after code comparisons,\
+        \ detailed explanations of breaking changes, a summary table, and practical\
+        \ guidance. The FAISS concept module is concise and informative with appropriate\
+        \ caveats. Minor issues: (1) Some included modules are not provided for review,\
+        \ so completeness of the full assembly cannot be fully verified. (2) The assembly\
+        \ introduction mentions tasks like 'Activate the Llama Stack Operator' and\
+        \ 'Enable GPU support' but the included modules don't clearly map to all of\
+        \ these steps, suggesting possible gaps. (3) The migration reference includes\
+        \ specific SDK version numbers and API details that appear plausible but could\
+        \ potentially contain fabricated specifics\u2014though they are internally\
+        \ consistent and well-documented. (4) The assembly mixes concept, procedure,\
+        \ and reference modules appropriately via includes, showing good modular structure.\
+        \ (5) The code examples use proper AsciiDoc source blocks with language hints.\
+        \ Overall this is good quality documentation with minor structural gaps."
+      value: 4
+    files_exist:
+      judge_type: check
+      rationale: Found 3 AsciiDoc files in writing output
+      value: true
+    intent_alignment:
+      judge_type: llm
+      rationale: "The JIRA ticket intent is completely empty, making it impossible\
+        \ to evaluate whether the documentation fulfills the original request. The\
+        \ produced documentation is substantive and well-structured \u2014 it includes\
+        \ an assembly document for deploying a RAG stack, a detailed SDK migration\
+        \ reference (0.2.x to 0.3.1), and a FAISS vector database overview. The content\
+        \ appears professional, properly formatted in AsciiDoc, and targets an appropriate\
+        \ audience (cluster administrators and developers). However, without any ticket\
+        \ intent, acceptance criteria, or scope definition to compare against, I cannot\
+        \ determine if the documentation addresses the correct topics, covers the\
+        \ right deliverables, or matches the intended scope. A score of 3 reflects\
+        \ that the documentation is plausible and coherent but cannot be verified\
+        \ as aligned with an unknown request."
+      value: 3
+    pipeline_complete:
+      judge_type: check
+      rationale: 'Pipeline status: completed'
+      value: true
+    reference_comparison:
+      judge_type: code
+      rationale: '**Coverage (4/5):** The AI output covers nearly all the same topics
+        as the reference: the assembly file, FAISS overview, LlamaStackDistribution
+        deployment, ingestion, querying, Docling preparation, and vector database
+        overviews. It adds an SDK migration reference module not in the reference,
+        but doesn''t miss any major reference topics. However, the AI output is missing
+        the standalone modules for overview-of-vector-databases.adoc, overview-of-milvus-vector-databases.adoc,
+        deploying-a-llamastackdistribution-instance.adoc, ingesting-content-into-a-llama-model.adoc,
+        querying-ingested-content-in-a-llama-model.adoc, and preparing-documents-with-docling-for-llama-stack-retrieval.adoc
+        - only the assembly and two specific modules were provided in the AI output.
+
+
+        **Technical accuracy (4/5):** The provided modules are technically accurate.
+        The FAISS overview correctly describes FAISS capabilities and use cases. The
+        assembly file correctly lists the include structure. The SDK migration reference
+        contains plausible technical details. One minor concern: the AI mentions PostgreSQL/pgvector
+        as a vector store option and as the ''default and recommended backend'' for
+        FAISS persistence in 3.2, which differs from the reference''s SQLite-only
+        description for FAISS. The reference doesn''t mention PostgreSQL with pgvector
+        as a vector store provider option.
+
+
+        **Structure (4/5):** The assembly structure closely mirrors the reference
+        with similar include directives. Module types (CONCEPT, REFERENCE) are appropriately
+        used. The AI adds one extra module (llama-stack-sdk-migration-reference) and
+        changes the Milvus overview leveloffset from +1 to +2. The module naming and
+        structure follow modular docs conventions.
+
+
+        **Scope alignment (3/5):** The AI output only provides 3 actual module files
+        (assembly, FAISS overview, SDK migration reference) compared to the reference''s
+        7 module files shown. While the assembly references the same includes, the
+        actual content of most modules is not provided. The SDK migration reference
+        is an extra module not present in the reference. The scope is somewhat narrower
+        in terms of provided content but the assembly suggests similar overall scope.'
+      value: 4
+    step_results_valid:
+      judge_type: check
+      rationale: All step results valid
+      value: true
+  case-010-rhaieng-653:
+    doc_quality:
+      judge_type: llm
+      rationale: "This documentation set is production-ready and demonstrates the\
+        \ quality expected from a senior technical writer at Red Hat. Here's the detailed\
+        \ assessment:\\n\\n**Technical Accuracy:** The YAML manifests are well-structured\
+        \ and realistic \u2014 the etcd deployment, Milvus standalone deployment,\
+        \ services, PVC, and secret are all correctly configured with appropriate\
+        \ ports (19530 for gRPC, 9091 for health), environment variables (ETCD_ENDPOINTS,\
+        \ COMMON_STORAGETYPE, DEPLOY_MODE), and volume mounts. The health check probe\
+        \ configuration on port 9091 with /healthz is accurate for Milvus. The callouts\
+        \ for the root password and optional storageClassName are properly annotated.\\\
+        n\\n**Modular Documentation Structure:** The output correctly separates content\
+        \ into concept (overview-of-milvus-vector-databases.adoc), procedure (deploying-a-remote-milvus-vector-database.adoc),\
+        \ and reference (technology-preview-features.adoc) modules, following Red\
+        \ Hat's modular documentation guidelines. Each file has the correct `:_mod-docs-content-type:`\
+        \ metadata, proper `[id]` anchors with `_{context}` suffixes, and `[role=\\"
+      value: 5
+    files_exist:
+      judge_type: check
+      rationale: Found 4 AsciiDoc files in writing output
+      value: true
+    intent_alignment:
+      judge_type: llm
+      rationale: The documentation is well-structured and comprehensive, covering
+        a concept overview of Milvus vector databases, a detailed deployment procedure
+        with full YAML manifests and verification steps, a technology preview features
+        reference entry, and a reusable tech preview snippet. The content follows
+        Red Hat documentation standards (proper AsciiDoc content types, cross-references,
+        prerequisites, callouts, warnings). However, since the JIRA ticket intent
+        is empty, full alignment cannot be confirmed. The score of 4 reflects strong
+        documentation quality and likely alignment with the apparent intent, with
+        a point withheld due to the inability to verify against specific acceptance
+        criteria.
+      value: 4
+    pipeline_complete:
+      judge_type: check
+      rationale: 'Pipeline status: completed'
+      value: true
+    reference_comparison:
+      judge_type: code
+      rationale: "**Coverage (1.5/5):** The AI output only covers 2-3 modules out\
+        \ of the 11 referenced modules. Missing entirely: the assembly file, overview-of-rag,\
+        \ overview-of-vector-databases, deploying-a-llama-model-with-kserve, testing-your-vllm-model-endpoints,\
+        \ deploying-a-llamastackdistribution-instance, ingesting-content-into-a-llama-model,\
+        \ querying-ingested-content-in-a-llama-model, preparing-documents-with-docling-for-llama-stack-retrieval,\
+        \ and about-llama-stack-search-types. The AI added a technology-preview-features.adoc\
+        \ reference module and a technology-preview snippet that are not part of the\
+        \ core documentation.\n\n**Technical accuracy (3.5/5):** The modules that\
+        \ are present (deploying-a-remote-milvus-vector-database, overview-of-milvus-vector-databases)\
+        \ are largely accurate. The YAML manifests match closely, ports and configurations\
+        \ are correct. Minor differences: the liveness probe uses httpGet instead\
+        \ of exec/curl (a slight technical deviation), the health check response says\
+        \ 'OK' instead of '{\"status\": \"healthy\"}', and the feature is labeled\
+        \ 'Technology Preview' rather than 'Developer Preview' as in the reference.\
+        \ The technology-preview-features.adoc contains mostly accurate but unrelated\
+        \ content.\n\n**Structure (2.5/5):** The modules present follow modular docs\
+        \ conventions (PROCEDURE, CONCEPT types). However, the assembly file is completely\
+        \ missing, and the overall organization doesn't match the reference structure.\
+        \ The addition of technology-preview files doesn't correspond to the reference\
+        \ structure.\n\n**Scope alignment (1.5/5):** The reference has 11 included\
+        \ modules plus an assembly. The AI output has only 4 files (2 relevant modules\
+        \ + 2 tech preview files). This is well under half the reference module count,\
+        \ representing significant under-scoping.\n\nWeighted average: (1.5\xD70.30)\
+        \ + (3.5\xD70.30) + (2.5\xD70.20) + (1.5\xD70.20) = 0.45 + 1.05 + 0.50 + 0.30\
+        \ = 2.30"
+      value: 2
+    step_results_valid:
+      judge_type: check
+      rationale: All step results valid
+      value: true
+  case-011-rhoaieng-16840:
+    doc_quality:
+      judge_type: llm
+      rationale: 'The documentation is comprehensive, well-structured, and follows
+        Red Hat modular documentation conventions (concept/procedure/reference separation).
+        It covers the full scope of the JIRA ticket with concept modules (OCI storage
+        overview), procedure modules (configuring backend, configuring Quay, registering
+        models), reference modules (configuration parameters, UI fields), and an assembly
+        file. The technical content appears largely accurate with appropriate use
+        of AsciiDoc attributes, cross-references, and proper formatting.\n\nStrengths:\n-
+        Excellent modular structure with clear concept/procedure/reference separation\n-
+        Thorough coverage including prerequisites, procedures, verification, and troubleshooting
+        sections\n- Honest TODO comments flagging areas needing SME verification (registryOciStorage
+        feature flag, connection type pre-installation), which shows good engineering
+        judgment rather than fabricating details\n- Well-organized reference tables
+        for configuration parameters, UI fields, and authentication methods\n- Assembly
+        file properly structures the includes with correct leveloffsets\n- Multiple
+        authentication methods documented for different use cases\n\nWeaknesses:\n-
+        The registryOciStorage feature flag is documented as a required step despite
+        the writer''s own TODO comments noting it may not exist in the codebase -
+        this could mislead users if the flag doesn''t exist\n- Some commands use placeholder
+        labels like `app=model-transfer` for job checking that may be fabricated (not
+        verified against actual implementation)\n- The Python client references (skopeo/oras
+        backends, OCIParams) reference modules not included in the output, making
+        it hard to verify accuracy\n- The connection type configuration steps (clicking
+        ''Add connection type'' in Settings) may not accurately reflect the actual
+        UI flow - the TODO comments acknowledge this uncertainty\n- Minor: the overview
+        module mentions three storage backends but the original overview content''s
+        integration feels slightly bolted-on rather than seamlessly woven in\n- Some
+        referenced modules (oci-storage-prerequisites, registering-model-as-oci-image,
+        uploading-model-using-python-client, monitoring/retrying/deleting jobs) are
+        included in the assembly but not provided in the output'
+      value: 4
+    files_exist:
+      judge_type: check
+      rationale: Found 7 AsciiDoc files in writing output
+      value: true
+    intent_alignment:
+      judge_type: llm
+      rationale: "The documentation comprehensively fulfills all three acceptance\
+        \ criteria from the JIRA ticket. (1) The concept doc 'oci-compliant-storage-for-model-registry.adoc'\
+        \ thoroughly explains what OCI-compliant storage is, the ModelCar format,\
+        \ benefits over S3, supported registries, and the storage architecture \u2014\
+        \ clearly covering 'what OCI-compliant storage is and why it matters.' (2)\
+        \ The configuration docs ('configuring-oci-storage-backend.adoc' and 'configuring-quay-for-model-registry.adoc')\
+        \ provide detailed step-by-step procedures for enabling OCI storage, creating\
+        \ registry credentials, and setting up data connections \u2014 addressing\
+        \ 'how to configure OCI storage.' (3) The push/pull workflows are documented\
+        \ via 'registering-model-as-oci-image' (referenced), 'uploading-model-using-python-client'\
+        \ (referenced), and the 'register-and-store-ui-fields.adoc' reference, covering\
+        \ both dashboard UI and Python client paths for model push/pull. The audience\
+        \ alignment is excellent: admin-focused content (configuration, feature flags,\
+        \ cluster-admin prerequisites) is clearly separated from data scientist/ML\
+        \ engineer content (registration workflows, Python client usage, UI field\
+        \ references). The scope stays tightly within OCI-compliant storage for Model\
+        \ Registry without wandering into general model registry usage or non-OCI\
+        \ storage backends. The overview doc appropriately mentions S3/URI storage\
+        \ only to contextualize OCI as an alternative. The assembly file shows thoughtful\
+        \ document organization. The TODO comments for SME verification demonstrate\
+        \ responsible documentation practices rather than gaps."
+      value: 5
+    pipeline_complete:
+      judge_type: check
+      rationale: 'Pipeline status: completed'
+      value: true
+    reference_comparison:
+      judge_type: code
+      rationale: "**Coverage (3/5):** The AI output covers all the topics in the reference\
+        \ (registering as OCI, monitoring transfer jobs, retrying failed jobs, deleting\
+        \ transfer jobs, the assembly structure). However, it adds substantial content\
+        \ not in the reference: configuring OCI storage backend, configuring Quay,\
+        \ OCI storage concept module, UI field reference, Python client upload, and\
+        \ configuration parameters reference. The core topics match, but there's significant\
+        \ additional material that goes beyond the reference scope. The AI also modifies\
+        \ the overview module to add OCI storage details.\n\n**Technical accuracy\
+        \ (4/5):** The modules that overlap with the reference (registering-model-as-oci-image,\
+        \ monitoring-model-transfer-jobs, retrying-failed-model-transfer-job, deleting-model-transfer-job)\
+        \ are largely accurate and consistent with the reference. The same fields,\
+        \ steps, and details are present. However, the AI fabricates a `registryOciStorage`\
+        \ feature flag (which it even flags with TODO comments as potentially non-existent),\
+        \ fabricates `oc get jobs -n <namespace> -l app=model-transfer` commands,\
+        \ and invents Python client SDK details and skopeo/oras backend references\
+        \ not present in the reference.\n\n**Structure (4/5):** Both use ASSEMBLY\
+        \ files with similar modular docs patterns (CONCEPT, PROCEDURE, REFERENCE\
+        \ types). The AI follows the same conventions with proper content type annotations,\
+        \ prerequisites, procedures, and verification sections. The assembly includes\
+        \ the same upstream modules in the same order for the shared content.\n\n\
+        **Scope alignment (2/5):** The reference has 4 new modules (registering-model-as-oci-image,\
+        \ monitoring-model-transfer-jobs, retrying-failed-model-transfer-job, deleting-model-transfer-job)\
+        \ plus the assembly and master.adoc. The AI output has those 4 plus 5 additional\
+        \ new modules (configuring-oci-storage-backend, configuring-quay-for-model-registry,\
+        \ oci-compliant-storage-for-model-registry, oci-storage-configuration-parameters,\
+        \ register-and-store-ui-fields) plus references to additional modules not\
+        \ provided (oci-storage-prerequisites, uploading-model-using-python-client,\
+        \ python-client-upload-parameters). This is more than 2x the reference module\
+        \ count, indicating significant over-scoping.\n\nWeighted average: Coverage(3\xD7\
+        0.3) + Technical accuracy(4\xD70.3) + Structure(4\xD70.2) + Scope alignment(2\xD7\
+        0.2) = 0.9 + 1.2 + 0.8 + 0.4 = 3.3"
+      value: 3
+    step_results_valid:
+      judge_type: check
+      rationale: All step results valid
+      value: true
+  case-012-rhoaieng-40664:
+    doc_quality:
+      judge_type: llm
+      rationale: "This documentation set is production-ready quality that matches\
+        \ what a senior technical writer at Red Hat would produce. Here's the detailed\
+        \ assessment:\\n\\n**Technical Accuracy:** The content is technically sound\
+        \ throughout. The distinction between Hugging Face model name formats (bare\
+        \ name vs. org/name for YAML sources) is consistently and correctly documented\
+        \ across all modules. The case-sensitivity of organization URL slugs, the\
+        \ limitation to public non-gated models, disconnected environment constraints,\
+        \ and the filtering pipeline order (source-level first, then disallow list)\
+        \ are all accurately described without any fabricated commands, flags, or\
+        \ API details.\\n\\n**Modular Documentation Structure:** The documentation\
+        \ follows Red Hat's modular documentation standards precisely. There is clear\
+        \ separation between concept modules (model-catalog-governance-overview, model-catalog-source-types),\
+        \ procedure modules (adding-a-hugging-face-catalog-source), and reference\
+        \ modules (disallowed-model-error-messages, model-catalog-source-parameters).\
+        \ Each module correctly uses the `:_mod-docs-content-type:` attribute, has\
+        \ proper `[id]` anchors with `_{context}` suffixes, uses `[role='_abstract']`\
+        \ for the abstract paragraph, and includes appropriate cross-references.\\\
+        n\\n**Completeness:** The documentation covers the full scope implied by the\
+        \ JIRA context \u2014 adding HF catalog sources, source type differences,\
+        \ governance/disallow-listing concepts, error messages users encounter, and\
+        \ a comprehensive parameter reference. Prerequisites, verification steps,\
+        \ limitations, and troubleshooting guidance are all included.\\n\\n**Structure\
+        \ and Polish:** Tables are well-formatted and informative. Important callouts\
+        \ (IMPORTANT, NOTE) are used appropriately and not excessively. The procedure\
+        \ module has clear numbered steps with supplementary information properly\
+        \ attached using `+` continuation. The governance overview effectively explains\
+        \ the two-tier filtering approach. The reference module for parameters includes\
+        \ format examples and known limitations.\\n\\n**Minor observations:** The\
+        \ cross-references to modules like `configuring-model-catalog-source-filters`\
+        \ and `troubleshooting-model-catalog-access` reference modules not included\
+        \ in this set, but this is normal for modular documentation. The Additional\
+        \ Resources sections are properly commented out when empty. These are not\
+        \ deficiencies."
+      value: 5
+    files_exist:
+      judge_type: check
+      rationale: Found 5 AsciiDoc files in writing output
+      value: true
+    intent_alignment:
+      judge_type: llm
+      rationale: "The documentation covers the three acceptance criteria reasonably\
+        \ well: (1) How admins can allow/disallow models is addressed in the governance\
+        \ overview and source parameters docs, explaining the disallow list mechanism\
+        \ and the AI Catalog Settings page. (2) The governance workflow and policy\
+        \ configuration is covered across the overview (explaining disallow-listing\
+        \ vs. source-level filtering, RBAC, the filtering pipeline) and the parameters\
+        \ reference. (3) The impact on end users when models are disallowed is well-documented\
+        \ in the disallowed-model-error-messages.adoc, covering visibility behavior,\
+        \ error messages, impact on deployed models, and resolution steps. The audience\
+        \ alignment is correct \u2014 the docs target admins and platform engineers.\
+        \ However, there is notable scope creep: the adding-a-hugging-face-catalog-source.adoc\
+        \ and model-catalog-source-types.adoc files go significantly into general\
+        \ catalog source management and configuration, which the ticket explicitly\
+        \ scoped out ('Model catalog general usage'). Additionally, the documentation\
+        \ lacks a clear, dedicated step-by-step procedure for the core action of disallow-listing\
+        \ a specific model \u2014 the governance overview explains the concept and\
+        \ the parameters reference lists the settings, but there's no explicit procedural\
+        \ module showing an admin how to add a model to the disallow list, which is\
+        \ the primary task the ticket requested. This is a meaningful gap in the most\
+        \ critical acceptance criterion."
+      value: 4
+    pipeline_complete:
+      judge_type: check
+      rationale: 'Pipeline status: completed'
+      value: true
+    reference_comparison:
+      judge_type: code
+      rationale: "**Coverage (3/5):** The AI output covers model catalog source types,\
+        \ adding Hugging Face sources, governance/disallow-listing, source parameters,\
+        \ and error messages. However, it misses several key topics from the reference:\
+        \ viewing models in the catalog, registering a model from the catalog, deploying\
+        \ a model from the catalog, the overview of model registries, managing existing\
+        \ catalog sources (edit/update), deleting catalog sources, configuring Hugging\
+        \ Face access tokens on OpenShift, and configuring sources via OpenShift ConfigMaps\
+        \ directly. The AI adds significant content on governance/disallow-listing\
+        \ that isn't in the reference.\n\n**Technical accuracy (3/5):** The navigation\
+        \ paths differ (AI uses 'Settings -> AI Catalog Settings' vs reference's 'Settings\
+        \ -> Model resources and operations -> Model catalog settings'). The AI fabricates\
+        \ a disallow-listing feature that isn't mentioned in the reference documentation.\
+        \ The AI incorrectly states you can configure either include or exclude but\
+        \ not both simultaneously, while the reference shows both can be configured\
+        \ together. The filter format descriptions partially align with the reference\
+        \ but have differences. The AI also uses different button labels ('Add catalog\
+        \ source' vs 'Add a source').\n\n**Structure (3/5):** Both use modular docs\
+        \ with concept/procedure/reference types. The AI output has a reasonable structure\
+        \ with concepts, procedures, and references. However, it lacks an assembly\
+        \ file (master.adoc) and the module organization differs significantly from\
+        \ the reference.\n\n**Scope alignment (2/5):** The reference has 8 modules\
+        \ (including master.adoc) covering catalog viewing, registration, deployment,\
+        \ source management (add/manage/delete), OpenShift configuration, and HF token\
+        \ setup. The AI has 6 modules but focuses heavily on governance/disallow-listing\
+        \ (which isn't in the reference) while missing core workflows like deploying,\
+        \ registering, managing, and deleting sources. The scope is misaligned - the\
+        \ AI over-indexes on governance while under-covering the actual catalog operations.\n\
+        \nWeighted: Coverage(3\xD70.3) + Accuracy(3\xD70.3) + Structure(3\xD70.2)\
+        \ + Scope(2\xD70.2) = 0.9+0.9+0.6+0.4 = 2.8 \u2248 3"
+      value: 3
+    step_results_valid:
+      judge_type: check
+      rationale: All step results valid
+      value: true
+run_id: baseline-main-2026-06-11
+run_metrics:
+  cache_hit_rate: 0.92377
+  cost_per_mtok_usd: 1.134
+  cost_per_turn_usd: 0.084866
+  output_tokens_per_turn: 659.45

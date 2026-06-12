@@ -1,0 +1,30 @@
+:_mod-docs-content-type: ASSEMBLY
+
+[id="configuring-llama-stack-providers"]
+= Configure Llama Stack providers for your workload
+:context: configuring-llama-stack-providers
+
+[role="_abstract"]
+You can select and configure API providers for inference, embeddings, and vector storage in your Llama Stack deployment.
+{productname-short} includes providers that are active by default, providers that you activate with environment variables, and dependency-only providers that require a custom runtime configuration.
+
+Use remote providers such as `remote::vllm`, `remote::milvus`, `remote::pgvector`, and `remote::qdrant` for production deployments.
+If you need inline providers for development or testing, you can re-enable them by supplying a custom `config.yaml` at runtime.
+
+== Prerequisites
+* {productname-long} 3.5 or later is deployed.
+* You have access to the Llama Stack distribution image.
+* For remote providers: external service endpoints (Milvus, pgvector, Qdrant, or vLLM) are provisioned and accessible from your {openshift-platform} cluster.
+
+include::upstream-modules/inline-provider-deprecation-in-rhoai.adoc[leveloffset=+1]
+
+include::upstream-modules/understanding-the-llama-stack-build-and-runtime-configuration.adoc[leveloffset=+1]
+
+include::upstream-modules/llama-stack-providers-support.adoc[leveloffset=+1]
+
+include::upstream-modules/re-enabling-dependency-only-providers-with-a-custom-config-yaml.adoc[leveloffset=+1]
+
+include::upstream-modules/dependency-only-providers-reference.adoc[leveloffset=+1]
+
+include::upstream-modules/migrating-from-inline-to-remote-providers.adoc[leveloffset=+1]
+

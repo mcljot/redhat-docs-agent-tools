@@ -1,0 +1,43 @@
+:_mod-docs-content-type: CONCEPT
+
+[id="about-ca-bundle-configuration-for-llama-stack_{context}"]
+= About CA bundle configuration for Llama Stack
+
+[role="_abstract"]
+By default, the Llama Stack server image trusts only public Certificate Authorities (CAs). To enable the Llama Stack server to communicate over TLS with external inference, embedding, or vector store providers that present self-signed certificates or certificates issued by a private CA, configure a custom CA bundle for the `LlamaStackDistribution` custom resource (CR).
+
+[IMPORTANT]
+====
+When you configure or change the CA bundle for a `LlamaStackDistribution` CR, the Llama Stack Operator restarts the Llama Stack server pod so that the new certificates take effect. Plan for a brief service interruption when you apply or update the CA bundle on a `LlamaStackDistribution` CR that is serving production traffic.
+====
+
+You have the following options for trusting a self-signed or private CA from the Llama Stack server:
+
+ifndef::disconnected[]
+* Add the CA to the cluster-wide CA bundle, as described in link:{rhoaidocshome}{default-format-url}/installing_and_uninstalling_openshift_ai_self-managed/working-with-certificates_certs#adding-certificates-to-a-cluster-ca-bundle_certs[Adding certificates to a cluster-wide CA bundle].
+* Add the CA to a custom CA bundle, as described in link:{rhoaidocshome}{default-format-url}/installing_and_uninstalling_openshift_ai_self-managed/working-with-certificates_certs#adding-certificates-to-a-custom-ca-bundle_certs[Adding certificates to a custom CA bundle].
+* Provide a CA bundle that is only used for the Llama Stack server, as described in link:{rhoaidocshome}{default-format-url}/installing_and_uninstalling_openshift_ai_self-managed/working-with-certificates_certs#configuring-a-ca-bundle-for-llama-stack_certs[Configuring a CA bundle for Llama Stack].
+endif::[]
+ifdef::disconnected[]
+* Add the CA to the cluster-wide CA bundle, as described in link:{rhoaidocshome}{default-format-url}/installing_and_uninstalling_openshift_ai_self-managed_in_a_disconnected_environment/working-with-certificates_certs#adding-certificates-to-a-cluster-ca-bundle_certs[Adding certificates to a cluster-wide CA bundle].
+* Add the CA to a custom CA bundle, as described in link:{rhoaidocshome}{default-format-url}/installing_and_uninstalling_openshift_ai_self-managed_in_a_disconnected_environment/working-with-certificates_certs#adding-certificates-to-a-custom-ca-bundle_certs[Adding certificates to a custom CA bundle].
+* Provide a CA bundle that is only used for the Llama Stack server, as described in link:{rhoaidocshome}{default-format-url}/installing_and_uninstalling_openshift_ai_self-managed_in_a_disconnected_environment/working-with-certificates_certs#configuring-a-ca-bundle-for-llama-stack_certs[Configuring a CA bundle for Llama Stack].
+endif::[]
+
+The recommended pattern is to add the CA to the cluster-wide or custom CA bundle and then reference the resulting `odh-trusted-ca-bundle` config map from the `LlamaStackDistribution` CR. The `odh-trusted-ca-bundle` config map is automatically maintained in every non-reserved namespace and contains both the cluster-wide CA bundle and any custom CAs that you have added through the `DSCInitialization` (DSCI) object. Alternatively, you can create a dedicated config map that contains certificates that are specific to the Llama Stack server.
+
+When you reference a config map from the `spec.server.tlsConfig.caBundle` field of a `LlamaStackDistribution` CR, the Llama Stack Operator performs the following actions:
+
+. Reads the CA certificates from the source config map and validates each certificate.
+. Concatenates the valid certificates into a single bundle and stores the bundle in a managed config map that is named `<instance-name>-ca-bundle`.
+. Mounts the managed config map into the Llama Stack server pod at `/etc/ssl/certs/ca-bundle/ca-bundle.crt`.
+. Sets the `SSL_CERT_FILE` environment variable on the server container so that TLS clients in the server use the bundle automatically.
+
+When you change the source config map or the field reference, the Llama Stack Operator regenerates the managed config map and restarts the Llama Stack server pod so that the new certificates take effect.
+
+ifndef::disconnected[]
+For details about the supported `caBundle` fields, the validation rules, and the limits that the Llama Stack Operator enforces, see link:{rhoaidocshome}{default-format-url}/installing_and_uninstalling_openshift_ai_self-managed/working-with-certificates_certs#ca-bundle-configuration-for-llama-stack_certs[CA bundle configuration for Llama Stack].
+endif::[]
+ifdef::disconnected[]
+For details about the supported `caBundle` fields, the validation rules, and the limits that the Llama Stack Operator enforces, see link:{rhoaidocshome}{default-format-url}/installing_and_uninstalling_openshift_ai_self-managed_in_a_disconnected_environment/working-with-certificates_certs#ca-bundle-configuration-for-llama-stack_certs[CA bundle configuration for Llama Stack].
+endif::[]
