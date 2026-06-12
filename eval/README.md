@@ -16,6 +16,31 @@ Install Python dependencies:
 pip3 install --break-system-packages google-auth jinja2
 ```
 
+### (Optional) Baseline sharing hook
+
+Add a Stop hook to your local `.claude/settings.json` so Claude reminds you to share eval baselines when you finish a session on `main`:
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/eval/scripts/eval-baseline-prompt-hook.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The hook is advisory only — it never blocks stopping. On `main`, it checks for scored eval runs that haven't been committed as a shared baseline and prints a reminder with the `commit-baseline.sh` command.
+
 ## Quick start
 
 ### 1. Set up docs repo worktrees
