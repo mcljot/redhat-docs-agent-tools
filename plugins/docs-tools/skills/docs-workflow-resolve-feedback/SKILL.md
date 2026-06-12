@@ -92,6 +92,8 @@ artifacts, scope balance analysis, and audience alignment — all directly actio
 [For each gap in QUALITY_GAPS:]
 
 ### Gap: <ac_item>
+- **File**: <file> (if provided by judge)
+- **Section**: <section> (if provided by judge)
 - **Evidence status**: <evidence_status>
 - **Action**: <action description>
 

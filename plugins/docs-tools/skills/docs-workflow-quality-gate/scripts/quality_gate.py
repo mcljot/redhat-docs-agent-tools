@@ -63,6 +63,12 @@ Consider:
 - **Acceptance criteria coverage**: are the specific deliverables listed in the ticket addressed?
 - **Audience alignment**: does the content match the target audience (admin vs developer vs data scientist)?
 - **Focus**: does the output stay on-topic or wander into areas outside the ticket's scope?
+
+For each missed or incomplete acceptance criteria item, identify the specific file and \
+section where the fix should be applied. Name the AsciiDoc filename (from the headers above) \
+and the section heading or location where content should be added or expanded. If a new \
+section is needed, name the file it belongs in and where it should be inserted relative to \
+existing sections.
 """
 
 
@@ -148,12 +154,17 @@ def classify_gaps(missed_items, evidence_status):
         elif ev_status == "grounded":
             action = "add_missing_section"
 
-        gaps.append({
+        gap = {
             "ac_item": ac_text,
             "judge": "intent_alignment",
             "evidence_status": ev_status,
             "action": action,
-        })
+        }
+        if item.get("file"):
+            gap["file"] = item["file"]
+        if item.get("section"):
+            gap["section"] = item["section"]
+        gaps.append(gap)
 
     return gaps
 

@@ -77,14 +77,16 @@ Dispatch **two agents in parallel** (both are independent reads of the same docs
       "rationale": {"type": "string", "description": "Detailed rationale including per-AC-item coverage assessments"},
       "missed_items": {
         "type": "array",
-        "description": "AC items not adequately covered",
+        "description": "AC items not adequately covered, with location for targeted fixes",
         "items": {
           "type": "object",
           "properties": {
             "ac_item": {"type": "string", "description": "The acceptance criteria item text"},
-            "severity": {"type": "string", "enum": ["missing", "incomplete"], "description": "Whether the item is entirely missing or partially covered"}
+            "severity": {"type": "string", "enum": ["missing", "incomplete"], "description": "Whether the item is entirely missing or partially covered"},
+            "file": {"type": "string", "description": "AsciiDoc filename where the fix should be applied (e.g., proc-deploying-model.adoc)"},
+            "section": {"type": "string", "description": "Section heading or location within the file where content should be added or expanded. For new sections, describe where to insert relative to existing sections"}
           },
-          "required": ["ac_item", "severity"]
+          "required": ["ac_item", "severity", "file", "section"]
         }
       }
     },
@@ -157,7 +159,9 @@ Report the scores and pass/fail status:
       "ac_item": "Document confidence scores",
       "judge": "intent_alignment",
       "evidence_status": "absent",
-      "action": "document_as_unsupported"
+      "action": "document_as_unsupported",
+      "file": "proc-deploying-model.adoc",
+      "section": "After 'Verifying the deployment' — add a note about confidence scores"
     }
   ],
   "rationales": {

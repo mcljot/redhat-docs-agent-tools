@@ -302,7 +302,9 @@ When an existing linked ticket is found:
       "ac_item": "Document confidence scores",
       "judge": "intent_alignment",
       "evidence_status": "absent",
-      "action": "document_as_unsupported"
+      "action": "document_as_unsupported",
+      "file": "proc-deploying-model.adoc",
+      "section": "After 'Verifying the deployment' — add a note about confidence scores"
     }
   ],
   "rationales": {
@@ -323,6 +325,8 @@ When an existing linked ticket is found:
 | `gaps[].judge` | string | Which judge flagged the gap (e.g., `"intent_alignment"`) | Informational |
 | `gaps[].evidence_status` | string | Cross-referenced against scope-req-audit: `"grounded"`, `"partial"`, `"absent"`, or `"unknown"` | resolve-feedback — determines fix strategy |
 | `gaps[].action` | string | Recommended action: `"document_as_unsupported"`, `"expand_with_evidence"`, `"add_missing_section"`, or `"investigate"` | resolve-feedback |
+| `gaps[].file` | string\|null | AsciiDoc filename where the fix should be applied | resolve-feedback — targeted file edits |
+| `gaps[].section` | string\|null | Section heading or insertion point within the file | resolve-feedback — targeted section edits |
 | `rationales` | object | Full judge rationale texts for the feedback brief | resolve-feedback |
 | `rationales.doc_quality` | string | Complete doc_quality judge rationale | resolve-feedback — included verbatim in feedback brief |
 | `rationales.intent_alignment` | string | Complete intent_alignment judge rationale with per-AC coverage assessments, missing artifacts, scope analysis | resolve-feedback — included verbatim in feedback brief |
