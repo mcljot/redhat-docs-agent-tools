@@ -1,19 +1,20 @@
-"""Quality gate judges for docs-orchestrator pipeline.
+"""Quality gate support for docs-orchestrator pipeline.
 
-Runs doc_quality and intent_alignment judges against writing output,
-cross-references intent gaps against scope-req-audit evidence status.
+Prepares judge inputs and classifies judge outputs. Judge scoring
+is handled by Claude Code agents (not direct API calls).
 
-Usage:
-    python3 quality_gate.py --ticket PROJ-123 --base-path /path/to/workspace
+Subcommands:
+    prepare  — Read pipeline outputs, write judge prompt files
+    classify — Read agent judge results, classify gaps, write step-result.json
 """
 
 import argparse
 import json
-import os
-import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+PASS_THRESHOLD_INTENT = 4
 
 DOC_QUALITY_PROMPT = """\
 You are evaluating AI-generated AsciiDoc documentation for a Red Hat product feature.
@@ -63,19 +64,6 @@ Consider:
 - **Audience alignment**: does the content match the target audience (admin vs developer vs data scientist)?
 - **Focus**: does the output stay on-topic or wander into areas outside the ticket's scope?
 """
-
-INTENT_SYSTEM = (
-    "You are a documentation quality judge. "
-    'Respond with JSON: {"score": <1-5>, "rationale": "<explanation>", '
-    '"missed_items": [{"ac_item": "<text>", "severity": "missing|incomplete"}]}'
-)
-
-DOC_QUALITY_SYSTEM = (
-    "You are a documentation quality judge. "
-    'Respond with JSON: {"score": <1-5>, "rationale": "<explanation>"}'
-)
-
-PASS_THRESHOLD_INTENT = 4
 
 
 def read_doc_content(base_path):
@@ -131,42 +119,6 @@ def read_evidence_status(base_path):
     return json.loads(evidence.read_text())
 
 
-def call_judge(prompt, system_msg, model=None):
-    """Call the Anthropic API to score documentation."""
-    import anthropic
-
-    if os.environ.get("ANTHROPIC_VERTEX_PROJECT_ID"):
-        client = anthropic.AnthropicVertex(
-            project_id=os.environ["ANTHROPIC_VERTEX_PROJECT_ID"],
-            region=os.environ.get("CLOUD_ML_REGION", "us-east5"),
-        )
-    elif os.environ.get("GOOGLE_CLOUD_PROJECT"):
-        client = anthropic.AnthropicVertex(
-            project_id=os.environ["GOOGLE_CLOUD_PROJECT"],
-            region=os.environ.get("CLOUD_ML_REGION", "us-east5"),
-        )
-    else:
-        client = anthropic.Anthropic()
-
-    model = model or os.environ.get("QUALITY_GATE_MODEL", "claude-sonnet-4-6")
-
-    response = client.messages.create(
-        model=model,
-        max_tokens=2048,
-        system=system_msg,
-        messages=[{"role": "user", "content": prompt}],
-    )
-
-    text = response.content[0].text
-    try:
-        data = json.loads(text)
-        return data
-    except json.JSONDecodeError:
-        score_match = re.search(r'"score"\s*:\s*(\d)', text)
-        score = int(score_match.group(1)) if score_match else 3
-        return {"score": score, "rationale": text[:500]}
-
-
 def classify_gaps(missed_items, evidence_status):
     """Cross-reference missed AC items against evidence status."""
     gaps = []
@@ -179,7 +131,6 @@ def classify_gaps(missed_items, evidence_status):
 
     for item in missed_items:
         ac_text = item.get("ac_item", "")
-        severity = item.get("severity", "missing")
         ac_lower = ac_text.lower()
 
         ev_status = "unknown"
@@ -257,31 +208,39 @@ def write_results(output_dir, ticket, doc_quality_result, intent_result, gaps, i
     return sidecar
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Quality gate judges")
-    parser.add_argument("--ticket", required=True)
-    parser.add_argument("--base-path", required=True)
-    parser.add_argument("--iteration", type=int, default=1)
-    parser.add_argument("--model", default=None)
-    args = parser.parse_args()
-
+def cmd_prepare(args):
+    """Read pipeline outputs and write judge prompt files."""
     base_path = Path(args.base_path)
     output_dir = base_path / "quality-gate"
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     doc_content = read_doc_content(base_path)
     ticket_context = read_ticket_context(base_path)
-    evidence_status = read_evidence_status(base_path)
 
     dq_prompt = DOC_QUALITY_PROMPT.format(doc_content=doc_content)
     ia_prompt = INTENT_ALIGNMENT_PROMPT.format(
         ticket_context=ticket_context, doc_content=doc_content,
     )
 
-    print(f"Running doc_quality judge...", file=sys.stderr)
-    dq_result = call_judge(dq_prompt, DOC_QUALITY_SYSTEM, args.model)
+    (output_dir / "dq-prompt.md").write_text(dq_prompt)
+    (output_dir / "ia-prompt.md").write_text(ia_prompt)
 
-    print(f"Running intent_alignment judge...", file=sys.stderr)
-    ia_result = call_judge(ia_prompt, INTENT_SYSTEM, args.model)
+    result = {"dq_prompt": str(output_dir / "dq-prompt.md"),
+              "ia_prompt": str(output_dir / "ia-prompt.md")}
+    json.dump(result, sys.stdout, indent=2)
+    print()
+
+
+def cmd_classify(args):
+    """Read agent judge results, classify gaps, write step-result.json."""
+    base_path = Path(args.base_path)
+    output_dir = base_path / "quality-gate"
+
+    judge_results = json.loads(Path(args.judge_results).read_text())
+    evidence_status = read_evidence_status(base_path)
+
+    dq_result = judge_results["doc_quality"]
+    ia_result = judge_results["intent_alignment"]
 
     missed_items = ia_result.get("missed_items", [])
     gaps = classify_gaps(missed_items, evidence_status)
@@ -291,7 +250,29 @@ def main():
     )
 
     json.dump(sidecar, sys.stdout, indent=2)
-    print(file=sys.stdout)
+    print()
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Quality gate support")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    prep = subparsers.add_parser("prepare", help="Read inputs, write judge prompts")
+    prep.add_argument("--ticket", required=True)
+    prep.add_argument("--base-path", required=True)
+
+    classify = subparsers.add_parser("classify", help="Classify judge results")
+    classify.add_argument("--ticket", required=True)
+    classify.add_argument("--base-path", required=True)
+    classify.add_argument("--judge-results", required=True,
+                          help="Path to JSON file with doc_quality and intent_alignment results")
+    classify.add_argument("--iteration", type=int, default=1)
+
+    args = parser.parse_args()
+    if args.command == "prepare":
+        cmd_prepare(args)
+    elif args.command == "classify":
+        cmd_classify(args)
 
 
 if __name__ == "__main__":

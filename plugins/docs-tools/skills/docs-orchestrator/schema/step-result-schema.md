@@ -314,9 +314,9 @@ When an existing linked ticket is found:
 
 | Field | Type | Description | Consumed by |
 |---|---|---|---|
-| `doc_quality` | integer | Doc quality score (1-5) from Sonnet 4-6 judge | Orchestrator — iteration logic |
-| `intent_alignment` | integer | Intent alignment score (1-5) from Sonnet 4-6 judge | Orchestrator — iteration logic |
-| `passed` | boolean | Whether both scores >= 4 | Orchestrator — iteration logic |
+| `doc_quality` | integer | Doc quality score (1-5) from Opus judge agent | Orchestrator — iteration logic |
+| `intent_alignment` | integer | Intent alignment score (1-5) from Opus judge agent | Orchestrator — iteration logic |
+| `passed` | boolean | Whether intent_alignment >= 4 (doc_quality is informational only) | Orchestrator — iteration logic |
 | `iteration` | integer | Which iteration of the quality gate loop (1-based) | Orchestrator |
 | `gaps` | array | Identified gaps with evidence status and recommended action | resolve-feedback step |
 | `gaps[].ac_item` | string | The acceptance criteria item that was missed | resolve-feedback |

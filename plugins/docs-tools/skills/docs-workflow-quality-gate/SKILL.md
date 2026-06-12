@@ -1,13 +1,13 @@
 ---
 name: docs-workflow-quality-gate
-description: Score documentation quality and intent alignment using LLM judges (Sonnet 4-6). Runs two judge passes (doc_quality, intent_alignment) against writing output, extracts specific gaps from AC coverage analysis, and cross-references against scope-req-audit evidence. Produces pass/fail gate with actionable gap list. Iteration logic is owned by the orchestrator, not this skill.
+description: Score documentation quality and intent alignment using LLM judge agents (Opus). Dispatches two judge agents in parallel (doc_quality, intent_alignment), extracts specific gaps from AC coverage analysis, and cross-references against scope-req-audit evidence. Produces pass/fail gate with actionable gap list. Iteration logic is owned by the orchestrator, not this skill.
 argument-hint: <ticket> --base-path <path>
-allowed-tools: Read, Write, Bash, Glob, Grep
+allowed-tools: Read, Write, Bash, Glob, Grep, Agent
 ---
 
 # Quality Gate
 
-Score the pipeline's documentation output before creating a merge request. This skill does **not** dispatch an agent — it runs a Python script that calls the Anthropic API directly with two judge prompts (doc_quality and intent_alignment) using Sonnet 4-6.
+Score the pipeline's documentation output before creating a merge request. This skill dispatches two judge agents in parallel — one for doc_quality, one for intent_alignment — using the same model as the eval harness (Opus). The agents return structured JSON via schema validation.
 
 The quality gate produces a pass/fail verdict and, when intent alignment is below threshold, a structured list of gaps with recommended actions. The orchestrator uses these gaps to drive the resolve-feedback step.
 
@@ -32,36 +32,97 @@ Reads from upstream steps by convention:
 
 Extract `TICKET` from `$1` and `BASE_PATH` from `--base-path`.
 
-### 2. Create output directory
+### 2. Prepare judge prompts
 
 ```bash
-mkdir -p "${BASE_PATH}/quality-gate"
-```
-
-### 3. Run the quality gate script
-
-```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py \
+python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py prepare \
   --ticket "${TICKET}" \
   --base-path "${BASE_PATH}"
 ```
 
-The script:
+This reads the writing output and ticket context, then writes two prompt files:
+- `${BASE_PATH}/quality-gate/dq-prompt.md` — doc_quality judge prompt with doc content interpolated
+- `${BASE_PATH}/quality-gate/ia-prompt.md` — intent_alignment judge prompt with doc content and ticket context interpolated
 
-1. Reads AsciiDoc files from `writing/step-result.json` → files array
-2. Reads ticket context from `requirements/discovery.json` (summary + requirements with AC items)
-3. Reads evidence status from `scope-req-audit/evidence-status.json` (optional)
-4. Calls Sonnet 4-6 with the **doc_quality** prompt — scores on technical accuracy, completeness, modular structure, fabrication
-5. Calls Sonnet 4-6 with the **intent_alignment** prompt — scores on scope match, AC coverage, audience alignment. Also extracts `missed_items` listing specific AC items not addressed
-6. Cross-references missed items against evidence status to classify each gap:
+### 3. Dispatch judge agents
+
+Dispatch **two agents in parallel** (both are independent reads of the same docs):
+
+#### doc_quality agent
+
+- **Model**: opus
+- **Prompt**: Read the contents of `${BASE_PATH}/quality-gate/dq-prompt.md` and use it as the agent prompt
+- **Schema**:
+  ```json
+  {
+    "type": "object",
+    "properties": {
+      "score": {"type": "integer", "minimum": 1, "maximum": 5, "description": "Quality score 1-5"},
+      "rationale": {"type": "string", "description": "Detailed rationale for the score"}
+    },
+    "required": ["score", "rationale"]
+  }
+  ```
+
+#### intent_alignment agent
+
+- **Model**: opus
+- **Prompt**: Read the contents of `${BASE_PATH}/quality-gate/ia-prompt.md` and use it as the agent prompt
+- **Schema**:
+  ```json
+  {
+    "type": "object",
+    "properties": {
+      "score": {"type": "integer", "minimum": 1, "maximum": 5, "description": "Intent alignment score 1-5"},
+      "rationale": {"type": "string", "description": "Detailed rationale including per-AC-item coverage assessments"},
+      "missed_items": {
+        "type": "array",
+        "description": "AC items not adequately covered",
+        "items": {
+          "type": "object",
+          "properties": {
+            "ac_item": {"type": "string", "description": "The acceptance criteria item text"},
+            "severity": {"type": "string", "enum": ["missing", "incomplete"], "description": "Whether the item is entirely missing or partially covered"}
+          },
+          "required": ["ac_item", "severity"]
+        }
+      }
+    },
+    "required": ["score", "rationale", "missed_items"]
+  }
+  ```
+
+### 4. Write judge results
+
+After both agents return, write their structured outputs to `${BASE_PATH}/quality-gate/judge-results.json`:
+
+```json
+{
+  "doc_quality": { "score": <N>, "rationale": "<text>" },
+  "intent_alignment": { "score": <N>, "rationale": "<text>", "missed_items": [...] }
+}
+```
+
+### 5. Classify gaps and write step-result.json
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/quality_gate.py classify \
+  --ticket "${TICKET}" \
+  --base-path "${BASE_PATH}" \
+  --judge-results "${BASE_PATH}/quality-gate/judge-results.json"
+```
+
+The script:
+1. Reads the judge results from the JSON file
+2. Cross-references `missed_items` against evidence status to classify each gap:
    - `absent` → `document_as_unsupported` (add "not supported in this release" note)
    - `partial` → `expand_with_evidence` (expand with available code evidence)
    - `grounded` → `add_missing_section` (writing step missed it — re-include from plan)
    - `unknown` → `investigate` (evidence status unavailable)
-7. Writes `quality-gate/step-result.json` and `quality-gate/judge-results.md`
-8. Outputs the step-result JSON to stdout
+3. Writes `quality-gate/step-result.json` and `quality-gate/judge-results.md`
+4. Outputs the step-result JSON to stdout
 
-### 4. Verify output
+### 6. Verify output
 
 Read `${BASE_PATH}/quality-gate/step-result.json` and verify it contains:
 - `doc_quality` (integer 1-5)
@@ -71,7 +132,7 @@ Read `${BASE_PATH}/quality-gate/step-result.json` and verify it contains:
 
 If the file is missing or malformed, report the error.
 
-### 5. Report results
+### 7. Report results
 
 Report the scores and pass/fail status:
 - "Quality gate: doc_quality=N/5, intent_alignment=N/5, passed=true/false, gaps=N"
@@ -98,7 +159,11 @@ Report the scores and pass/fail status:
       "evidence_status": "absent",
       "action": "document_as_unsupported"
     }
-  ]
+  ],
+  "rationales": {
+    "doc_quality": "Full judge rationale text...",
+    "intent_alignment": "Full judge rationale text with per-AC coverage assessments..."
+  }
 }
 ```
 
@@ -114,4 +179,4 @@ Human-readable summary with rationales from both judges and the gap list.
 
 ## Model
 
-Uses `claude-sonnet-4-6` by default. Override via the `QUALITY_GATE_MODEL` environment variable.
+Judge agents use Opus to match the eval harness judge configuration. The model is specified via the Agent tool's `model` parameter — no separate API key or credentials required.
