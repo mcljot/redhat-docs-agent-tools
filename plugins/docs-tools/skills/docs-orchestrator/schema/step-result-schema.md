@@ -285,6 +285,74 @@ When an existing linked ticket is found:
 | `skipped` | boolean | Whether JIRA creation was skipped | Orchestrator |
 | `skip_reason` | string\|null | Reason when skipped (e.g., `"existing_link"`) | Orchestrator |
 
+### quality-gate
+
+```json
+{
+  "schema_version": 1,
+  "step": "quality-gate",
+  "ticket": "PROJ-123",
+  "completed_at": "2026-04-23T15:50:00Z",
+  "doc_quality": 4,
+  "intent_alignment": 3,
+  "passed": false,
+  "iteration": 1,
+  "gaps": [
+    {
+      "ac_item": "Document confidence scores",
+      "judge": "intent_alignment",
+      "evidence_status": "absent",
+      "action": "document_as_unsupported"
+    }
+  ],
+  "rationales": {
+    "doc_quality": "Full judge rationale text...",
+    "intent_alignment": "Full judge rationale text with per-AC coverage assessments..."
+  }
+}
+```
+
+| Field | Type | Description | Consumed by |
+|---|---|---|---|
+| `doc_quality` | integer | Doc quality score (1-5) from Sonnet 4-6 judge | Orchestrator — iteration logic |
+| `intent_alignment` | integer | Intent alignment score (1-5) from Sonnet 4-6 judge | Orchestrator — iteration logic |
+| `passed` | boolean | Whether both scores >= 4 | Orchestrator — iteration logic |
+| `iteration` | integer | Which iteration of the quality gate loop (1-based) | Orchestrator |
+| `gaps` | array | Identified gaps with evidence status and recommended action | resolve-feedback step |
+| `gaps[].ac_item` | string | The acceptance criteria item that was missed | resolve-feedback |
+| `gaps[].judge` | string | Which judge flagged the gap (e.g., `"intent_alignment"`) | Informational |
+| `gaps[].evidence_status` | string | Cross-referenced against scope-req-audit: `"grounded"`, `"partial"`, `"absent"`, or `"unknown"` | resolve-feedback — determines fix strategy |
+| `gaps[].action` | string | Recommended action: `"document_as_unsupported"`, `"expand_with_evidence"`, `"add_missing_section"`, or `"investigate"` | resolve-feedback |
+| `rationales` | object | Full judge rationale texts for the feedback brief | resolve-feedback |
+| `rationales.doc_quality` | string | Complete doc_quality judge rationale | resolve-feedback — included verbatim in feedback brief |
+| `rationales.intent_alignment` | string | Complete intent_alignment judge rationale with per-AC coverage assessments, missing artifacts, scope analysis | resolve-feedback — included verbatim in feedback brief |
+
+### resolve-feedback
+
+```json
+{
+  "schema_version": 1,
+  "step": "resolve-feedback",
+  "ticket": "PROJ-123",
+  "completed_at": "2026-04-23T16:00:00Z",
+  "gaps_resolved": 1,
+  "gaps_deferred": 0,
+  "sme_comments_resolved": 2,
+  "sme_comments_deferred": 1,
+  "files_modified": ["modules/proc-installing-operator.adoc"],
+  "sources": ["quality-gate", "sme-comments"]
+}
+```
+
+| Field | Type | Description | Consumed by |
+|---|---|---|---|
+| `gaps_resolved` | integer | Number of quality-gate gaps addressed | Informational |
+| `gaps_deferred` | integer | Number of gaps deferred (requires SME input) | Informational |
+| `sme_comments_resolved` | integer | Number of SME review comments addressed | Informational |
+| `sme_comments_deferred` | integer | Number of SME comments not addressable automatically | Informational |
+| `files_modified` | string[] | Absolute paths of files modified by the fix | Informational |
+| `sources` | string[] | Which input sources were used: `"quality-gate"`, `"sme-comments"`, or both | Informational |
+
 ## Backward compatibility
 
 Downstream consumers use a sidecar-first pattern: read from `step-result.json` when present, fall back to parsing the markdown output when absent. This ensures in-flight workflows from before sidecar adoption continue to work.

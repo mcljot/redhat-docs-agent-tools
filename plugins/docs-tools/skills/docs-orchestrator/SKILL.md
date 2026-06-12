@@ -478,6 +478,13 @@ After each step completes, apply the rules below. When rules reference sidecar f
 **create-jira**
 - Record `result.jira_url` and `result.jira_key` for the [Completion](#completion) summary
 
+**quality-gate**
+- Log: `"Quality gate: doc_quality=<N>/5, intent_alignment=<N>/5, passed=<true|false>, gaps=<N>"`
+- If `passed` is false → enter [Quality gate iteration](#quality-gate-iteration) loop
+
+**resolve-feedback**
+- Log: `"Resolve feedback: <N> gaps resolved, <N> deferred, <N> SME comments resolved"`
+
 ## Post-requirements source resolution
 
 This section triggers **only** when the `requirements` step completes AND `options.source` is still `null` (i.e., no source was resolved pre-flight).
@@ -529,6 +536,32 @@ The technical review step runs in a loop until confidence is acceptable or three
 6. After 3 iterations without reaching `HIGH`:
    - `MEDIUM` is acceptable — proceed with a warning that manual review is recommended
    - `LOW` after max iterations — ask the user whether to proceed or stop
+
+## Quality gate iteration
+
+The quality gate step runs in a loop until scores are acceptable or two iterations are exhausted:
+
+1. Invoke `docs-workflow-quality-gate` with the standard args
+2. Read `quality-gate/step-result.json`. Extract `doc_quality`, `intent_alignment`, and `passed`
+   - Also update `steps.quality-gate.result` from the sidecar
+3. If `intent_alignment >= 4` → mark completed, proceed to create-merge-request. If `doc_quality < 4`, log a warning: "doc_quality=N/5 is below threshold — manual review recommended." (doc_quality does not trigger resolve-feedback; it is informational only)
+4. If `intent_alignment < 4` and fewer than 2 iterations completed → run the resolve-feedback skill:
+   ```
+   Skill: docs-tools:docs-workflow-resolve-feedback, args: "<ticket> --base-path <base_path> [--repo <repo_path>]..."
+   ```
+   Pass `--repo` for the primary source repo and each additional source (same as the writing step's initial invocation) so the fix agent can verify against source code.
+   Then re-run the quality gate (go to step 1)
+5. After 2 iterations with `intent_alignment` still below 4:
+   - If `intent_alignment >= 3` → accept with warning: "Quality gate marginal (intent_alignment=N). Manual review recommended."
+   - If `intent_alignment < 3` → ask the user whether to proceed or stop
+
+### `when: has_feedback` condition
+
+The `resolve-feedback` step uses `when: has_feedback`. Evaluate this condition **after** the quality-gate step completes:
+
+- If quality-gate completed with `intent_alignment < 4` → `has_feedback` is true, mark resolve-feedback as `pending`
+- If quality-gate completed with `intent_alignment >= 4` → `has_feedback` is false, mark resolve-feedback as `skipped`
+- If quality-gate was skipped → mark resolve-feedback as `skipped`
 
 ## Commit confirmation gate
 
