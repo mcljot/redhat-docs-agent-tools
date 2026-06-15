@@ -1,0 +1,166 @@
+:_mod-docs-content-type: REFERENCE
+
+[id="model-catalog-source-parameters_{context}"]
+= Model catalog source and governance settings
+
+[role='_abstract']
+You can configure model catalog sources and governance settings from the AI Catalog Settings page in the {productname-short} dashboard.
+The available parameters differ based on the source type and the governance action.
+
+[id="yaml-file-source-parameters_{context}"]
+== YAML-file source parameters
+
+The following table describes the parameters for a YAML-file catalog source.
+
+.YAML-file source parameters
+[cols="1,2,1", options="header"]
+|===
+|Parameter
+|Description
+|Required
+
+|Source name
+|A descriptive name for the catalog source.
+|Yes
+
+|Source type
+|The type of catalog source. Set to *YAML*.
+|Yes
+
+|Source URI or ConfigMap path
+|The location of the YAML catalog source file, either as a URI or a ConfigMap path.
+|Yes
+
+|Include models
+|A list of model names to include from this source. Use the `__organization__/__model-name__` format, for example, `RedHat/granite-3.1-8b-instruct`. If specified, only these models appear from the source.
+|No
+
+|Exclude models
+|A list of model names to exclude from this source. Use the `__organization__/__model-name__` format. If specified, these models are hidden from the source.
+|No
+
+|Labels
+|Labels for the catalog source. Labels set the category name displayed in the catalog.
+|No
+
+|Enabled
+|Whether the catalog source is active. Defaults to enabled.
+|No
+|===
+
+[id="hugging-face-source-parameters_{context}"]
+== Hugging Face source parameters
+
+The following table describes the parameters for a Hugging Face catalog source.
+
+.Hugging Face source parameters
+[cols="1,2,1", options="header"]
+|===
+|Parameter
+|Description
+|Required
+
+|Source name
+|A descriptive name for the catalog source.
+|Yes
+
+|Source type
+|The type of catalog source. Set to *Hugging Face*.
+|Yes
+
+|Allowed organization
+|The case-sensitive URL slug of the Hugging Face organization. This value must match the path segment in the organization's URL on huggingface.co. For example, use `meta-llama` (from `huggingface.co/meta-llama`), not the display name "Meta Llama".
+|Yes
+
+|Include models
+|A list of model names to include from this source. Use only the `__model-name__` format without an organization prefix, for example, `granite-3.1-8b-instruct`. If specified, only these models appear from the source.
+|No
+
+|Exclude models
+|A list of model names to exclude from this source. Use only the `__model-name__` format without an organization prefix. If specified, these models are hidden from the source.
+|No
+
+|Labels
+|Labels for the catalog source. Labels set the category name displayed in the catalog.
+|No
+
+|Enabled
+|Whether the catalog source is active. Defaults to enabled.
+|No
+|===
+
+[id="governance-settings_{context}"]
+== Governance settings
+
+The following table describes the governance settings available on the AI Catalog Settings page.
+
+.Model catalog governance settings
+[cols="1,2,1", options="header"]
+|===
+|Setting
+|Description
+|Role required
+
+|Add model to disallow list
+|Adds a model to the disallow list by its model ID. The model is hidden from non-administrator users in the catalog.
+|Cluster Admin or {productname-short} Admin
+
+|Remove from disallow list
+|Removes a model from the disallow list to restore visibility for all users.
+|Cluster Admin or {productname-short} Admin
+
+|AI Catalog Settings page access
+|Provides access to all catalog source management and governance controls.
+|Cluster Admin or {productname-short} Admin
+|===
+
+[NOTE]
+====
+You can configure either an include list or an exclude list for each source, but not both at the same time.
+If you need to limit the models from a source, choose the approach that requires fewer entries: include only the models you want, or exclude only the models you do not want.
+====
+
+[id="include-and-exclude-filter-format-examples_{context}"]
+== Include and exclude filter format examples
+
+The following examples show the correct format for include and exclude filter entries for each source type.
+
+.Filter format examples by source type
+[cols="1,1,1", options="header"]
+|===
+|Source type
+|Example include filter entry
+|Example exclude filter entry
+
+|YAML-file
+|`RedHat/granite-3.1-8b-instruct`
+|`RedHat/granite-3.1-2b-instruct`
+
+|Hugging Face
+|`granite-3.1-8b-instruct`
+|`granite-3.1-2b-instruct`
+|===
+
+[IMPORTANT]
+====
+Using the wrong format for a source type causes the filter to fail silently.
+No error message is displayed, but the filter does not match any models.
+Verify the source type before entering filter values.
+====
+
+[id="known-limitations_{context}"]
+== Known limitations
+
+The following limitations apply to model catalog sources and governance settings:
+
+* Each Hugging Face source is limited to one organization.
+To add models from multiple Hugging Face organizations, create a separate source for each organization.
+* Only public, non-gated Hugging Face models are supported for catalog-based deployment.
+Private and gated Hugging Face model support is planned for a future release.
+* Hugging Face sources require network connectivity to huggingface.co and are not available in disconnected, air-gapped environments.
+* Disallow-listing does not affect running services or model instances that are already deployed.
+Only the visibility and availability of the model in the catalog are changed.
+* You can configure either an include list or an exclude list for each source, but not both at the same time.
+
+//[role="_additional-resources"]
+//.Additional resources

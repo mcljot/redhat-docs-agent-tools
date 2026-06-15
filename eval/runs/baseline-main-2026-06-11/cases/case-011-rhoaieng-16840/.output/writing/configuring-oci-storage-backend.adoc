@@ -1,0 +1,143 @@
+:_mod-docs-content-type: PROCEDURE
+
+[id="configuring-oci-storage-backend_{context}"]
+= Configure the OCI storage backend for Model Registry
+
+[role="_abstract"]
+You can configure the OCI storage backend so that data scientists can register and store model artifacts as OCI images in your organization's container registry.
+Configuring the backend involves enabling the OCI storage feature, creating registry credentials, and setting up a data connection to the target registry.
+
+.Prerequisites
+
+* You have `cluster-admin` privileges on the {openshift-platform} cluster.
+* You have access to an OCI-compliant registry, such as Red Hat Quay or a registry that supports the OCI Distribution Specification.
+* The {productname-short} operator is installed and the Model Registry component is enabled.
+* The OCI registry is reachable from the cluster network.
+* The base image used for `ModelCar` construction, such as `busybox`, is accessible from the cluster.
+
+.Procedure
+
+// TODO: SME verification required (RHOAIENG-16840 tech review C1).
+// The `registryOciStorage` feature flag does not exist in the odh-dashboard
+// source code (frontend/src/k8sTypes.ts, CRD schema, backend defaults).
+// The Register and Store toggle appears by default without any flag.
+// Confirm whether this flag exists in a downstream RHOAI operator component.
+// If it does not exist, remove this step entirely and update the
+// Verification and Troubleshooting sections accordingly.
+. Enable the `registryOciStorage` feature flag in the dashboard configuration.
+
+.. Log in to the {openshift-platform} web console with `cluster-admin` privileges.
+
+.. In the *Administrator* perspective, click *Home* -> *API Explorer*.
+
+.. Search for `OdhDashboardConfig` and open the resource.
+
+.. Click the *Instances* tab and select the dashboard configuration instance for your deployment.
+
+.. Click the *YAML* tab and locate the `spec.dashboardConfig` section.
+
+.. Add or set the `registryOciStorage` field to `true`:
++
+[source,yaml]
+----
+spec:
+  dashboardConfig:
+    registryOciStorage: true
+----
+
+.. Click *Save*.
++
+After you save the configuration, the *Register and Store* option becomes available in the Model Registry UI.
+
+. Create a Kubernetes Secret that contains your OCI registry credentials.
++
+The Secret must be of type `kubernetes.io/dockerconfigjson`.
+The `.dockerconfigjson` field must contain base64-encoded authentication data for the target registry.
++
+You must have `admin` or `edit` permissions in the target namespace to create Secrets.
+Create the Secret in the namespace where the model transfer job will run.
++
+In the following command, replace `<secret_name>` with a name for the Secret, `<namespace>` with the namespace where the model transfer job will run, and `<path_to_dockerconfigjson>` with the path to your Docker configuration file:
++
+[source,terminal]
+----
+$ oc create secret docker-registry <secret_name> \
+  --namespace <namespace> \
+  --from-file=.dockerconfigjson=<path_to_dockerconfigjson>
+----
++
+Alternatively, you can create the Secret by specifying the registry server, username, and password directly:
++
+[source,terminal]
+----
+$ oc create secret docker-registry <secret_name> \
+  --namespace <namespace> \
+  --docker-server=<registry_url> \
+  --docker-username=<username> \
+  --docker-password=<password>
+----
+
+. Configure a data connection to the OCI registry in the {productname-short} dashboard.
++
+You can choose between two connection types depending on whether the registry requires authentication:
+
+* *OCI compliant registry v1*: Use this connection type for private registries that require authentication.
+The connection stores credentials in a Kubernetes Secret of type `kubernetes.io/dockerconfigjson`.
+* *URI v1*: Use this connection type for public OCI registries that do not require authentication.
+
+// TODO: SME verification required (RHOAIENG-16840 tech review S2).
+// Verify whether OCI connection types (OCI compliant registry v1, URI v1)
+// are pre-installed with the RHOAI operator or must be created manually.
+// If pre-installed, update this step to guide users to create a connection
+// instance at the project level using the existing type, rather than
+// clicking "Add connection type".
+.. In the {productname-short} dashboard, click *Settings* -> *Environment setup* -> *Connection types*.
+
+.. Click *Add connection type*.
+
+.. Select the appropriate connection type for your registry.
+
+.. Provide the required connection details, including the registry URL and any authentication credentials.
+
+.. Click *Add*.
+
+.Verification
+
+. Verify that the Kubernetes Secret was created with the correct type:
++
+[source,terminal]
+----
+$ oc get secret <secret_name> -n <namespace> -o jsonpath='{.type}'
+----
++
+The expected output is `kubernetes.io/dockerconfigjson`.
+
+. In the {productname-short} dashboard, verify that the data connection for the OCI registry is displayed under the connection configuration.
+
+. In the {productname-short} dashboard, click *AI hub* -> *Models* -> *Registry*.
+. Click *Register model*.
+. In the *Model location and storage* section, verify that the *Register and Store* option is available.
++
+// TODO: SME verification required (RHOAIENG-16840 tech review C1).
+// Remove reference to registryOciStorage if the flag does not exist.
+If the option is not available, verify that the `registryOciStorage` feature flag is set to `true` in the dashboard configuration and that the dashboard has restarted.
+
+.Troubleshooting
+
+// TODO: SME verification required (RHOAIENG-16840 tech review C1).
+// Remove registryOciStorage references if the flag does not exist downstream.
+If the *Register and Store* option is not displayed:
+
+* Verify that the `registryOciStorage` feature flag is enabled by checking the `OdhDashboardConfig` resource.
+* Verify that the dashboard pods have restarted after the configuration change.
+
+If model transfer jobs fail:
+
+* Check that the OCI registry credentials are correct and that the Secret is in the expected namespace.
+* Verify network connectivity between the cluster and the OCI registry.
+* Check the Kubernetes events for the transfer job pods for error details.
+
+.Additional resources
+* xref:oci-compliant-storage-for-model-registry_{context}[OCI-compliant storage for Model Registry]
+* xref:oci-storage-prerequisites_{context}[OCI-compliant storage prerequisites]
+* xref:registering-model-as-oci-image_{context}[Register and store a model as an OCI image]

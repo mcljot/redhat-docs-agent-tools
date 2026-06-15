@@ -1,0 +1,88 @@
+:_mod-docs-content-type: PROCEDURE
+
+[id="deleting-a-cached-model_{context}"]
+= Delete a cached model
+
+[role="_abstract"]
+You can delete a cached model to reclaim storage space on your nodes.
+When you delete a `LocalModelCache` resource, the controller schedules cleanup operations to remove the model files.
+The cleanup process differs depending on whether you cached the model on local node disks or network volumes.
+
+.Prerequisites
+
+* You have cluster administrator privileges for your {openshift-platform} cluster.
+* You have identified the `LocalModelCache` resource to delete.
+* No active `InferenceService` or `LLMInferenceService` references the cached model.
++
+The controller rejects deletion if the model is in use by an active inference service.
+
+.Procedure
+
+. Verify that no active inference service uses the cached model:
++
+[source,terminal]
+----
+$ oc get localmodelcache <model_cache_name> -o jsonpath='{.status.inferenceServices}'
+----
++
+[source,terminal]
+----
+$ oc get localmodelcache <model_cache_name> -o jsonpath='{.status.llmInferenceServices}'
+----
++
+Both commands should return empty lists.
+If either command returns inference service references, update or delete those inference services before continuing.
+
+. Delete the `LocalModelCache` resource:
++
+[source,terminal]
+----
+$ oc delete localmodelcache <model_cache_name>
+----
++
+The controller handles cleanup differently based on the caching mode:
++
+--
+* *Local disk caching*: The controller creates deletion jobs on each node to remove model files from the local storage path.
+Monitor the `storageStatus` field to track per-node cleanup progress.
+* *Network volume caching*: The controller deletes the persistent volume claims.
+The persistent volume cleanup follows the reclaim policy of the `StorageClass`.
+If the reclaim policy is `Retain`, you must manually delete the persistent volumes after the persistent volume claims are removed.
+--
+
+. Wait for the deletion to complete and verify that the controller has cleaned up the persistent volumes and persistent volume claims:
++
+[source,terminal]
+----
+$ oc get pv -l localmodel.kserve.io/model=<model_cache_name>
+----
++
+The command should return no results after the cleanup completes.
+
+. For network volume caching with a `Retain` reclaim policy, manually delete any remaining persistent volumes:
++
+[source,terminal]
+----
+$ oc delete pv <pv_name>
+----
+
+.Troubleshooting
+
+If the deletion is stuck and the `LocalModelCache` resource is not removed:
+
+* Verify that no `InferenceService` or `LLMInferenceService` references the model.
+If a reference exists, the finalizer on the `LocalModelCache` resource prevents deletion.
++
+Remove or update the inference service, then the controller removes the finalizer and completes the deletion.
+
+* Check the deletion job logs for errors:
++
+[source,terminal]
+----
+$ oc get jobs -n <job_namespace> -l localmodel.kserve.io/model=<model_cache_name>
+----
++
+[source,terminal]
+----
+$ oc logs job/<deletion_job_name> -n <job_namespace>
+----

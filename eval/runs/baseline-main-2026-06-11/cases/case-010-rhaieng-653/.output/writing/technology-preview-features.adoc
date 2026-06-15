@@ -1,0 +1,194 @@
+:_mod-docs-content-type: REFERENCE
+
+[id='technology-preview-features_{context}']
+= Technology Preview features
+
+[role='_abstract']
+
+ifdef::self-managed[]
+[IMPORTANT]
+====
+This section describes Technology Preview features in {productname-long} {vernum}.
+Technology Preview features are not supported with Red{nbsp}Hat production service level agreements (SLAs) and might not be functionally complete.
+Red{nbsp}Hat does not recommend using them in production.
+These features provide early access to upcoming product features, enabling customers to test functionality and provide feedback during the development process.
+
+For more information about the support scope of Red{nbsp}Hat Technology Preview features, see link:https://access.redhat.com/support/offerings/techpreview/[Technology Preview Features Support Scope].
+====
+endif::[]
+
+ifdef::cloud-service[]
+[IMPORTANT]
+====
+This section describes Technology Preview features in {productname-long}.
+Technology Preview features are not supported with Red{nbsp}Hat production service level agreements (SLAs) and might not be functionally complete.
+Red{nbsp}Hat does not recommend using them in production.
+These features provide early access to upcoming product features, enabling customers to test functionality and provide feedback during the development process.
+
+For more information about the support scope of Red{nbsp}Hat Technology Preview features, see link:https://access.redhat.com/support/offerings/techpreview/[Technology Preview Features Support Scope].
+====
+endif::[]
+//
+
+//RHOAISTRAT-512
+Build Generative AI Apps with Llama Stack on {productname-short}::
+With this release, the Llama Stack Technology Preview feature on {productname-short} enables Retrieval-Augmented Generation (RAG) and agentic workflows for building next-generation generative AI applications. It supports remote inference, built-in embeddings, and vector database operations. It also integrates with providers such as the TrustyAI provider for safety and the TrustyAI LM-Eval provider for evaluation.
++
+This preview includes tools, components, and guidance for enabling the Llama Stack Operator, interacting with the RAG Tool, and automating PDF ingestion and keyword search capabilities to enhance document discovery.
+
+// RHOAISTRAT-575
+Centralized platform metrics and tracing::
+Centralized platform metrics and tracing are now available as a Technology Preview feature in {productname-short}. This feature enables integration with the Cluster Observability Operator (COO), {org-name} build of OpenTelemetry, and Tempo Operator, and provides optional preconfigured observability configurations for {productname-short}. It also introduces a dedicated observability stack. Future releases will collect infrastructure and customer workload signals in the dedicated observability stack.
+
+//RHOAIENG-603
+Support for Llama Stack Distribution version 0.2.17::
+The Llama Stack Distribution now includes Llama-stack version 0.2.17 as Technology Preview. This feature brings several capabilities, including:
++
+* Model providers: Self-hosted providers such as vLLM are now automatically registered, so you no longer need to manually set `INFERENCE_MODEL` variables.
+* Infrastructure and backends: Improved the OpenAI inference and added support for the Vector Store API.
+* Error handling: Errors are now standardized, and library client initialization has been improved.
+* Access Control: The Vector Store and File APIs now enforce access control, and telemetry read APIs are gated by user roles.
+* Bug fixes.
+
+// RHAIENG-653
+Remote Milvus vector database for Llama Stack RAG::
+Remote Milvus (`remote::milvus`) is available as a Technology Preview vector store provider for Llama Stack RAG workloads in {productname-short} {vernum}.
+Remote Milvus enables production-grade vector search with a standalone Milvus service and a dedicated etcd instance for metadata coordination.
+This deployment mode is recommended for workloads that require scalable vector indexing, durable storage, and high-performance similarity search.
++
+For more information, see link:{rhoaidocshome}{default-format-url}/working_with_llama_stack/llama-stack-adv-examples_rag#overview-of-milvus-vector-databases_rag[Overview of Milvus vector databases] and link:{rhoaidocshome}{default-format-url}/working_with_llama_stack/llama-stack-adv-examples_rag#deploying-a-remote-milvus-vector-database_rag[Deploying a remote Milvus vector database].
+
+// RHOAIENG-30965
+Support for IBM Power accelerated Triton Inference Server::
+You can now enable Power architecture support for Triton inference server (CPU only) with Python and ONNX backend. You can deploy Triton inference server as a custom model serving runtime on IBM Power architecture as a Technology Preview feature in {productname-long}.
++
+For details, see link:https://quay.io/repository/powercloud/tritonserver[Triton Inference Server image].
+
+Support for IBM Z accelerated Triton Inference Server::
+You can now enable Z architecture support for the Triton Inference Server (Telum I/Telum II) with multiple backend options, including ONNX-MLIR, Snap ML (C++), and PyTorch. The Triton Inference Server can be deployed as a custom model serving runtime on IBM Z architecture as a Technology Preview feature in {productname-long}.
++
+For details, see link:https://ibm.github.io/ibm-z-oss-hub/containers/ibmz-accelerated-for-nvidia-triton-inference-server.html[IBM Z accelerated Triton Inference Server].
+
+// RHOAISTRAT-520
+Support for Kubernetes Event-driven Autoscaling (KEDA)::
+{productname-short} now supports Kubernetes Event-driven Autoscaling (KEDA) in its KServe RawDeployment mode. This Technology Preview feature enables metrics-based autoscaling for inference services, allowing for more efficient management of accelerator resources, reduced operational costs, and improved performance for your inference services.
++
+To set up autoscaling for your inference service in KServe RawDeployment mode, you need to install and configure the OpenShift Custom Metrics Autoscaler (CMA), which is based on KEDA. 
++
+For more information about this feature, see: link:{rhoaidocshome}{default-format-url}/managing_and_monitoring_models/managing_and_monitoring_models_on_the_single_model_serving_platform#configuring-metrics-based-autoscaling_cluster-admin[Configuring metrics-based autoscaling]. 
+
+// RHOAIENG-26716
+LM-Eval model evaluation UI feature::
+TrustyAI now offers a user-friendly UI for LM-Eval model evaluations as Technology Preview. You can input evaluation parameters for a given model and view an evaluation-results page, all from the UI.
+
+// RHOAISTRAT-610
+Use Guardrails Orchestrator with LlamaStack::
+You can now run detections using the Guardrails Orchestrator tool from TrustyAI with Llama Stack as a Technology Preview feature, using the built-in detection component. To use this feature, ensure TrustyAI is enabled, the FMS Orchestrator and detectors are set up, and KServe RawDeployment mode is in use for full compatibility if needed. There is no manual set up required.
++
+Then, in the `DataScienceCluster` custom resource for the {productname-long} Operator, set the `spec.llamastackoperator.managementState` field to `Managed`.
++
+For more information, see the following resources on GitHub:
++
+* link:https://github.com/trustyai-explainability/llama-stack-provider-trustyai-fms[Trusty AI FMS Provider]
+
+//RHOAISTRAT-289
+Define and manage pipelines with Kubernetes API::
+You can now define and manage data science pipelines and pipeline versions by using the Kubernetes API, which stores them as custom resources in the cluster instead of the internal database. This Technology Preview feature makes it easier to use OpenShift GitOps (Argo CD) or similar tools to manage pipelines, while still allowing you to manage them through the {productname-short} user interface, API, and `kfp` SDK.  
++
+This option, enabled by default, is configurable with the *Store pipeline definitions in Kubernetes* checkbox when you create or edit a pipeline server. Cluster administrators can also configure this option by setting the `spec.apiServer.pipelineStore` field to `kubernetes` or `database` in the `DataSciencePipelinesApplication` (DSPA) custom resource. For more information, see link:{rhoaidocshome}{default-format-url}/working_with_data_science_pipelines/managing-data-science-pipelines_ds-pipelines#defining-a-pipeline-by-using-the-kubernetes-api_ds-pipelines[Defining a pipeline by using the Kubernetes API].
+
+ifdef::self-managed[]
+
+endif::[]
+
+Model customization with LAB-tuning::
+
+LAB-tuning is now available as a Technology Preview feature, enabling data scientists to run an end-to-end workflow for customizing large language models (LLMs). The link:https://arxiv.org/abs/2403.01081[LAB (Large-scale Alignment for chatBots)] method offers a more efficient alternative to traditional fine-tuning by leveraging taxonomy-guided synthetic data generation (SDG) and a multi-phase training approach.
++
+Data scientists can run LAB-tuning workflows directly from the {productname-short} dashboard by using the new preconfigured InstructLab pipeline, which simplifies the tuning process. For details on enabling and using LAB-tuning, see link:{rhoaidocshome}{default-format-url}/enabling_lab-tuning[Enabling LAB-tuning] and link:{rhoaidocshome}{default-format-url}/customizing_models_with_lab-tuning[Customizing models with LAB-tuning].
++
+[IMPORTANT]
+====
+The LAB-tuning feature is not currently supported for disconnected environments.
+====
+
+// RHOAISTRAT-79
+New Feature Store component::
+
+You can now install and manage Feature Store as a configurable component in the {productname-long} Operator. Based on the open-source link:https://feast.dev/[Feast] project, Feature Store acts as a bridge between ML models and data, enabling consistent and scalable feature management across the ML lifecycle.
++
+This Technology Preview release introduces the following capabilities:
++
+* Centralized feature repository for consistent feature reuse
+* Python SDK and CLI for programmatic and command-line interactions to define, manage, and retrieve features for ML models
+* Feature definition and management
+* Support for a wide range of data sources
+* Data ingestion via feature materialization
+* Feature retrieval for both online model inference and offline model training
+* Role-Based Access Control (RBAC) to protect sensitive features
+* Extensibility and integration with third-party data and compute providers
+* Scalability to meet enterprise ML needs
+* Searchable feature catalog
+* Data lineage tracking for enhanced observability
++
+For configuration details, see link:{rhoaidocshome}{default-format-url}/working_with_machine_learning_features/configuring_feature_store[Configuring Feature Store].
+
+
+ifdef::self-managed[]
+// RHOAISTRAT-439 and RHOAIENG-20214
+
+IBM Power and IBM Z architecture support::
+
+IBM Power (ppc64le) and IBM Z (s390x) architectures are now supported as a Technology Preview feature. Currently, you can only deploy models in *KServe RawDeployment* mode on these architectures.  
+
+//RHOAIENG-20214
+
+Support for vLLM in IBM Power and IBM Z architectures::
+vLLM runtime templates are available for use in IBM Power and IBM Z architectures as Technology Preview.
+
+endif::[]
+
+//RHOAISTRAT-269
+Enable targeted deployment of workbenches to specific worker nodes in {productname-long} Dashboard using node selectors::
+
+Hardware profiles are now available as a Technology Preview. With hardware profiles, you can target specific worker nodes for workbenches or model-serving workloads, including specific accelerator types or CPU-only nodes.
++
+This feature replaces the current accelerator profiles feature and container size selector field, offering a broader set of capabilities for targeting different hardware configurations. While accelerator profiles, taints, and tolerations provide some capabilities for matching workloads to hardware, they do not ensure that workloads land on specific nodes, especially if some nodes lack the appropriate taints. 
++
+The hardware profiles feature supports both accelerator and CPU-only configurations, along with node selectors, to enhance targeting capabilities for specific worker nodes. Administrators can configure hardware profiles in the settings menu. Users can select the enabled profiles using the UI for workbenches, model serving, and Data Science Pipelines where applicable. 
+
+RStudio Server workbench image::
+
+With the RStudio Server workbench image, you can access the RStudio IDE, an integrated development environment for R. The R programming language is used for statistical computing and graphics to support data analysis and predictions.
++
+To use the RStudio Server workbench image, you must first build it by creating a secret and triggering the `BuildConfig`, and then enable it in the {productname-short} UI by editing the `rstudio-rhel9` image stream. 
+For more information, see link:{rhoaidocshome}{default-format-url}/getting_started_with_{url-productname-long}/creating-a-workbench-select-ide_get-started#building-the-rstudio-server-workbench-images_get-started[Building the RStudio Server workbench images].
++
+[IMPORTANT] 
+====
+*Disclaimer:* 
+{org-name} supports managing workbenches in {productname-short}. However, {org-name} does not provide support for the RStudio software. RStudio Server is available through link:https://rstudio.org[rstudio.org] and is subject to their licensing terms. You should review their licensing terms before you use this sample workbench.
+====
+
+CUDA - RStudio Server workbench image::
+
+With the CUDA - RStudio Server workbench image, you can access the RStudio IDE and NVIDIA CUDA Toolkit. 
+The RStudio IDE is an integrated development environment for the R programming language for statistical computing and graphics. 
+With the NVIDIA CUDA toolkit, you can enhance your work by using GPU-accelerated libraries and optimization tools.
++
+To use the CUDA - RStudio Server workbench image, you must first build it by creating a secret and triggering the `BuildConfig`, and then enable it in the {productname-short} UI by editing the `rstudio-rhel9` image stream. 
+For more information, see link:{rhoaidocshome}{default-format-url}/getting_started_with_{url-productname-long}/creating-a-workbench-select-ide_get-started#building-the-rstudio-server-workbench-images_get-started[Building the RStudio Server workbench images].
++
+[IMPORTANT] 
+====
+*Disclaimer:* 
+{org-name} supports managing workbenches in {productname-short}. However, {org-name} does not provide support for the RStudio software. RStudio Server is available through link:https://rstudio.org[rstudio.org] and is subject to their licensing terms. You should review their licensing terms before you use this sample workbench.
+
+The CUDA - RStudio Server workbench image contains NVIDIA CUDA technology. CUDA licensing information is available in the link:https://docs.nvidia.com/cuda/[CUDA Toolkit] documentation. You should review their licensing terms before you use this sample workbench.
+====
+
+Support for multinode deployment of very large models::
+Serving models over multiple graphical processing unit (GPU) nodes when using a single-model serving runtime is now available as a Technology Preview feature. 
+Deploy your models across multiple GPU nodes to improve efficiency when deploying large models such as large language models (LLMs). 
+For more information, see link:{rhoaidocshome}{default-format-url}/managing_and_monitoring_models/managing_and_monitoring_models_on_the_single_model_serving_platform#deploying-models-using-multiple-gpu-nodes_cluster-admin[Deploying models across multiple GPU nodes].
+

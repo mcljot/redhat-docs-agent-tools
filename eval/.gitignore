@@ -2,5 +2,6 @@
 .docs-repo-cache/
 dataset/cases/*/.docs-worktree/
 
-# Eval run results (generated, not committed)
-runs/
+# Eval run results (generated, not committed — except shared baselines)
+runs/*
+!runs/baseline-main-*/

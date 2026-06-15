@@ -16,6 +16,31 @@ Install Python dependencies:
 pip3 install --break-system-packages google-auth jinja2
 ```
 
+### (Optional) Baseline sharing hook
+
+Add a Stop hook to your local `.claude/settings.json` so Claude reminds you to share eval baselines when you finish a session on `main`:
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/eval/scripts/eval-baseline-prompt-hook.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The hook is advisory only — it never blocks stopping. On `main`, it checks for scored eval runs that haven't been committed as a shared baseline and prints a reminder with the `commit-baseline.sh` command.
+
 ## Quick start
 
 ### 1. Set up docs repo worktrees
@@ -120,28 +145,43 @@ git checkout main
 git pull
 bash eval/scripts/setup-eval-worktrees.sh
 bash eval/scripts/extract-gold-standard.sh
-/eval-run --model claude-opus-4-6 --run-id baseline-v2
+/eval-run --model claude-opus-4-6
 ```
+
+### Sharing a baseline
+
+After a successful run, strip large debug artifacts and commit the baseline so other team members can compare against it:
+
+```bash
+# Strip logs/transcripts and optionally rename
+bash eval/scripts/commit-baseline.sh <run-id> baseline-main-YYYY-MM-DD
+
+# Commit and push
+git checkout -b baseline/baseline-main-YYYY-MM-DD
+git add eval/runs/baseline-main-YYYY-MM-DD/
+git commit -m "eval: add baseline baseline-main-YYYY-MM-DD"
+git push -u origin baseline/baseline-main-YYYY-MM-DD
+```
+
+The script keeps only what's needed for comparison: `summary.yaml`, `collection.json`, `run_result.json`, `analysis.md`, and per-case `.adoc` output. Debug logs and subagent transcripts are stripped (typically reduces from ~100 MB to ~4 MB).
 
 ### Comparing a branch against the baseline
 
 ```bash
-# 1. Create a throwaway branch with the eval harness + your changes
+# 1. Check out your feature branch
 git checkout your-feature-branch
-git checkout -b test/eval-your-feature
-git merge feat/eval-harness-setup
 
 # 2. Reset worktrees (previous runs modified them)
 bash eval/scripts/setup-eval-worktrees.sh
 
 # 3. Run with baseline comparison
-/eval-run --model claude-opus-4-6 --baseline baseline-v2
+/eval-run --model claude-opus-4-6 --baseline baseline-main-YYYY-MM-DD
 ```
 
 For quick iteration during development (6 cases, ~$200):
 
 ```bash
-/eval-run --model claude-opus-4-6 --baseline baseline-v2 --cases case-001-rhoaieng-45969 case-002-rhaistrat-853 case-004-rhaistrat-1393 case-008-rhai-eng-2620 case-011-rhoaieng-16840 case-012-rhoaieng-40664
+/eval-run --model claude-opus-4-6 --baseline baseline-main-YYYY-MM-DD --cases case-001-rhoaieng-45969 case-002-rhaistrat-853 case-004-rhaistrat-1393 case-008-rhai-eng-2620 case-011-rhoaieng-16840 case-012-rhoaieng-40664
 ```
 
 ### Interpreting the comparison
@@ -156,20 +196,18 @@ The report includes:
 ### Baseline lifecycle
 
 ```
-baseline-v1 (initial main)
-  ↑ compare code-learner branch → merge
-baseline-v2 (main + code-learner)    ← active baseline
+baseline-main-2026-06-11 (main + code-learner port)  ← active baseline
   ↑ compare future branches against this
-baseline-v3 (main + next big change) ← after next major merge
+baseline-main-YYYY-MM-DD (main + next big change)    ← after next major merge
 ```
 
 Old baselines stay in `eval/runs/` for historical reference but aren't used for active comparison. Only compare against the most recent baseline that represents `main`.
 
 ### Naming convention
 
-- `baseline-v1`, `baseline-v2`, etc. — milestone baselines on main
+- `baseline-main-YYYY-MM-DD` — committed baselines on main (shared with team)
 - `<feature-name>` — feature branch runs (e.g., `code-learner-port`)
-- `YYYY-MM-DD-<model>` — auto-generated IDs for ad-hoc runs
+- `YYYY-MM-DD-<model>` — auto-generated IDs for ad-hoc runs (local only)
 
 ## Configuration
 
@@ -206,12 +244,13 @@ The quick set covers the key ticket types (kubeflow, model caching, agent deploy
 
 ```
 /eval-run
-  → workspace.py     Creates isolated workspace per case
-  → execute.py       Runs docs-orchestrator per case (parallelism 3)
-  → collect-docs-repo-output.sh  Copies AsciiDoc from docs repo to workspace
-  → collect.py       Gathers artifacts into eval/runs/<id>/cases/
-  → score.py         Runs judges against collected outputs
-  → report.py        Generates HTML report with analysis
+  → workspace.py                  Creates isolated workspace per case
+  → execute.py                    Runs docs-orchestrator per case (parallelism 3)
+  → collect-docs-repo-output.sh   Copies AsciiDoc from docs repo to workspace
+  → collect.py                    Gathers artifacts into eval/runs/<id>/cases/
+  → score.py                      Runs judges against collected outputs
+  → report.py                     Generates HTML report with analysis
+  → commit-baseline.sh            (optional) Strips debug artifacts for sharing
 ```
 
 ## Adding test cases

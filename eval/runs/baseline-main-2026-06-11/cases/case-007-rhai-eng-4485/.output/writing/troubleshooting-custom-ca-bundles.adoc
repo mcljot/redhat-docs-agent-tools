@@ -1,0 +1,163 @@
+:_mod-docs-content-type: REFERENCE
+
+[id="troubleshooting-custom-ca-bundles_{context}"]
+= Troubleshooting custom CA bundles
+
+[role="_abstract"]
+If you experience errors when configuring custom CA bundles for self-signed certificates, use the following information to resolve common issues and error messages.
+
+If your issue is not described in the following information or in the release notes, contact {org-name} Support.
+
+ifndef::disconnected[]
+For the CA bundle configuration procedure, see link:{rhoaidocshome}{default-format-url}/installing_and_uninstalling_openshift_ai_self-managed/working-with-certificates_certs#configuring-a-ca-bundle-for-llama-stack_certs[Configuring a CA bundle for Llama Stack].
+For information about adding CAs to the cluster-wide or custom CA bundle, see link:{rhoaidocshome}{default-format-url}/installing_and_uninstalling_openshift_ai_self-managed/working-with-certificates_certs#adding-certificates-to-a-cluster-ca-bundle_certs[Adding certificates to a cluster-wide CA bundle] and link:{rhoaidocshome}{default-format-url}/installing_and_uninstalling_openshift_ai_self-managed/working-with-certificates_certs#adding-certificates-to-a-custom-ca-bundle_certs[Adding certificates to a custom CA bundle].
+endif::[]
+ifdef::disconnected[]
+For the CA bundle configuration procedure, see link:{rhoaidocshome}{default-format-url}/installing_and_uninstalling_openshift_ai_self-managed_in_a_disconnected_environment/working-with-certificates_certs#configuring-a-ca-bundle-for-llama-stack_certs[Configuring a CA bundle for Llama Stack].
+For information about adding CAs to the cluster-wide or custom CA bundle, see link:{rhoaidocshome}{default-format-url}/installing_and_uninstalling_openshift_ai_self-managed_in_a_disconnected_environment/working-with-certificates_certs#adding-certificates-to-a-cluster-ca-bundle_certs[Adding certificates to a cluster-wide CA bundle] and link:{rhoaidocshome}{default-format-url}/installing_and_uninstalling_openshift_ai_self-managed_in_a_disconnected_environment/working-with-certificates_certs#adding-certificates-to-a-custom-ca-bundle_certs[Adding certificates to a custom CA bundle].
+endif::[]
+
+[id="common-issues_{context}"]
+== Common issues
+
+Certificate not found::
+Ensure the config map exists in the expected namespace and contains the specified key.
+To verify the config map and its keys, run the following command:
++
+[subs="+quotes"]
+----
+$ oc get configmap __<configmap-name>__ -n __<namespace>__ -o yaml
+----
++
+Confirm that the expected key, such as `ca-bundle.crt`, is displayed in the `data` section of the output.
+
+Permission denied::
+Check that the Llama Stack Operator service account has permissions to read the config map.
+To verify the operator's permissions, run the following command:
++
+[subs="+quotes"]
+----
+$ oc auth can-i get configmaps \
+  --as=system:serviceaccount:__<operator-namespace>__:__<operator-sa-name>__ \
+  -n __<configmap-namespace>__
+----
++
+To find the service account name that the Llama Stack Operator uses, run `oc get serviceaccounts -n __<operator-namespace>__`.
++
+If the output is `no`, create a `Role` and `RoleBinding` in the config map namespace to grant the operator service account `get` access to config maps.
+
+Invalid certificate::
+Verify that the certificate is in valid Privacy-Enhanced Mail (PEM) format.
+To validate a certificate file, run the following command:
++
+[subs="+quotes"]
+----
+$ openssl x509 -text -noout -in __<certificate_file>__
+----
++
+If the command reports an error, the certificate is not valid PEM or is corrupted.
+
+Pod not restarting::
+When you update the `spec.server.tlsConfig.caBundle` field or the contents of the source config map, the Llama Stack Operator automatically updates the managed config map annotation, which triggers a pod rollout.
+If the pod does not restart automatically, verify that the `LlamaStackDistribution` CR status does not report a validation error:
++
+[subs="+quotes"]
+----
+$ oc get llamastackdistribution __<instance-name>__ -n __<namespace>__ -o yaml
+----
++
+Check the `status.conditions` field for a `DeploymentReady` condition set to `"False"`.
+If the CR status is healthy but the pod has not restarted, manually restart the deployment:
++
+[subs="+quotes"]
+----
+$ oc rollout restart deployment/__<instance-name>__ -n __<namespace>__
+----
+
+[id="common-error-messages-and-solutions_{context}"]
+== Common error messages and solutions
+
+CA bundle key not found in ConfigMap::
++
+.Problem
+The specified key does not exist in the ConfigMap data.
++
+.Resolution
+Check the key name in your `LlamaStackDistribution` spec. The default key name is `ca-bundle.crt`. Run the following command and verify that your expected key is displayed in the output:
++
+[subs="+quotes"]
+----
+$ oc get configmap __<configmap-name>__ -n __<namespace>__ -o yaml
+----
+
+Invalid CA bundle format::
++
+.Problem
+The certificate data is not in valid PEM format or contains invalid certificates.
++
+.Resolution
+Ensure that each certificate is enclosed in `-----BEGIN CERTIFICATE-----` and `-----END CERTIFICATE-----` markers (PEM format).
+To verify the format, extract the certificate data from the config map and validate it:
++
+[subs="+quotes"]
+----
+$ oc get configmap __<configmap-name>__ -n __<namespace>__ \
+  -o jsonpath='{.data.ca-bundle\.crt}' > /tmp/ca-bundle.crt
+$ openssl x509 -text -noout -in /tmp/ca-bundle.crt
+----
+
+Referenced CA bundle ConfigMap not found::
++
+.Problem
+The ConfigMap specified in `tlsConfig.caBundle.configMapName` does not exist.
++
+.Resolution
+Verify that the config map exists in the expected namespace:
++
+[subs="+quotes"]
+----
+$ oc get configmap __<configmap-name>__ -n __<namespace>__
+----
++
+If the config map does not exist, create it before applying the `LlamaStackDistribution` CR:
++
+[subs="+quotes"]
+----
+$ oc create configmap __<configmap-name>__ \
+  --from-file=ca-bundle.crt=__<path_to_ca_certificate>__ \
+  -n __<namespace>__
+----
+
+No valid certificates found in CA bundle::
++
+.Problem
+The ConfigMap contains data but no parseable certificates.
++
+.Resolution
+Verify that the certificate file contains valid certificate data in PEM format.
+To validate the certificate, run the following command:
++
+[subs="+quotes"]
+----
+$ openssl x509 -text -noout -in __<certificate_file>__
+----
++
+If the certificate file is valid but the config map data is corrupted, re-create the config map with the correct certificate file.
+
+Failed to parse certificate::
++
+.Problem
+Certificate data is corrupted or not a valid X.509 certificate.
++
+.Resolution
+Regenerate the certificate or verify the source.
+Check that the certificate data is not double base64-encoded, which can occur when copying certificate content through intermediate tools.
+To verify the encoding, extract and inspect the raw data:
++
+[subs="+quotes"]
+----
+$ oc get configmap __<configmap-name>__ -n __<namespace>__ \
+  -o jsonpath='{.data.ca-bundle\.crt}' | head -5
+----
++
+The first line of valid PEM data is `-----BEGIN CERTIFICATE-----`. If the output shows base64-encoded content without PEM markers, decode it first and re-create the config map.

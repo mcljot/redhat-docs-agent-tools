@@ -1,0 +1,65 @@
+:_mod-docs-content-type: REFERENCE
+
+[id="disallowed-model-error-messages_{context}"]
+= Disallowed model error messages
+
+[role='_abstract']
+When a model has been disallow-listed by an administrator, non-administrator users see specific behaviors depending on how they try to access the model.
+Understanding these behaviors helps you distinguish between intentional governance restrictions and system errors, so that you can take the correct action.
+
+[id="model-visibility-behavior_{context}"]
+== Model visibility behavior
+
+The following table describes how disallow-listed models appear to non-administrator users.
+
+.Disallowed model visibility behavior
+[cols="1,2", options="header"]
+|===
+|Access method
+|Behavior
+
+|Browsing the catalog
+|The disallow-listed model does not appear in the catalog.
+It is hidden from search results, category listings, and filter results.
+Non-administrator users have no indication that the model exists.
+
+|Direct link to the model details page
+|The message "Model is disabled by your administrator" is displayed instead of the model details.
+
+|API query for the model
+|The API response indicates that the model is disabled by an administrator.
+|===
+
+[id="understanding-the-error-message_{context}"]
+== Understanding the error message
+
+The "Model is disabled by your administrator" message indicates that an {productname-short} administrator or cluster administrator has intentionally restricted access to this model.
+This is a governance control, not a system error or a temporary outage.
+
+Common reasons for disallow-listing a model include:
+
+* Compliance with organizational security policies
+* Regulatory restrictions on specific model types or providers
+* Intellectual property concerns
+* Internal approval processes that have not yet been completed
+
+[id="impact-on-deployed-models_{context}"]
+== Impact on deployed models
+
+Governance restrictions apply only to the model catalog.
+If you have already deployed a model that is later disallow-listed, your existing deployment continues to function normally.
+Disallow-listing does not stop, remove, or change running model instances.
+
+[id="resolving-access-issues_{context}"]
+== Resolving access issues
+
+If you need access to a disallow-listed model, contact your {productname-short} administrator or cluster administrator.
+Provide the name of the model and the reason that you need access so that the administrator can evaluate your request against the organization's governance policies.
+
+Do not file a support case for disallow-listed models.
+The restriction is an intentional administrative action, not a product defect.
+
+[role="_additional-resources"]
+.Additional resources
+
+* xref:troubleshooting-model-catalog-access_{context}[Troubleshooting model catalog access issues]

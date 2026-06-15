@@ -1,0 +1,74 @@
+:_mod-docs-content-type: PROCEDURE
+
+[id="adding-a-hugging-face-catalog-source_{context}"]
+= Add a Hugging Face organization as a model catalog source
+
+[role='_abstract']
+You can add a Hugging Face organization as a model catalog source to make publicly available models from that organization discoverable in the model catalog.
+Each Hugging Face source connects to a single organization and retrieves its public, non-gated models.
+
+.Prerequisites
+
+* {productname-long} version 3.3 or later is installed.
+* You are logged in to {productname-long}.
+* You have the Cluster Admin or {productname-short} Admin role.
+* Your cluster has network connectivity to huggingface.co.
+
+.Procedure
+
+. Identify the correct organization name for the Hugging Face organization that you want to add.
++
+The organization name must be the case-sensitive URL slug from the Hugging Face website, not the display name.
+To find the correct name, go to the organization's page on huggingface.co and note the path segment in the URL.
++
+For example, for the organization at `huggingface.co/meta-llama`, the correct organization name is `meta-llama`, not the display name "Meta Llama".
+
+. From the {productname-short} dashboard, click *Settings* -> *AI Catalog Settings*.
+. Click *Add catalog source*.
+. In the *Source name* field, enter a descriptive name for the catalog source.
+. In the *Source type* list, select *Hugging Face*.
+. In the *Allowed organization* field, enter the case-sensitive URL slug for the Hugging Face organization.
++
+[IMPORTANT]
+====
+The organization name is case-sensitive and must match the URL slug exactly.
+Using the display name or the wrong case causes the source to return no models.
+====
+. Optional: Configure include or exclude filters to control which models from this organization appear in the catalog.
++
+For Hugging Face sources, use only the model name without an organization prefix.
+For example, use `Llama-3.1-8B`, not `meta-llama/Llama-3.1-8B`.
++
+For more information, see xref:configuring-model-catalog-source-filters_{context}[Configure include and exclude filters for model catalog sources].
+. Optional: In the *Labels* field, enter labels for the catalog source.
+. Click *Save*.
+
+.Limitations
+
+* Each Hugging Face source is limited to one organization.
+To add models from multiple Hugging Face organizations, create a separate source for each organization.
+* Only public, non-gated models are supported for catalog-based deployment.
+Private and gated Hugging Face model support is planned for a future release.
+
+[IMPORTANT]
+====
+In disconnected (air-gapped) environments, Hugging Face sources are not available because they require network connectivity to huggingface.co.
+Use YAML-file sources instead.
+====
+
+.Verification
+
+. From the {productname-short} dashboard, click *Settings* -> *AI Catalog Settings*.
+. Next to the Hugging Face source that you added, click *Preview* to verify that the expected models appear.
+. From the {productname-short} dashboard, click *AI hub* -> *Catalog* and verify that the models from the Hugging Face organization are displayed.
++
+Changes might take a few minutes to appear because catalog sources require syncing model metadata from external services.
+
+[NOTE]
+====
+If the source creation fails or no models appear after saving, verify that the organization name is correct and that your cluster has network connectivity to huggingface.co.
+For more information, see xref:troubleshooting-model-catalog-access_{context}[Troubleshooting model catalog access issues].
+====
+
+//[role="_additional-resources"]
+//.Additional resources

@@ -1,0 +1,282 @@
+:_mod-docs-content-type: PROCEDURE
+
+[id="viewing-file-citation-annotations-in-responses-api-output_{context}"]
+= View file citation annotations in Responses API output
+
+[role="_abstract"]
+When you query ingested content by using the `file_search` tool with the Responses API, Llama Stack returns OpenAI-compatible `file_citation` annotations.
+You can use these annotations to identify the source files used during retrieval and trace generated responses back to their origin documents.
+
+ifndef::upstream[]
+[IMPORTANT]
+====
+ifdef::self-managed[]
+This feature is currently available in {productname-long} {vernum} as a Technology Preview feature.
+endif::[]
+ifdef::cloud-service[]
+This feature is currently available in {productname-long} as a Technology Preview feature.
+endif::[]
+Technology Preview features are not supported with {org-name} production service level agreements (SLAs) and might not be functionally complete.
+{org-name} does not recommend using them in production.
+These features provide early access to upcoming product features, enabling customers to test functionality and provide feedback during the development process.
+
+For more information about the support scope of {org-name} Technology Preview features, see link:https://access.redhat.com/support/offerings/techpreview/[Technology Preview Features Support Scope].
+====
+endif::[]
+
+.Prerequisites
+* You have deployed a Llama Stack server.
+* You have configured at least one inference model.
+* You have created a vector store and ingested content into it.
+* You can successfully run a retrieval-augmented generation (RAG) query by using the `file_search` tool, as described in
+ifdef::upstream[]
+link:{odhdocshome}/working-with-llama-stack/#querying-ingested-content-in-a-llama-model_rag[Querying ingested content in a Llama model].
+endif::[]
+ifndef::upstream[]
+link:{rhoaidocshome}{default-format-url}/working_with_llama_stack/index#querying-ingested-content-in-a-llama-model_rag[Querying ingested content in a Llama model].
+endif::[]
+* You have installed the `openai` Python package version 1.66.0 or later (`pip install 'openai>=1.66.0'`).
+* You have access to a client environment, such as a Jupyter notebook or an OpenAI SDK client, that is correctly configured to send requests to the Llama Stack server.
+
+.Procedure
+. In a Jupyter notebook cell or other configured client environment, run a RAG query by using the `file_search` tool.
++
+This procedure uses the standard OpenAI Python SDK to access annotations because Llama Stack exposes an OpenAI-compatible API.
+The request payload is identical to what you would send to the OpenAI Responses API, so existing OpenAI client code works without modification.
+If you completed the prerequisite RAG query procedure by using the `llama_stack_client` library, you must use the `openai` package instead for this procedure because the `openai` package provides access to the annotation fields in the response.
++
+In the following example, replace the placeholder values with your own values:
++
+[source,python]
+----
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://llama-stack-service:8321/v1",
+    api_key="<your_api_key>",
+)
+
+response = client.responses.create(
+    model="<model_id>",
+    input="<query>",
+    instructions="<system_instructions>",
+    tools=[
+        {
+            "type": "file_search",
+            "vector_store_ids": ["<vector_store_id>"],
+        }
+    ],
+)
+----
++
+where:
++
+`<model_id>`:: Specifies the name of your inference model.
+`<query>`:: Specifies your query text.
+`<system_instructions>`:: Specifies the system instructions for the model.
+`<vector_store_id>`:: Specifies the ID of your vector store.
+`<your_api_key>`:: Specifies your API key.
++
+[NOTE]
+====
+Llama Stack does not enforce API key validation.
+The `api_key` parameter is required by the OpenAI SDK constructor but the value is not used for authentication.
+You can use any non-empty string value.
+
+When you use the OpenAI SDK or send raw HTTP requests to Llama Stack, the `base_url` must include the `/v1` path suffix.
+For example: `\http://llama-stack-service:8321/v1`.
+Using the service endpoint without `/v1` results in request failures.
+====
+
+. Inspect the full response object rather than only the `output_text` property.
++
+When `file_search` is used, the `output` array typically contains a `file_search_call` item followed by a `message` item.
+The annotations are in the `message` item.
++
+[source,python]
+----
+response.output
+----
+
+. Access the `annotations` array from the `message` item in the response output.
++
+The following code iterates over the output items to find the `message` item, which avoids errors when the output array contains additional items such as `file_search_call`.
++
+[source,python]
+----
+message = next(
+    (item for item in response.output if item.type == "message"),
+    None,
+)
+if message is None:
+    print("No message item found in the response output.")
+else:
+    annotations = message.content[0].annotations
+    print(annotations)
+----
++
+If the `file_search` tool does not find matching content in the vector store, the response might not contain a `message` item, or the message might not include annotations.
+Verify that your vector store contains ingested content and that the query is relevant to the stored documents.
+
+. Review the `file_citation` annotation fields.
++
+Example output:
++
+[source,json]
+----
+[
+  {
+    "type": "file_citation",
+    "file_id": "file-57610eaac6364459bfefae60377837b7",
+    "filename": "redbankfinancial_about.pdf",
+    "index": 139
+  }
+]
+----
++
+Each `file_citation` annotation includes the following fields:
++
+`type`:: Always `file_citation`.
+`file_id`:: The identifier of the retrieved file.
+`filename`:: The name of the source file.
+`index`:: The character position in the output text where the citation should be inserted.
+This value corresponds to the position in the generated text, not an index into a list of files.
++
+Multiple annotations can reference the same index position.
+For a complete description of all annotation fields, see xref:file-citation-annotation-reference_{context}[].
+
+. Optional: To view a complete response payload that includes the full annotation structure, inspect the full JSON response.
++
+[source,python]
+----
+import json
+print(json.dumps(response.model_dump(), indent=2))
+----
++
+The response structure follows the OpenAI Responses API schema.
+The following example shows the `message` output item.
+When `file_search` is used, the full `output` array might also contain a `file_search_call` item before the `message` item, which is omitted here for brevity.
++
+[source,json]
+----
+{
+  "id": "resp-abc123",
+  "output": [
+    {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "According to the document, Red Bank Financial...",
+          "annotations": [
+            {
+              "type": "file_citation",
+              "file_id": "file-57610eaac6364459bfefae60377837b7",
+              "filename": "redbankfinancial_about.pdf",
+              "index": 139
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+----
+
+. Optional: To retrieve extended metadata from search results, such as relevance scores, chunk text, and custom attributes, add the `include` parameter to your Responses API request.
++
+File citation annotations contain only the `file_id`, `filename`, and `index` fields.
+To access additional metadata that is available in the search results but not in the annotations, specify `include=["file_search_call.results"]` in your request.
++
+[source,python]
+----
+response = client.responses.create(
+    model="<model_id>",
+    input="<query>",
+    instructions="<system_instructions>",
+    tools=[
+        {
+            "type": "file_search",
+            "vector_store_ids": ["<vector_store_id>"],
+        }
+    ],
+    include=["file_search_call.results"],
+)
+
+# Access the file_search_call output item to inspect search results
+search_call = next(item for item in response.output if item.type == "file_search_call")
+for result in search_call.results:
+    print(f"File: {result.filename}, Score: {result.score}")
+    print(f"Text: {result.text[:200]}")
+    if hasattr(result, "attributes") and result.attributes:
+        print(f"Attributes: {result.attributes}")
+    print("---")
+----
++
+The `include` parameter causes the `file_search_call` output item to contain a `results` array with the full search result metadata, including scores, chunk text, and any custom attributes that were attached during file ingestion.
+
+. Optional: To send a raw HTTP request instead of using the OpenAI Python SDK, use `curl` or any HTTP client that targets the OpenAI-compatible endpoint.
++
+In the following example, replace the placeholder values with your own values:
++
+[source,terminal]
+----
+$ curl -X POST http://llama-stack-service:8321/v1/responses \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <your_api_key>" \
+  -d '{
+    "model": "<model_id>",
+    "input": "<query>",
+    "instructions": "<system_instructions>",
+    "tools": [
+      {
+        "type": "file_search",
+        "vector_store_ids": ["<vector_store_id>"]
+      }
+    ]
+  }'
+----
++
+The response body follows the same JSON structure as the OpenAI Responses API.
+The `output` array contains `file_search_call` and `message` items, and the `message` item includes the `annotations` array with `file_citation` objects.
++
+To retrieve extended search result metadata with `curl`, add `"include": ["file_search_call.results"]` to the JSON request body:
++
+[source,terminal]
+----
+$ curl -X POST http://llama-stack-service:8321/v1/responses \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <your_api_key>" \
+  -d '{
+    "model": "<model_id>",
+    "input": "<query>",
+    "instructions": "<system_instructions>",
+    "tools": [
+      {
+        "type": "file_search",
+        "vector_store_ids": ["<vector_store_id>"]
+      }
+    ],
+    "include": ["file_search_call.results"]
+  }'
+----
++
+[NOTE]
+====
+Llama Stack does not validate the `Authorization` header value.
+The `Bearer` token in the curl example is included for compatibility with the OpenAI API format, but any non-empty string value is accepted.
+====
+
+[NOTE]
+====
+The accuracy and consistency of citation annotations depend on the capabilities of the underlying language model.
+Smaller or less capable models might produce less precise attributions, even when retrieval is functioning correctly.
+If citation results are incomplete or inconsistent, verify the model configuration and consider using a larger or more capable model.
+====
+
+.Verification
+
+* The response includes an `annotations` array under `output[].content[]`.
+* Each annotation has `"type": "file_citation"`.
+* The `file_id` and `filename` correspond to files stored in the specified vector store.

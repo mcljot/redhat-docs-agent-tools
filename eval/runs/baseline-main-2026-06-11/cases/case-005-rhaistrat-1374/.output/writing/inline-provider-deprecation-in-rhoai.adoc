@@ -1,0 +1,107 @@
+:_mod-docs-content-type: CONCEPT
+
+[id="inline-provider-deprecation-in-rhoai_{context}"]
+= Inline provider deprecation in {productname-short}
+
+[role="_abstract"]
+Starting with {productname-short} 3.5, several inline providers are removed from the default Llama Stack runtime configuration.
+You must update your Llama Stack deployments to use remote provider alternatives for production workloads.
+If you need inline providers for development or testing, you can re-enable them by supplying a custom `config.yaml` at runtime.
+
+[id="what-changed-in-inline-providers_{context}"]
+== What changed
+
+The following inline providers are removed from the default runtime `config.yaml` in {productname-short} 3.5:
+
+* `inline::sentence-transformers` (inference and embeddings)
+* `inline::milvus` (vector storage)
+* `inline::faiss` (vector storage)
+
+These providers are now classified as _dependency-only_ providers.
+Their Python packages remain pre-installed in the container image, but the providers are not included in the default runtime configuration that the Llama Stack server loads at startup.
+
+[NOTE]
+====
+The `inline::localfs` provider is *not* affected by this change.
+It remains enabled by default because the `inline::file-search` tool runtime depends on it.
+====
+
+[id="why-inline-providers-are-removed_{context}"]
+== Why inline providers are removed from the default configuration
+
+Inline providers run computations directly inside the Llama Stack container process.
+While convenient for quick prototyping, inline providers are not suitable for production deployments for the following reasons:
+
+* *Resource contention*: Inline inference and vector storage compete for CPU, memory, and GPU resources with the Llama Stack server process.
+* *Scalability limitations*: Remote providers such as `remote::vllm` and `remote::milvus` are designed for horizontal scaling and production-grade reliability. Inline providers do not scale beyond the single container.
+* *Multi-worker incompatibility*: The `inline::milvus` provider uses a local database file that cannot be shared across worker processes, making it incompatible with multi-worker deployments.
+
+Removing inline providers from the default configuration enforces a clear separation between production-ready and development-only provider options.
+
+[id="phased-deprecation-plan_{context}"]
+== Phased deprecation plan
+
+The removal of inline providers follows a two-phase plan:
+
+*Phase 1 ({productname-short} 3.5)*::
+The inline providers are removed from the default runtime `config.yaml`.
+Their Python dependencies remain pre-installed in the container image.
+You can re-enable them by supplying a custom `config.yaml` at runtime.
+
+*Phase 2 (future release)*::
+The Python dependencies for the inline providers will be removed from the container image entirely.
+After this phase, inline providers will no longer be usable, even with a custom `config.yaml`.
+
+Plan your migration to remote provider alternatives before Phase 2 takes effect.
+
+[id="environment-variable-toggles_{context}"]
+== Environment variable toggles no longer function
+
+In earlier releases of {productname-short}, you could enable inline providers by setting environment variables on the `LlamaStackDistribution` custom resource:
+
+* `ENABLE_SENTENCE_TRANSFORMERS`
+* `ENABLE_INLINE_MILVUS`
+* `ENABLE_FAISS`
+
+These environment variable toggles are no longer functional in {productname-short} 3.5.
+Setting these variables has no effect on the Llama Stack server configuration.
+
+If your deployment uses any of these environment variables, you must either migrate to remote providers or supply a custom `config.yaml` to re-enable the inline providers.
+
+[id="remote-provider-alternatives_{context}"]
+== Remote provider alternatives
+
+For production deployments, use the following remote providers as replacements for the removed inline providers:
+
+.Remote provider alternatives
+[cols="1,1,2", options="header"]
+|===
+|Removed inline provider |Remote alternative |Description
+
+|`inline::sentence-transformers`
+|`remote::vllm`
+|Deploy an embedding model with vLLM and set the `VLLM_EMBEDDING_URL` environment variable.
+
+|`inline::milvus`
+|`remote::milvus`
+|Deploy an external Milvus service and set the `MILVUS_ENDPOINT` environment variable.
+
+|`inline::faiss`
+|`remote::pgvector` or `remote::qdrant`
+|Deploy a PostgreSQL instance with the pgvector extension, or deploy a Qdrant vector database.
+|===
+
+[id="impact-on-disconnected-environments_{context}"]
+== Impact on disconnected environments
+
+Disconnected environments that cannot reach external remote provider endpoints are most affected by this change.
+If your deployment operates in a disconnected environment and relied on inline providers, supply a custom `config.yaml` to re-enable the dependency-only inline providers.
+Use this workaround until remote provider endpoints are available within your network.
+
+[role="_additional-resources"]
+.Additional resources
+* xref:understanding-the-llama-stack-build-and-runtime-configuration_{context}[Understanding the Llama Stack build and runtime configuration]
+* xref:re-enabling-dependency-only-providers-with-a-custom-config-yaml_{context}[Re-enable dependency-only providers with a custom config.yaml]
+* xref:migrating-from-inline-to-remote-providers_{context}[Migrate from inline providers to remote provider alternatives]
+* xref:llama-stack-provider-support_{context}[Llama Stack API provider support]
+* xref:dependency-only-providers-reference_{context}[Dependency-only providers reference]
