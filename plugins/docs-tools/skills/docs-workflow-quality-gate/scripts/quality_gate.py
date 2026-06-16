@@ -61,7 +61,8 @@ matches the target audience, stays within scope
 Consider:
 - **Scope match**: does the output address what the ticket asked for, not more, not less?
 - **Acceptance criteria coverage**: are the specific deliverables listed in the ticket addressed?
-- **Audience alignment**: does the content match the target audience (admin vs developer vs data scientist)?
+- **Audience alignment**: does the content match the target audience \
+(admin vs developer vs data scientist)?
 - **Focus**: does the output stay on-topic or wander into areas outside the ticket's scope?
 
 For each missed or incomplete acceptance criteria item, identify the specific file and \
