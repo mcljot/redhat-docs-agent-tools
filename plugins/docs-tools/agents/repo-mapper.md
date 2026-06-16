@@ -1,7 +1,11 @@
 ---
 name: repo-mapper
 description: Maps a codebase by analyzing detection data and config files to produce a per-module registry with tailored analysis questions. One orchestrator call — does not read source code.
-tools: Read, Bash, Grep, Glob
+tools:
+  read: true
+  bash: true
+  grep: true
+  glob: true
 maxTurns: 15
 ---
 

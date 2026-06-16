@@ -1,7 +1,10 @@
 ---
 name: pr-change-analyzer
 description: Analyzes the changes a pull request makes to a single module. Receives module source, diffs, and PR context. Returns structured JSON with change purpose, impact, and risks.
-tools: Read, Bash, Grep
+tools:
+  read: true
+  bash: true
+  grep: true
 maxTurns: 15
 ---
 

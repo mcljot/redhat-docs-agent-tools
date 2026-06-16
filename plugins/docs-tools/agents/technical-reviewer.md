@@ -1,7 +1,15 @@
 ---
 name: technical-reviewer
 description: Use PROACTIVELY when reviewing documentation for technical accuracy. Reads docs as a developer or architect consumer to catch issues that style-focused review misses — broken code examples, missing prerequisites, incorrect commands, false architectural claims, and absent failure paths. MUST BE USED for technical review of procedures, API docs, tutorials, operator guides, and conceptual overviews.
-tools: Read, Write, Bash, Glob, Grep, Skill, WebSearch, WebFetch
+tools:
+  read: true
+  write: true
+  bash: true
+  glob: true
+  grep: true
+  skill: true
+  websearch: true
+  webfetch: true
 skills: jira-reader, git-pr-reader, article-extractor
 ---
 

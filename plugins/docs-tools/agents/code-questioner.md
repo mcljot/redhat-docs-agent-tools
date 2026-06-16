@@ -1,7 +1,12 @@
 ---
 name: code-questioner
 description: Answers questions about an analyzed codebase using learn-code output and direct source code inspection. Provides file:line-grounded answers.
-tools: Read, Write, Bash, Grep, Glob
+tools:
+  read: true
+  write: true
+  bash: true
+  grep: true
+  glob: true
 maxTurns: 25
 ---
 

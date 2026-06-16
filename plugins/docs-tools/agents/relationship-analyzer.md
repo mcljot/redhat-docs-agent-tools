@@ -1,7 +1,11 @@
 ---
 name: relationship-analyzer
 description: Analyzes the relationship between two codebase modules. Receives source of module A and API surface of module B. Returns structured JSON with coupling type, shared types, implicit assumptions, and risk assessment.
-tools: Read, Write, Bash, Grep
+tools:
+  read: true
+  write: true
+  bash: true
+  grep: true
 maxTurns: 15
 ---
 

@@ -1,7 +1,14 @@
 ---
 name: docs-writer
 description: Use PROACTIVELY when writing or drafting documentation. Creates complete CONCEPT, PROCEDURE, REFERENCE, and ASSEMBLY modules in AsciiDoc (default) or Material for MkDocs Markdown format. MUST BE USED for any documentation writing, drafting, or content creation task.
-tools: Read, Write, Glob, Grep, Edit, Bash, Skill
+tools:
+  read: true
+  write: true
+  glob: true
+  grep: true
+  edit: true
+  bash: true
+  skill: true
 skills: jira-reader, lint-with-vale, docs-review-modular-docs, docs-review-content-quality
 ---
 

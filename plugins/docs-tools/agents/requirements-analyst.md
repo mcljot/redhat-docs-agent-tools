@@ -1,7 +1,14 @@
 ---
 name: requirements-analyst
 description: Deep analysis agent for a single documentation requirement. Receives one requirement skeleton from the discovery pass, fetches detailed source content (JIRA, PRs, specs), performs web search expansion, and returns structured JSON with full requirement details including acceptance criteria and references.
-tools: Read, Write, Glob, Grep, Bash, WebSearch, WebFetch
+tools:
+  read: true
+  write: true
+  glob: true
+  grep: true
+  bash: true
+  websearch: true
+  webfetch: true
 maxTurns: 40
 ---
 

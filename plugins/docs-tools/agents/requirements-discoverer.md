@@ -1,7 +1,11 @@
 ---
 name: requirements-discoverer
 description: Lightweight discovery agent for requirements analysis pass 1. Performs JIRA traversal, PR listing, and spec identification to produce a structured JSON skeleton of requirements. Does NOT perform deep analysis, web search expansion, or acceptance criteria writing — those belong to the per-requirement deep analysis pass.
-tools: Bash, WebFetch, Read, Write
+tools:
+  bash: true
+  webfetch: true
+  read: true
+  write: true
 maxTurns: 20
 ---
 

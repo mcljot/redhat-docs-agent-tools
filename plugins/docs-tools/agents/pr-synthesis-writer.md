@@ -1,7 +1,9 @@
 ---
 name: pr-synthesis-writer
 description: Combines PR metadata, repo overview, and per-module change analyses to produce a PR-ANALYSIS.md document.
-tools: Read, Write
+tools:
+  read: true
+  write: true
 maxTurns: 10
 ---
 
