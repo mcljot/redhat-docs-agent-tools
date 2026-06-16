@@ -310,7 +310,7 @@ Use the `title` value from the script's JSON output to write the sidecar to `<OU
   "ticket": "<TICKET>",
   "completed_at": "<current ISO 8601 timestamp>",
   "title": "<first heading, max 80 chars>",
-  "requirement_count": "<count from step 4 discovery parse>"
+  "requirement_count": 8
 }
 ```
 
