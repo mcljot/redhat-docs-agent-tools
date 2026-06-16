@@ -1,9 +1,7 @@
 ---
 name: synthesis-writer
 description: Combines all module summaries and relationship data to produce the final ONBOARDING.md onboarding guide. One synthesis call.
-tools:
-  read: true
-  write: true
+tools: Read, Write
 maxTurns: 10
 ---
 

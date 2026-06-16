@@ -1,11 +1,7 @@
 ---
 name: pr-repo-summarizer
 description: Produces a brief overview of a repository's purpose and architecture. Used when no prior learn-code analysis exists.
-tools:
-  read: true
-  bash: true
-  grep: true
-  glob: true
+tools: Read, Bash, Grep, Glob
 maxTurns: 10
 ---
 

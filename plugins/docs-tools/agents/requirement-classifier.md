@@ -1,11 +1,7 @@
 ---
 name: requirement-classifier
 description: Classifies a single documentation requirement by code evidence status. Receives learn-code analysis context, searches source code with Read/Grep for evidence, and returns structured JSON classification with gap analysis.
-tools:
-  read: true
-  write: true
-  grep: true
-  glob: true
+tools: Read, Write, Grep, Glob
 maxTurns: 20
 ---
 
