@@ -1,7 +1,7 @@
 ---
 context: fork
 name: rh-ssg-legal-and-support
-description: Review Red Hat documentation for SSG legal and support compliance — no cost/pricing references, no future release promises, Developer Preview requirements (IMPORTANT admonition, no "supported"), and Technology Preview requirements (IMPORTANT admonition, never "Tech Preview" or "Technical Preview", no "supported as a Technology Preview"). Use this skill when checking Red Hat docs for Technology Preview, Developer Preview, TP/DP admonitions, cost language, future release statements, or support scope compliance. Takes precedence over ibm-sg-legal-information for Red Hat content.
+description: Review Red Hat documentation for SSG legal and support compliance — no cost/pricing references, no future release promises, Developer Preview requirements and Technology Preview requirements. Use this skill when checking Red Hat docs for Technology Preview, Developer Preview, TP/DP admonitions, cost language, future release statements, or support scope compliance. Takes precedence over ibm-sg-legal-information for Red Hat content.
 ---
 
 # Red Hat SSG: Legal and Support review skill
