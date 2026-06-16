@@ -9,7 +9,7 @@ allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, AskUserQuestion
 
 # Docs Orchestrator
 
-**When the user invokes `/docs-orchestrator` or `/docs-tools:docs-orchestrator`, run THIS skill directly. Do NOT redirect to `docs-workflow-start` or any other skill.**
+**When the user invokes `/docs-orchestrator`, run THIS skill directly. Do NOT redirect to `docs-workflow-start` or any other skill.**
 
 Claude is the orchestrator. The YAML is a step list. The hook is a safety net.
 
@@ -182,7 +182,7 @@ Steps declare their inputs as a list of upstream step names in the YAML:
   inputs: [planning]
 
 - name: create-merge-request
-  skill: docs-tools:docs-workflow-create-merge-request
+  skill: docs-workflow-create-merge-request
   when: create_merge_request
   inputs: [writing, style-review, technical-review]
 ```
@@ -522,7 +522,7 @@ The technical review step runs in a loop until confidence is acceptable or three
    - If severity counts are unavailable, or either `critical > 0` or `significant > 0` → continue to step 5 for iteration
 5. If `MEDIUM` (with fixable issues) or `LOW` and fewer than 3 iterations completed → run the fix skill:
    ```
-   Skill: docs-tools:docs-workflow-writing, args: "<ticket> --base-path <base_path> [--repo <repo_path>]... --fix-from <base_path>/technical-review/review.md"
+   Skill: docs-workflow-writing, args: "<ticket> --base-path <base_path> [--repo <repo_path>]... --fix-from <base_path>/technical-review/review.md"
    ```
    Pass `--repo` for the primary source repo and each additional source (same as the writing step's initial invocation) so the fix agent can verify review findings against source code.
    Then re-run the reviewer (go to step 1)

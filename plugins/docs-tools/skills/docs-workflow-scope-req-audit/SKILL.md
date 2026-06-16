@@ -162,7 +162,7 @@ For each requirement, use:
 
 ```
 Agent:
-  subagent_type: docs-tools:requirement-classifier
+  subagent_type: requirement-classifier
   description: "Classify REQ-NNN: <title truncated to 40 chars>"
   prompt: |
     Classify this requirement by code evidence status.
