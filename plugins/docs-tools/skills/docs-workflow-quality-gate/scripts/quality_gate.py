@@ -211,8 +211,7 @@ def write_results(output_dir, ticket, doc_quality_result, intent_result, gaps, i
         md_lines.append("\n## Identified Gaps\n")
         for g in gaps:
             md_lines.append(
-                f"- **{g['ac_item']}** — evidence: {g['evidence_status']}, "
-                f"action: {g['action']}"
+                f"- **{g['ac_item']}** — evidence: {g['evidence_status']}, action: {g['action']}"
             )
 
     (output_dir / "judge-results.md").write_text("\n".join(md_lines))
@@ -231,14 +230,17 @@ def cmd_prepare(args):
 
     dq_prompt = DOC_QUALITY_PROMPT.format(doc_content=doc_content)
     ia_prompt = INTENT_ALIGNMENT_PROMPT.format(
-        ticket_context=ticket_context, doc_content=doc_content,
+        ticket_context=ticket_context,
+        doc_content=doc_content,
     )
 
     (output_dir / "dq-prompt.md").write_text(dq_prompt)
     (output_dir / "ia-prompt.md").write_text(ia_prompt)
 
-    result = {"dq_prompt": str(output_dir / "dq-prompt.md"),
-              "ia_prompt": str(output_dir / "ia-prompt.md")}
+    result = {
+        "dq_prompt": str(output_dir / "dq-prompt.md"),
+        "ia_prompt": str(output_dir / "ia-prompt.md"),
+    }
     json.dump(result, sys.stdout, indent=2)
     print()
 
@@ -258,7 +260,12 @@ def cmd_classify(args):
     gaps = classify_gaps(missed_items, evidence_status)
 
     sidecar = write_results(
-        output_dir, args.ticket, dq_result, ia_result, gaps, args.iteration,
+        output_dir,
+        args.ticket,
+        dq_result,
+        ia_result,
+        gaps,
+        args.iteration,
     )
 
     json.dump(sidecar, sys.stdout, indent=2)
@@ -276,8 +283,11 @@ def main():
     classify = subparsers.add_parser("classify", help="Classify judge results")
     classify.add_argument("--ticket", required=True)
     classify.add_argument("--base-path", required=True)
-    classify.add_argument("--judge-results", required=True,
-                          help="Path to JSON file with doc_quality and intent_alignment results")
+    classify.add_argument(
+        "--judge-results",
+        required=True,
+        help="Path to JSON file with doc_quality and intent_alignment results",
+    )
     classify.add_argument("--iteration", type=int, default=1)
 
     args = parser.parse_args()
