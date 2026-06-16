@@ -161,6 +161,7 @@ Read the YAML file and extract the ordered step list. Each step has: `name`, `sk
   - If a source repo was already resolved pre-flight (via `--source-code-repo`, `--pr`, or `source.yaml`) → step runs normally (`pending`)
   - If no source is resolved yet but post-requirements discovery is possible (case 4 above) → mark the step `deferred` (not `skipped`). The orchestrator re-evaluates after requirements completes
   - After post-requirements resolution: `deferred` steps become `pending` (source found) or the workflow stops (see [No source found](#3-no-source-found))
+- `when: has_many_requirements` → deferred until the `requirements` step completes. Evaluated using `requirement_count` from the requirements sidecar (see [`when: has_many_requirements` condition](#when-has_many_requirements-condition))
 - Steps with no `when` always run
 - Steps that don't meet their `when` condition and cannot be deferred are marked `skipped` in the progress file
 
@@ -448,6 +449,8 @@ After each step completes, apply the rules below. When rules reference sidecar f
 
 **requirements**
 - Log the `title` field: `"Requirements extracted: <title>"`
+- Record `requirement_count` from the sidecar. Log: `"Requirements: <requirement_count> requirements discovered"`
+- Evaluate `when: has_many_requirements` for any deferred steps (see [`when: has_many_requirements` condition](#when-has_many_requirements-condition))
 - If `options.source` is `null` → run [Post-requirements source resolution](#post-requirements-source-resolution). This may change `deferred` steps to `pending` or `skipped`
 
 **code-analysis**
@@ -471,6 +474,9 @@ After each step completes, apply the rules below. When rules reference sidecar f
 
 **writing**
 - If `result.files` is empty or missing, **warn**: `"Writing step produced no files."` Mark the `create-merge-request` step as `skipped` with `skip_reason: "no_files"` and record `result.commit_sha: null`, `result.branch: null`, `result.pushed: false`, `result.url: null`, `result.action: "skipped"`, `result.platform: "unknown"`, `result.skipped: true`. Log: `"Skipping create-merge-request: no files to commit."`
+
+**technical-review**
+- After the [Technical review iteration](#technical-review-iteration) loop completes, re-evaluate `when: has_many_requirements` Phase 2 for the quality-gate step (see [`when: has_many_requirements` condition](#when-has_many_requirements-condition))
 
 **create-merge-request**
 - Record `result.url`, `result.pushed`, and `result.branch`. If `result.pushed` is false and `result.skipped` is false, log warning: `"create-merge-request: branch was not pushed."` If `result.url` is present, record it for the [Completion](#completion) summary
@@ -554,6 +560,31 @@ The quality gate step runs in a loop until scores are acceptable or two iteratio
 5. After 2 iterations with `intent_alignment` still below 4:
    - If `intent_alignment >= 3` → accept with warning: "Quality gate marginal (intent_alignment=N). Manual review recommended."
    - If `intent_alignment < 3` → ask the user whether to proceed or stop
+
+### `when: has_many_requirements` condition
+
+The `quality-gate` step uses `when: has_many_requirements`. This condition is evaluated in two phases:
+
+**Phase 1 — After requirements step completes (initial evaluation):**
+
+- Read `requirement_count` from `steps.requirements.result` in the progress file
+- If `requirement_count < 6` → condition is not met, mark the step as `skipped` with `skip_reason: "few_requirements"`. Log: `"Skipping quality-gate: <requirement_count> requirements (threshold: 6)"`
+- If `requirement_count >= 6` → mark as `deferred`. The gate is provisionally needed but the tech-review result may change that (see Phase 2)
+- If `requirement_count` is missing from the sidecar (backward compatibility) → treat as `deferred`. Log a warning: `"requirement_count missing from requirements sidecar — defaulting to quality-gate enabled"`
+
+**Phase 2 — After technical-review step completes (re-evaluation):**
+
+- If the step was already `skipped` in Phase 1, no change
+- Read `confidence` from `steps.technical-review.result`
+- If `confidence` is `HIGH` → the tech review validated all claims against source code, indicating strong requirements comprehension by the writer. Intent drift is unlikely. Mark quality-gate as `skipped` with `skip_reason: "high_confidence_review"`. Log: `"Skipping quality-gate: technical review reached HIGH confidence"`
+- If `confidence` is `MEDIUM` or `LOW` → condition is met, mark as `pending`. The tech review could not fully validate the writing, so an independent intent-alignment check adds value
+- If technical-review was `skipped` → condition is met, mark as `pending` (no confidence signal available)
+
+**Rationale:** The quality gate checks intent alignment — "did we write what was asked for?" — which is orthogonal to the tech review's accuracy check. However, both accuracy and completeness tend to follow from the same upstream quality: clear requirements, good code-analysis, and strong writer comprehension. When the tech review reaches HIGH, it signals that the writer had a solid grasp of the material, making coverage gaps less likely. Combining the requirement-count threshold (complexity filter) with the confidence signal (quality filter) skips the gate only when both indicators suggest it is unlikely to find gaps.
+
+The threshold and confidence logic can be overridden by using a custom workflow YAML that either always includes or always excludes quality-gate.
+
+When quality-gate is skipped, also mark `resolve-feedback` as `skipped` (it depends on quality-gate output).
 
 ### `when: has_feedback` condition
 
