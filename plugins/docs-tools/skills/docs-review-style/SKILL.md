@@ -157,10 +157,7 @@ fi
 ### For --local mode
 
 ```bash
-git diff --name-only "$BASE_BRANCH"...HEAD > /tmp/docs-review-all-files.txt
-git diff --name-only HEAD >> /tmp/docs-review-all-files.txt
-git diff --name-only --cached >> /tmp/docs-review-all-files.txt
-sort -u /tmp/docs-review-all-files.txt | grep -E '\.(adoc|md)$' > /tmp/docs-review-doc-files.txt || true
+git diff --name-only "$BASE_BRANCH"...HEAD | sort -u | grep -E '\.(adoc|md)$' > /tmp/docs-review-doc-files.txt || true
 DOC_FILES=$(wc -l < /tmp/docs-review-doc-files.txt)
 ```
 
@@ -225,19 +222,19 @@ For `--pr` mode, use `python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts
 
 ### Agent 1: Style guide compliance (batch A)
 
-- `subagent_type`: `docs-tools:docs-reviewer`
+- `subagent_type`: `docs-reviewer`
 
 Focus on: `ibm-sg-language-and-grammar`, `ibm-sg-punctuation`, `ibm-sg-structure-and-format`, `ibm-sg-technical-elements`, `rh-ssg-grammar-and-language`, `rh-ssg-formatting`, `rh-ssg-structure`, `rh-ssg-technical-examples`
 
 ### Agent 2: Style guide compliance (batch B)
 
-- `subagent_type`: `docs-tools:docs-reviewer`
+- `subagent_type`: `docs-reviewer`
 
 Focus on: `ibm-sg-audience-and-medium`, `ibm-sg-numbers-and-measurement`, `ibm-sg-references`, `ibm-sg-legal-information`, `rh-ssg-gui-and-links`, `rh-ssg-legal-and-support`, `rh-ssg-accessibility`, `rh-ssg-release-notes`
 
 ### Agent 3: Modular docs structure and content quality
 
-- `subagent_type`: `docs-tools:docs-reviewer`
+- `subagent_type`: `docs-reviewer`
 
 Focus on: `docs-review-modular-docs`, `docs-review-content-quality`. Run Vale once per file if available.
 

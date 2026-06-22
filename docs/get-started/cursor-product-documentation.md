@@ -55,7 +55,7 @@ Clone both repositories into sub-directories below a shared parent directory.
 ```bash
 mkdir -p ~/repos && cd ~/repos
 git clone https://github.com/your-org/my-product-docs.git
-git clone https://github.com/redhat-documentation/redhat-docs-agent-tools.git
+git clone https://gitlab.cee.redhat.com/aireilly/redhat-docs-agent-tools.git
 ```
 
 ### Open a multi-root workspace
@@ -65,7 +65,7 @@ Open a **multi-root** workspace in Cursor so both clones appear in the sidebar. 
 ### Attach files and write a prompt
 
 1. Open a file from your docs repository in the editor.
-1. Add [AGENTS.md](https://github.com/redhat-documentation/redhat-docs-agent-tools/blob/main/AGENTS.md) from the **redhat-docs-agent-tools** root (next to `plugins/`, not from your product tree) to the chat using the method described in the Cursor documentation for file context.
+1. Add [AGENTS.md](https://gitlab.cee.redhat.com/aireilly/redhat-docs-agent-tools/-/blob/main/AGENTS.md) from the **redhat-docs-agent-tools** root (next to `plugins/`, not from your product tree) to the chat using the method described in the Cursor documentation for file context.
 1. Add the skill file you need (for example `plugins/docs-tools/skills/rh-ssg-formatting/SKILL.md`).
 1. Write your prompt with the `plugin:skill` name and paths relative to your docs repository root.
 
@@ -81,7 +81,7 @@ Task: Apply docs-tools:rh-ssg-formatting to modules/install/overview.adoc only.
 List concrete issues first, then propose minimal edits. Do not change other modules.
 ```
 
-Expect the Cursor agent to provide its findings followed by proposed edits for the paths you named. To find skill names and descriptions, browse **`plugins/<plugin>/skills/`** in the Agent Tools clone, or open the **Browse plugins** section on the [published site](https://redhat-documentation.github.io/redhat-docs-agent-tools/) **Overview** or run `make update` locally and read **`docs/plugins.md`**.
+Expect the Cursor agent to provide its findings followed by proposed edits for the paths you named. To find skill names and descriptions, browse **`plugins/<plugin>/skills/`** in the Agent Tools clone, or open the **Browse plugins** section on the [published site](https://aireilly.gitlab.cee.redhat.com/redhat-docs-agent-tools/) **Overview** or run `make update` locally and read **`docs/plugins.md`**.
 
 ## Privacy
 

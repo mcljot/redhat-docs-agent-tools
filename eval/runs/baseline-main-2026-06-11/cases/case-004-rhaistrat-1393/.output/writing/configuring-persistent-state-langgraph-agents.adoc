@@ -1,0 +1,252 @@
+:_mod-docs-content-type: PROCEDURE
+
+[id="configuring-persistent-state-langgraph-agents_{context}"]
+= Configure persistent state for LangGraph agents on {productname-short}
+
+[role="_abstract"]
+You can configure persistent state for a LangGraph agent running on {productname-long} so that conversation history and agent checkpoints survive pod restarts and scaling events.
+By transitioning from local in-memory or SQLite storage to PostgreSQL, you ensure that your agent retains context across the full pod lifecycle.
+
+.Prerequisites
+
+* A LangGraph agent is deployed to {productname-short}. See xref:deploying-langgraph-agent-to-rhoai_{context}[Deploy a LangGraph agent from local development to {productname-short}].
+* A PostgreSQL 14 or later instance is accessible from the agent pod. See xref:configuring-postgresql-langgraph-agent-state_{context}[Configure PostgreSQL for LangGraph agent state persistence].
+* You have the PostgreSQL connection credentials (host, port, database name, username, and password).
+* You are logged in to the {openshift-platform} cluster with the {openshift-cli} (`oc`).
+
+.Procedure
+
+. Identify the current local state backend in your agent application.
++
+Check your `run.yaml` file for the `providers.agents` section.
+A local development configuration typically uses SQLite:
++
+[source,yaml]
+----
+providers:
+  agents:
+  - provider_id: meta-reference
+    provider_type: inline::meta-reference
+    config:
+      persistence_store:
+        type: sqlite
+        db_path: ${env.SQLITE_STORE_DIR:=~/.llama/distributions/custom}/agents_store.db
+      responses_store:
+        type: sqlite
+        db_path: ${env.SQLITE_STORE_DIR:=~/.llama/distributions/custom}/responses_store.db
+----
++
+Also check your agent application code for the checkpointer class.
+Local development typically uses `MemorySaver`:
++
+[source,python]
+----
+from langgraph.checkpoint.memory import MemorySaver
+checkpointer = MemorySaver()  # Local development only -- do not use in production
+----
+
+. Update the Llama Stack `run.yaml` to use PostgreSQL for agent metadata storage.
++
+Replace the `persistence_store` and `responses_store` sections with PostgreSQL configuration:
++
+[source,yaml]
+----
+providers:
+  agents:
+  - provider_id: meta-reference
+    provider_type: inline::meta-reference
+    config:
+      persistence_store:
+        type: postgres
+        host: ${env.POSTGRES_HOST}
+        port: ${env.POSTGRES_PORT:=5432}
+        db: ${env.POSTGRES_DB}
+        user: ${env.POSTGRES_USER}
+        password: ${env.POSTGRES_PASSWORD}
+      responses_store:
+        type: postgres
+        host: ${env.POSTGRES_HOST}
+        port: ${env.POSTGRES_PORT:=5432}
+        db: ${env.POSTGRES_DB}
+        user: ${env.POSTGRES_USER}
+        password: ${env.POSTGRES_PASSWORD}
+----
+
+. Update the LangGraph checkpointer in your agent application code.
++
+Replace the `MemorySaver` checkpointer with `PostgresSaver` to persist graph checkpoints in PostgreSQL.
++
+Install version 2.0 or later of the `langgraph-checkpoint-postgres` package:
++
+[source,terminal]
+----
+$ uv add langgraph-checkpoint-postgres
+----
++
+Alternatively, if your project does not use `uv`, install the package with `pip`:
++
+[source,terminal]
+----
+$ pip install langgraph-checkpoint-postgres
+----
++
+Update your agent application code to use the `PostgresSaver` class with the context manager pattern:
++
+[source,python]
+----
+from langgraph.checkpoint.postgres import PostgresSaver
+
+conn_string = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+
+with PostgresSaver.from_conn_string(conn_string) as checkpointer:
+    checkpointer.setup()
+    graph = workflow.compile(checkpointer=checkpointer)
+----
++
+The `with` statement ensures that the underlying database connection is properly closed when the block exits.
+Without the context manager, database connections are leaked on each initialization, which can exhaust the PostgreSQL connection pool in long-running agent processes.
++
+The `setup()` method creates checkpoint tables if they do not already exist.
+It is safe to call on every application startup.
+The PostgreSQL user must have `CREATE TABLE` privileges on the target database.
++
+For high-concurrency production deployments, consider using `psycopg_pool.ConnectionPool` to manage database connections instead of a single connection.
+See the link:https://langchain-ai.github.io/langgraph/concepts/persistence/[LangGraph persistence documentation] for connection pooling patterns.
++
+[NOTE]
+====
+If you prefer Redis for checkpoint storage, install `langgraph-checkpoint-redis` and use the `RedisSaver` class instead.
+Redis provides lower latency for high-throughput workloads but does not replace the Llama Stack metadata store, which still requires PostgreSQL.
+====
+
+. Set the PostgreSQL connection environment variables in the Helm values file.
++
+Add the PostgreSQL connection parameters to the `env` section of your Helm `values.yaml`:
++
+[source,yaml]
+----
+env:
+  POSTGRES_HOST: "<postgres_host>"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "<postgres_database>"
+  POSTGRES_USER: "<postgres_user>"
+  POSTGRES_PASSWORD: "<postgres_password>"
+----
++
+--
+Where:
+
+`<postgres_host>`:: Specifies the hostname or Kubernetes service URL of the PostgreSQL instance. If you deployed PostgreSQL by using the preceding procedure, use `postgresql.<postgres_namespace>.svc.cluster.local`, where `<postgres_namespace>` is the namespace of the PostgreSQL deployment.
+`<postgres_database>`:: Specifies the name of the database created for agent state storage.
+`<postgres_user>`:: Specifies the PostgreSQL user with read and write access to the database.
+`<postgres_password>`:: Specifies the password for the PostgreSQL user.
+--
++
+[IMPORTANT]
+====
+The plain text credentials shown here are suitable for development only.
+For production deployments, store database credentials in a Kubernetes `Secret` and reference them in your Helm values by using `valueFrom.secretKeyRef`.
+Do not commit plain text passwords to source control.
+
+The following example shows the production-safe pattern by using `valueFrom.secretKeyRef`:
+
+[source,yaml]
+----
+env:
+  - name: POSTGRES_HOST
+    value: "<postgres_host>"
+  - name: POSTGRES_PORT
+    value: "5432"
+  - name: POSTGRES_DB
+    valueFrom:
+      secretKeyRef:
+        name: postgresql-credentials
+        key: POSTGRESQL_DATABASE
+  - name: POSTGRES_USER
+    valueFrom:
+      secretKeyRef:
+        name: postgresql-credentials
+        key: POSTGRESQL_USER
+  - name: POSTGRES_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: postgresql-credentials
+        key: POSTGRESQL_PASSWORD
+----
+
+The `react_with_database_memory` agent variant in the agentic starter kits also demonstrates this pattern.
+====
+
+. Redeploy the agent with the updated configuration.
++
+[source,terminal]
+----
+$ helm upgrade <release_name> charts/agent/ -f my-values.yaml -n <namespace>
+----
++
+--
+Where:
+
+`<release_name>`:: Specifies the Helm release name for your agent deployment.
+`<namespace>`:: Specifies the OpenShift project where the agent is deployed.
+--
+
+.Verification
+
+. Verify that the agent pod starts successfully with the new configuration:
++
+[source,terminal]
+----
+$ oc get pods -n <namespace> -l app=<release_name>
+----
+
+. Send a test request to the agent to create a conversation and note the returned `thread_id` or submission ID:
++
+[source,terminal]
+----
+$ curl -X POST http://<agent_route>/submit-question \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "question=What is the Apache 2.0 license?"
+----
++
+Record the `thread_id` value from the response.
++
+[NOTE]
+====
+The `/submit-question` and `/get-response` endpoints are specific to the agentic starter kits.
+If you built a custom agent application, substitute your application's equivalent endpoints.
+====
+
+. Restart the agent pod to simulate a pod lifecycle event:
++
+[source,terminal]
+----
+$ oc delete pod -n <namespace> -l app=<release_name>
+----
++
+Wait for the new pod to reach `Running` status.
+
+. Send a follow-up request using the same `thread_id` from step 2 to verify that conversation state persisted:
++
+[source,terminal]
+----
+$ curl -X POST http://<agent_route>/submit-question \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "question=Can you summarize what we discussed?" \
+  -d "thread_id=<thread_id_from_step_2>"
+----
++
+--
+Where:
+
+`<thread_id_from_step_2>`:: Specifies the `thread_id` value returned by the initial request in step 2.
+--
++
+The agent references the earlier conversation about the Apache 2.0 license, confirming that state persisted in PostgreSQL across the pod restart.
+
+[role="_additional-resources"]
+.Additional resources
+
+* xref:agent-state-storage-backend-comparison_{context}[Agent state storage backend comparison]
+* xref:configuring-postgresql-langgraph-agent-state_{context}[Configure PostgreSQL for LangGraph agent state persistence]
+* link:https://langchain-ai.github.io/langgraph/concepts/persistence/[LangGraph persistence documentation]

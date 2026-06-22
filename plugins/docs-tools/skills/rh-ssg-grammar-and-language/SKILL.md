@@ -1,7 +1,7 @@
 ---
 context: fork
 name: rh-ssg-grammar-and-language
-description: Review Red Hat documentation for SSG grammar and language compliance — conscious language (no blacklist/whitelist, no master/slave), no contractions in product docs, conversational style levels, minimalism principles (action-oriented, scannable, concise), animate vs. inanimate user pronouns (who vs. that), and homograph avoidance. Use this skill when checking Red Hat docs for inclusive/conscious language, contraction usage, minimalism, wordiness, or grammar compliance. This skill takes precedence over ibm-sg-language-and-grammar for Red Hat content.
+description: Review Red Hat documentation for SSG grammar and language compliance elements like conscious language (no blacklist/whitelist, no master/slave), no contractions in product docs, conversational style levels, minimalism principles (action-oriented, scannable, concise), animate vs. inanimate user pronouns (who vs. that), and homograph avoidance. Use this skill when checking Red Hat docs for inclusive/conscious language, contraction usage, minimalism, wordiness, or grammar compliance. This skill takes precedence over ibm-sg-language-and-grammar for Red Hat content.
 ---
 
 # Red Hat SSG: Grammar and Language review skill

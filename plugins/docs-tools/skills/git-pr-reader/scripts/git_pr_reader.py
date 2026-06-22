@@ -52,6 +52,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -107,6 +108,133 @@ def load_env_file() -> None:
 def color_print(prefix: str, message: str) -> None:
     """Print output to terminal (Claude Code compatible, no color codes)."""
     print(f"  {prefix}: {message}")
+
+
+# -- Ignore patterns for large PR filtering ----------------------------------
+
+DEFAULT_IGNORE_PATTERNS: List[re.Pattern] = [
+    re.compile(p)
+    for p in [
+        # -- Vendored / dependency dirs (all ecosystems) --
+        r"(^|/)vendor/",
+        r"(^|/)node_modules/",
+        r"(^|/)venv/",
+        r"(^|/)\.venv/",
+        r"(^|/)env/",
+        r"(^|/)__pycache__/",
+        r"(^|/)\.tox/",
+        r"\.egg-info/",
+        # -- Test dirs and files --
+        r"(^|/)test/",
+        r"(^|/)tests/",
+        r"(^|/)__tests__/",
+        r"(^|/)testdata/",
+        r"(^|/)src/test/",  # Java/Maven
+        r"(^|/)spec/",  # Ruby RSpec
+        r"(^|/)cypress/",
+        r"(^|/)coverage/",
+        r"_test\.go$",
+        r"_test\.py$",
+        r"test_.*\.py$",
+        r"\.test\.[jt]sx?$",
+        r"\.spec\.[jt]sx?$",
+        # -- Build / output dirs --
+        r"(^|/)dist/",
+        r"(^|/)build/",
+        r"(^|/)bin/",
+        r"(^|/)target/",  # Java/Maven, Rust
+        r"(^|/)out/",
+        r"(^|/)\.next/",  # Next.js
+        r"(^|/)\.nuxt/",  # Nuxt.js
+        # -- Generated / compiled files --
+        r"\.pb\.go$",
+        r"\.gen\.go$",
+        r"zz_generated",
+        r"\.class$",
+        r"\.pyc$",
+        r"\.jar$",
+        r"\.war$",
+        r"\.min\.[jc]ss?$",
+        r"\.bundle\.js$",
+        # -- Lock / dependency manifests --
+        r"go\.mod$",
+        r"go\.sum$",
+        r"\.lock$",
+        r"package-lock\.json$",
+        r"yarn\.lock$",
+        r"pnpm-lock\.yaml$",
+        r"Pipfile\.lock$",
+        r"Gemfile\.lock$",
+        r"Cargo\.lock$",
+        r"poetry\.lock$",
+        r"requirements\.txt$",
+        r"requirements.*\.txt$",
+        # -- Build / tooling files --
+        r"(^|/)hack/",
+        r"Makefile$",
+        r"Tiltfile$",
+        r"Dockerfile",
+        r"docker-compose",
+        r"pyproject\.toml$",
+        r"setup\.cfg$",
+        r"setup\.py$",
+        r"pom\.xml$",  # Maven
+        r"build\.gradle",  # Gradle
+        # -- CI/CD --
+        r"(^|/)\.(github|gitlab)",
+        r"\.travis\.yml$",
+        r"\.gitlab-ci\.yml$",
+        r"[Jj]enkinsfile$",
+        r"\.circleci/",
+        # -- Config / linting --
+        r"\.gitignore$",
+        r"\.gitattributes$",
+        r"\.editorconfig$",
+        r"\.eslintrc",
+        r"\.prettierrc",
+        r"\.golangci",
+        r"\.rubocop",
+        r"\.flake8$",
+        r"\.pylintrc$",
+        r"tox\.ini$",
+        # -- Media / assets --
+        r"\.png$",
+        r"\.jpg$",
+        r"\.jpeg$",
+        r"\.svg$",
+        r"\.gif$",
+        r"\.ico$",
+        r"\.woff2?$",
+        r"\.ttf$",
+        r"\.eot$",
+        # -- Infrastructure --
+        r"\.tfstate",
+        # -- Docs / meta --
+        r"CHANGELOG\.md$",
+        r"LICENSE$",
+        r"NOTICE$",
+    ]
+]
+
+
+def filter_files(file_list: List[str], patterns: List[re.Pattern]) -> List[str]:
+    """Filter file paths, dropping any that match an ignore pattern."""
+    return [f for f in file_list if not any(p.search(f) for p in patterns)]
+
+
+def _redact_token(arg: str) -> str:
+    """Redact auth tokens from git command arguments for safe error messages."""
+    return re.sub(r"(https?://)[^@]+@", r"\1***@", arg)
+
+
+def load_ignore_config(path: str) -> List[re.Pattern]:
+    """Load ignore patterns from a YAML file with a `git_ignore_list` key."""
+    if yaml is None:
+        raise ImportError("PyYAML required for --ignore-config. Run: pip install pyyaml")
+    with open(path) as f:
+        config = yaml.safe_load(f)
+    raw = config.get("git_ignore_list", [])
+    return [re.compile(p) for p in raw]
 
 
 # =============================================================================
@@ -398,6 +526,17 @@ class GitReviewAPI(ABC):
         """
         ...
 
+    @abstractmethod
+    def get_metadata(self) -> Dict:
+        """
+        Get combined PR/MR metadata in a normalized schema.
+
+        Returns:
+            Dictionary with: platform, pr_number, title, description, state,
+            author, base_branch, head_branch, labels, commits, changed_files, url.
+        """
+        ...
+
     # -------------------------------------------------------------------------
     # Shared concrete methods
     # -------------------------------------------------------------------------
@@ -657,30 +796,65 @@ class GitHubReviewAPI(GitReviewAPI):
     # -- Abstract method implementations -------------------------------------
 
     def get_pr_info(self) -> Dict:
-        """Fetch PR information including head SHA."""
+        """Fetch PR information including base and head SHAs."""
         if self._pr_info:
             return self._pr_info
 
         self._pr_info = {
             "head_sha": self._pr.head.sha,
             "head_ref": self._pr.head.ref,
+            "base_sha": self._pr.base.sha,
             "title": self._pr.title,
             "body": self._pr.body or "",
             "base_ref": self._pr.base.ref,
         }
         return self._pr_info
 
-    def get_diff(self, file_path: Optional[str] = None) -> str:
+    def get_diff(
+        self,
+        file_path: Optional[str] = None,
+        ignore_patterns: Optional[List[re.Pattern]] = None,
+        max_files: int = 1000,
+    ) -> str:
         """
         Fetch the unified diff for the PR.
 
-        Uses the raw GitHub API with Accept: application/vnd.github.diff
-        because PyGithub does not expose the full unified diff natively.
+        Tier 1: Uses the raw GitHub API bulk diff endpoint.
+        Tier 2: On HTTP 406 (PR too large), falls back to blobless git clone
+        with Python regex filtering and targeted diffs.
         """
         cache_key = file_path or "_all_"
         if cache_key in self._diff_cache:
             return self._diff_cache[cache_key]
 
+        try:
+            diff = self._fetch_bulk_diff(file_path)
+        except urllib.error.HTTPError as e:
+            if e.code != 406:
+                raise
+            if not self.token:
+                raise RuntimeError(
+                    f"PR diff too large for GitHub API ({self._pr.changed_files} files) "
+                    "and no GITHUB_TOKEN set for git clone fallback."
+                ) from e
+            print(
+                f"Diff too large for GitHub API ({self._pr.changed_files} files), "
+                "falling back to local git clone...",
+                file=sys.stderr,
+            )
+            pr_info = self.get_pr_info()
+            diff = self._blobless_clone_diff(
+                pr_info["base_sha"],
+                pr_info["head_sha"],
+                ignore_patterns or DEFAULT_IGNORE_PATTERNS,
+                max_files,
+            )
+
+        self._diff_cache[cache_key] = diff
+        return diff
+
+    def _fetch_bulk_diff(self, _file_path: Optional[str] = None) -> str:
+        """Tier 1: Fetch full diff via GitHub's bulk diff API endpoint."""
         url = f"https://api.github.com/repos/{self.owner_repo}/pulls/{self.pr_number}"
         headers = {
             "Accept": "application/vnd.github.diff",
@@ -691,10 +865,76 @@ class GitHubReviewAPI(GitReviewAPI):
 
         req = urllib.request.Request(url, headers=headers)  # noqa: S310
         with urllib.request.urlopen(req) as response:  # noqa: S310
-            diff = response.read().decode()
+            return response.read().decode()
 
-        self._diff_cache[cache_key] = diff
-        return diff
+    def _blobless_clone_diff(
+        self,
+        base_sha: str,
+        head_sha: str,
+        ignore_patterns: List[re.Pattern],
+        max_files: int,
+    ) -> str:
+        """Tier 2: Blobless git clone with filtered targeted diffs."""
+        for sha in (base_sha, head_sha):
+            if not re.fullmatch(r"[0-9a-f]{40}", sha):
+                raise ValueError(f"Invalid SHA: {sha}")
+
+        auth_url = f"https://x-access-token:{self.token}@github.com/{self.owner_repo}.git"
+        env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+
+        with tempfile.TemporaryDirectory(prefix="git-pr-reader-") as tmpdir:
+            self._git_run(
+                ["git", "clone", "--bare", "--filter=blob:none", auth_url, tmpdir],
+                env=env,
+            )
+
+            self._git_run(
+                ["git", "-C", tmpdir, "fetch", "origin", head_sha],
+                env=env,
+            )
+
+            result = self._git_run(
+                ["git", "-C", tmpdir, "diff", "--name-only", base_sha, head_sha],
+                text=True,
+            )
+            all_files = [f for f in result.stdout.strip().split("\n") if f]
+            self._blobless_total_files = len(all_files)
+
+            filtered = filter_files(all_files, ignore_patterns)[:max_files]
+            self._blobless_filtered_files = len(filtered)
+
+            if not filtered:
+                return ""
+
+            diff_parts: List[str] = []
+            for i in range(0, len(filtered), 50):
+                batch = filtered[i : i + 50]
+                diff_cmd = [
+                    "git",
+                    "-C",
+                    tmpdir,
+                    "diff",
+                    base_sha,
+                    head_sha,
+                    "--",
+                ] + batch
+                result = self._git_run(diff_cmd, text=True, env=env)
+                diff_parts.append(result.stdout)
+
+            return "".join(diff_parts)
+
+    @staticmethod
+    def _git_run(cmd: List[str], **kwargs) -> subprocess.CompletedProcess:
+        """Run a git command, capturing output and redacting tokens from errors."""
+        kwargs.setdefault("capture_output", True)
+        kwargs.setdefault("check", True)
+        try:
+            return subprocess.run(cmd, **kwargs)  # noqa: S603
+        except subprocess.CalledProcessError as e:
+            safe_cmd = [_redact_token(arg) for arg in cmd]
+            raise subprocess.CalledProcessError(
+                e.returncode, safe_cmd, e.stdout, e.stderr
+            ) from None
 
     def get_changed_files(self) -> List[Dict]:
         """Get list of changed files in the PR using PyGithub."""
@@ -879,9 +1119,18 @@ class GitHubReviewAPI(GitReviewAPI):
             diffs: List[Dict] = []
             total_files = 0
             filtered_count = 0
+            max_files = 3000
 
             for f in self._pr.get_files():
                 total_files += 1
+                if total_files > max_files:
+                    print(
+                        f"Warning: capped file iteration at {max_files} "
+                        f"(PR has more files). Use 'diff --save-diff' for "
+                        f"large PRs.",
+                        file=sys.stderr,
+                    )
+                    break
                 filename = f.filename
 
                 if not self._should_include_file(filename):
@@ -906,12 +1155,64 @@ class GitHubReviewAPI(GitReviewAPI):
                     "total_files": total_files,
                     "filtered_files": filtered_count,
                     "included_files": len(diffs),
+                    "truncated": total_files > max_files,
                 },
             }
         except Exception as e:
             return {"error": f"Failed to fetch PR from {self.url}: {str(e)}", "url": self.url}
         finally:
             self._filters = original_filters
+
+    def get_metadata(self) -> Dict:
+        """Get combined PR metadata in a normalized schema."""
+        info = self.get_pr_info()
+        files = self.get_changed_files()
+
+        author = self._pr.user.login if self._pr.user else ""
+        labels = [label.name for label in self._pr.labels]
+
+        commits = []
+        for c in self._pr.get_commits():
+            commits.append(
+                {
+                    "sha": c.sha[:12],
+                    "message": c.commit.message.split("\n")[0],
+                    "author": c.author.login
+                    if c.author
+                    else (c.commit.author.name if c.commit.author else ""),
+                }
+            )
+
+        if self._pr.merged:
+            state = "merged"
+        elif self._pr.draft:
+            state = "draft"
+        else:
+            state = self._pr.state.lower()
+
+        status_map = {
+            "removed": "deleted",
+            "copied": "added",
+            "changed": "modified",
+            "unchanged": "modified",
+        }
+        for f in files:
+            f["status"] = status_map.get(f["status"], f["status"])
+
+        return {
+            "platform": "github",
+            "pr_number": self.pr_number,
+            "title": info["title"],
+            "description": info.get("body", ""),
+            "state": state,
+            "author": author,
+            "base_branch": info["base_ref"],
+            "head_branch": info["head_ref"],
+            "labels": labels,
+            "commits": commits,
+            "changed_files": files,
+            "url": self.url,
+        }
 
 
 # =============================================================================
@@ -1185,7 +1486,7 @@ class GitLabReviewAPI(GitReviewAPI):
             description = self._mr.description or ""
 
             changes = self._mr.changes()
-            file_diffs = changes.get("changes", [])
+            file_diffs = changes["changes"]  # type: ignore[index]
 
             diffs: List[Dict] = []
             total_files = len(file_diffs)
@@ -1221,6 +1522,48 @@ class GitLabReviewAPI(GitReviewAPI):
             return {"error": f"Failed to fetch MR from {self.url}: {str(e)}", "url": self.url}
         finally:
             self._filters = original_filters
+
+    def get_metadata(self) -> Dict:
+        """Get combined MR metadata in a normalized schema."""
+        info = self.get_pr_info()
+        files = self.get_changed_files()
+
+        author_obj = getattr(self._mr, "author", {}) or {}
+        author = author_obj.get("username", author_obj.get("name", ""))
+
+        labels = list(getattr(self._mr, "labels", []) or [])
+
+        commits = []
+        try:
+            for c in self._mr.commits():
+                commits.append(
+                    {
+                        "sha": c.id[:12],
+                        "message": c.message.split("\n")[0],
+                        "author": c.author_name or "",
+                    }
+                )
+        except Exception:  # noqa: BLE001, S110
+            pass
+
+        state = getattr(self._mr, "state", "").lower()
+        if state == "opened":
+            state = "open"
+
+        return {
+            "platform": "gitlab",
+            "pr_number": self.mr_id,
+            "title": info["title"],
+            "description": info.get("body", ""),
+            "state": state,
+            "author": author,
+            "base_branch": info["base_ref"],
+            "head_branch": info["head_ref"],
+            "labels": labels,
+            "commits": commits,
+            "changed_files": files,
+            "url": self.url,
+        }
 
 
 # =============================================================================
@@ -1364,8 +1707,14 @@ def cmd_files(args) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
+    max_files = getattr(args, "max_files", None)
+
     try:
         files = api.get_changed_files()
+
+        total_count = len(files)
+        if max_files and len(files) > max_files:
+            files = files[:max_files]
 
         if args.filter:
             import fnmatch
@@ -1375,7 +1724,10 @@ def cmd_files(args) -> int:
         if args.json:
             print(json.dumps(files, indent=2))
         else:
-            print(f"Changed files: {len(files)}")
+            if max_files and total_count > max_files:
+                print(f"Changed files: {len(files)} (capped from {total_count})")
+            else:
+                print(f"Changed files: {len(files)}")
             print()
             for f in files:
                 status_char = {"added": "A", "modified": "M", "deleted": "D"}.get(f["status"], "?")
@@ -1422,6 +1774,33 @@ def cmd_comments(args) -> int:
     return 0
 
 
+def _parse_diff_file_stats(diff_text: str) -> List[Dict]:
+    """Parse unified diff text to extract per-file addition/deletion counts."""
+    files: List[Dict] = []
+    current_path: Optional[str] = None
+    additions = 0
+    deletions = 0
+
+    for line in diff_text.split("\n"):
+        if line.startswith("diff --git"):
+            if current_path is not None:
+                files.append({"path": current_path, "additions": additions, "deletions": deletions})
+            match = re.search(r"b/(.+)$", line)
+            current_path = match.group(1) if match else "unknown"
+            additions = 0
+            deletions = 0
+        elif current_path is not None:
+            if line.startswith("+") and not line.startswith("+++"):
+                additions += 1
+            elif line.startswith("-") and not line.startswith("---"):
+                deletions += 1
+
+    if current_path is not None:
+        files.append({"path": current_path, "additions": additions, "deletions": deletions})
+
+    return files
+
+
 def cmd_diff(args) -> int:
     """Handle 'diff' subcommand -- get PR/MR diff."""
     try:
@@ -1430,9 +1809,52 @@ def cmd_diff(args) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
+    ignore_patterns = DEFAULT_IGNORE_PATTERNS
+    if getattr(args, "ignore_config", None):
+        try:
+            ignore_patterns = load_ignore_config(args.ignore_config)
+        except Exception as e:
+            print(f"Error loading ignore config: {e}", file=sys.stderr)
+            return 1
+
+    max_files = getattr(args, "max_files", 1000) or 1000
+
     try:
-        diff = api.get_diff()
-        print(diff)
+        if isinstance(api, GitHubReviewAPI):
+            diff = api.get_diff(ignore_patterns=ignore_patterns, max_files=max_files)
+        else:
+            diff = api.get_diff()
+
+        used_blobless = isinstance(api, GitHubReviewAPI) and hasattr(api, "_blobless_total_files")
+
+        if args.save_diff:
+            save_path = args.save_diff
+            os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+
+            manifest: Dict = {
+                "diff_saved_to": save_path if diff else None,
+                "total_lines": diff.count("\n") + (1 if diff and not diff.endswith("\n") else 0),
+                "total_bytes": len(diff.encode("utf-8")),
+                "files": _parse_diff_file_stats(diff),
+            }
+
+            if used_blobless and isinstance(api, GitHubReviewAPI):
+                manifest["diff_mode"] = "blobless_clone"
+                manifest["total_files_in_pr"] = api._blobless_total_files
+                manifest["files_after_filter"] = api._blobless_filtered_files
+                manifest["ignore_patterns_applied"] = True
+                if not diff:
+                    manifest["reason"] = (
+                        "All changed files matched ignore patterns (vendor, test, CI, etc.)"
+                    )
+
+            if diff:
+                with open(save_path, "w") as f:
+                    f.write(diff)
+
+            print(json.dumps(manifest, indent=2))
+        else:
+            print(diff)
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -1464,7 +1886,8 @@ def cmd_post(args) -> int:
         "technical": "Claude Code docs technical review",
         "style": "Claude Code docs style review",
     }
-    signoff = signoff_map.get(getattr(args, "review_type", None), "Claude Code docs review")
+    review_type = getattr(args, "review_type", None) or ""
+    signoff = signoff_map.get(review_type, "Claude Code docs review")
 
     try:
         result = api.post_comments(comments, dry_run=args.dry_run, signoff=signoff)
@@ -1734,6 +2157,321 @@ def cmd_detect(args) -> int:
         return 1
 
 
+# =============================================================================
+# Shared helpers for resolve and clone subcommands
+# =============================================================================
+
+
+def _run_git_cmd(args: List[str], cwd: Optional[str] = None, check: bool = True):
+    """Run a git command and return the CompletedProcess."""
+    result = subprocess.run(  # noqa: S603
+        ["git"] + args,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+    )
+    if check and result.returncode != 0:
+        raise subprocess.CalledProcessError(
+            result.returncode, ["git"] + args, result.stdout, result.stderr
+        )
+    return result
+
+
+def _normalize_git_url(url: str) -> str:
+    """Normalize a git URL for comparison (strip .git suffix and trailing slash)."""
+    return url.rstrip("/").removesuffix(".git")
+
+
+def _extract_pr_number(pr_url: Optional[str]) -> Optional[int]:
+    """Extract the PR/MR number from a GitHub PR or GitLab MR URL."""
+    if not pr_url:
+        return None
+    m = re.search(r"/pull/(\d+)", pr_url)
+    if m:
+        return int(m.group(1))
+    m = re.search(r"/merge_requests/(\d+)", pr_url)
+    if m:
+        return int(m.group(1))
+    return None
+
+
+# =============================================================================
+# resolve subcommand — PR/MR metadata via PyGithub / python-gitlab
+# =============================================================================
+
+
+def resolve_pr_info(pr_url: str) -> Dict:
+    """Resolve PR/MR metadata from a URL using the native API clients.
+
+    Uses PyGithub for GitHub PRs and python-gitlab for GitLab MRs —
+    the same clients already used by the rest of git_pr_reader.
+
+    Returns a dict with: repo_url, branch (null if merged), state,
+    platform, pr_number, base_ref.
+    """
+    api = GitReviewAPI.from_url(pr_url)
+    info = api.get_pr_info()
+
+    if isinstance(api, GitHubReviewAPI):
+        is_merged = api._pr.merged
+        state = "MERGED" if is_merged else api._pr.state.upper()
+        return {
+            "repo_url": f"https://github.com/{api.owner_repo}.git",
+            "branch": None if is_merged else info["head_ref"],
+            "state": state,
+            "platform": "github",
+            "pr_number": api.pr_number,
+            "base_ref": info["base_ref"],
+        }
+    elif isinstance(api, GitLabReviewAPI):
+        state = api._mr.state
+        is_merged = state == "merged"
+        return {
+            "repo_url": f"{api.base_url}/{api.project_path}.git",
+            "branch": None if is_merged else info["head_ref"],
+            "state": state,
+            "platform": "gitlab",
+            "pr_number": api.mr_id,
+            "base_ref": info["base_ref"],
+        }
+
+    raise ValueError(f"Unsupported platform for URL: {pr_url}")
+
+
+def cmd_resolve(args) -> int:
+    """Handle 'resolve' subcommand — resolve PR/MR metadata via gh/glab CLI."""
+    try:
+        result = resolve_pr_info(args.pr_url)
+    except (ValueError, subprocess.CalledProcessError) as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}))
+        else:
+            print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(f"Repo: {result['repo_url']}")
+        print(f"Branch: {result['branch'] or '(merged/deleted)'}")
+        print(f"State: {result['state']}")
+        print(f"Platform: {result['platform']}")
+        if result.get("pr_number"):
+            print(f"PR: #{result['pr_number']}")
+        print(f"Base: {result['base_ref']}")
+
+    return 0
+
+
+def cmd_metadata(args) -> int:
+    """Handle 'metadata' subcommand — combined PR/MR metadata."""
+    try:
+        api = GitReviewAPI.from_url(args.pr_url)
+    except (ValueError, RuntimeError, ImportError) as e:
+        print(json.dumps({"error": str(e)}))
+        return 1
+
+    try:
+        result = api.get_metadata()
+
+        if args.diff_output:
+            diff = api.get_diff()
+            os.makedirs(os.path.dirname(args.diff_output) or ".", exist_ok=True)
+            with open(args.diff_output, "w") as f:
+                f.write(diff)
+
+        print(json.dumps(result, indent=2))
+    except Exception as e:
+        print(json.dumps({"error": f"Failed to fetch metadata: {str(e)}"}))
+        return 1
+
+    return 0
+
+
+# =============================================================================
+# clone subcommand — fork-aware git clone with configurable depth
+# =============================================================================
+
+
+def clone_repo(
+    repo_url: str,
+    output_dir: str,
+    depth: int = 1,
+    ref: Optional[str] = None,
+    pr_url: Optional[str] = None,
+    dry_run: bool = False,
+) -> Dict:
+    """Clone a repository with fork-aware PR ref fallback.
+
+    Args:
+        repo_url: Remote git URL to clone.
+        output_dir: Target directory for the clone.
+        depth: Clone depth (0 = full history, default 1).
+        ref: Branch/tag/commit to checkout.
+        pr_url: PR/MR URL for fork ref fallback.
+        dry_run: If True, return success without cloning.
+
+    Returns:
+        Dict with status, path, ref, method.
+    """
+    if dry_run:
+        return {"status": "cloned", "path": output_dir, "ref": ref, "method": "dry_run"}
+
+    depth_args = [] if depth == 0 else ["--depth", str(depth)]
+
+    if ref:
+        result = _run_git_cmd(
+            ["clone"] + depth_args + ["--branch", ref, repo_url, output_dir],
+            check=False,
+        )
+        if result.returncode == 0:
+            return {"status": "cloned", "path": output_dir, "ref": ref, "method": "branch"}
+
+        # Fallback: clone default branch, then try to checkout the ref
+        result = _run_git_cmd(
+            ["clone"] + depth_args + [repo_url, output_dir],
+            check=False,
+        )
+        if result.returncode != 0:
+            return {"status": "error", "message": f"Clone failed: {result.stderr.strip()}"}
+
+        fetch = _run_git_cmd(["fetch", "origin", ref], cwd=output_dir, check=False)
+        if fetch.returncode == 0:
+            checkout = _run_git_cmd(["checkout", "FETCH_HEAD"], cwd=output_dir, check=False)
+            if checkout.returncode == 0:
+                return {"status": "cloned", "path": output_dir, "ref": ref, "method": "fetch"}
+
+        # Branch not on origin — try PR ref for fork-based PRs
+        pr_number = _extract_pr_number(pr_url)
+        if pr_number:
+            pr_ref = (
+                f"refs/merge-requests/{pr_number}/head"
+                if "gitlab" in repo_url
+                else f"refs/pull/{pr_number}/head"
+            )
+            pr_fetch = _run_git_cmd(
+                ["fetch", "origin", pr_ref],
+                cwd=output_dir,
+                check=False,
+            )
+            if pr_fetch.returncode == 0:
+                checkout = _run_git_cmd(
+                    ["checkout", "FETCH_HEAD"],
+                    cwd=output_dir,
+                    check=False,
+                )
+                if checkout.returncode == 0:
+                    print(
+                        f"Checked out PR #{pr_number} via {pr_ref}"
+                        f" (fork branch '{ref}' not on origin).",
+                        file=sys.stderr,
+                    )
+                    return {"status": "cloned", "path": output_dir, "ref": ref, "method": "pr_ref"}
+
+        print(
+            f"WARNING: Cloned {repo_url} but ref '{ref}' not found"
+            f" (branch may be in a fork or deleted after merge)."
+            f" Using default branch.",
+            file=sys.stderr,
+        )
+        return {"status": "cloned", "path": output_dir, "ref": None, "method": "default"}
+
+    # No ref specified — clone default branch
+    result = _run_git_cmd(
+        ["clone"] + depth_args + [repo_url, output_dir],
+        check=False,
+    )
+    if result.returncode != 0:
+        return {"status": "error", "message": f"Clone failed: {result.stderr.strip()}"}
+    return {"status": "cloned", "path": output_dir, "ref": None, "method": "default"}
+
+
+def verify_clone(
+    path: str,
+    ref: Optional[str] = None,
+    expected_url: Optional[str] = None,
+) -> Dict:
+    """Verify an existing clone is valid, optionally checking out a ref.
+
+    Returns:
+        Dict with status ("valid"/"invalid"), path, current_ref, and optional reason.
+    """
+    result = _run_git_cmd(["rev-parse", "HEAD"], cwd=path, check=False)
+    if result.returncode != 0:
+        return {"status": "invalid", "path": path, "reason": "Not a git repository"}
+
+    if expected_url:
+        origin = _run_git_cmd(["remote", "get-url", "origin"], cwd=path, check=False)
+        if origin.returncode != 0:
+            return {"status": "invalid", "path": path, "reason": "No origin remote"}
+        if _normalize_git_url(origin.stdout.strip()) != _normalize_git_url(expected_url):
+            return {
+                "status": "invalid",
+                "path": path,
+                "reason": f"Origin URL mismatch: expected {expected_url}, "
+                f"got {origin.stdout.strip()}",
+            }
+
+    current = _run_git_cmd(["rev-parse", "--abbrev-ref", "HEAD"], cwd=path, check=False)
+    current_ref = current.stdout.strip() if current.returncode == 0 else None
+
+    if ref and current_ref != ref:
+        fetch = _run_git_cmd(["fetch", "origin", ref], cwd=path, check=False)
+        if fetch.returncode != 0:
+            print(
+                f"WARNING: Could not fetch ref '{ref}' in {path} "
+                f"(branch may have been deleted after merge). Using clone at HEAD.",
+                file=sys.stderr,
+            )
+        else:
+            checkout = _run_git_cmd(["checkout", ref], cwd=path, check=False)
+            if checkout.returncode != 0:
+                fallback = _run_git_cmd(["checkout", "FETCH_HEAD"], cwd=path, check=False)
+                if fallback.returncode != 0:
+                    print(
+                        f"WARNING: Fetched ref '{ref}' but checkout failed in {path}. "
+                        f"Using clone at HEAD.",
+                        file=sys.stderr,
+                    )
+                else:
+                    current_ref = ref
+            else:
+                current_ref = ref
+
+    return {"status": "valid", "path": path, "current_ref": current_ref}
+
+
+def cmd_clone(args) -> int:
+    """Handle 'clone' subcommand — fork-aware git clone or verify existing clone."""
+    if args.verify:
+        result = verify_clone(
+            path=args.verify,
+            ref=args.ref,
+            expected_url=args.expected_url,
+        )
+        print(json.dumps(result, indent=2))
+        return 0 if result["status"] == "valid" else 1
+
+    if not args.repo_url:
+        print("Error: repo_url is required for clone mode", file=sys.stderr)
+        return 1
+
+    if not args.output_dir:
+        print("Error: --output-dir is required for clone mode", file=sys.stderr)
+        return 1
+
+    result = clone_repo(
+        repo_url=args.repo_url,
+        output_dir=args.output_dir,
+        depth=args.depth,
+        ref=args.ref,
+        pr_url=args.pr_url,
+        dry_run=args.dry_run,
+    )
+    print(json.dumps(result, indent=2))
+    return 0 if result["status"] != "error" else 1
+
+
 def _parse_git_remote(remote_url: str) -> Tuple[Optional[str], Optional[str]]:
     """
     Parse a git remote URL to extract host and project path.
@@ -1806,6 +2544,14 @@ Examples:
   # Auto-detect PR/MR for current branch
   %(prog)s detect
   %(prog)s detect --json
+
+  # Resolve PR/MR metadata (branch, state) via gh/glab CLI
+  %(prog)s resolve https://github.com/owner/repo/pull/123 --json
+
+  # Clone a repo (fork-aware, configurable depth)
+  %(prog)s clone https://github.com/owner/repo.git --output-dir /tmp/repo
+  %(prog)s clone https://github.com/owner/repo.git --output-dir /tmp/repo --depth 0
+  %(prog)s clone --verify /tmp/repo --ref main
 """,
     )
 
@@ -1862,6 +2608,11 @@ Examples:
         help='Filter files by glob pattern (e.g., "*.adoc")',
     )
     files_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    files_parser.add_argument(
+        "--max-files",
+        type=int,
+        help="Max files to fetch (caps API pagination for large PRs)",
+    )
 
     # -- comments subcommand -------------------------------------------------
     comments_parser = subparsers.add_parser(
@@ -1882,6 +2633,22 @@ Examples:
         help="Get the unified diff for the PR/MR",
     )
     diff_parser.add_argument("pr_url", help="GitHub PR or GitLab MR URL")
+    diff_parser.add_argument(
+        "--save-diff",
+        metavar="PATH",
+        help="Write full diff to file and return file manifest as JSON",
+    )
+    diff_parser.add_argument(
+        "--ignore-config",
+        metavar="PATH",
+        help="YAML file with git_ignore_list patterns (overrides defaults)",
+    )
+    diff_parser.add_argument(
+        "--max-files",
+        type=int,
+        default=1000,
+        help="Max files to include in diff after filtering (default: 1000)",
+    )
 
     # -- post subcommand -----------------------------------------------------
     post_parser = subparsers.add_parser(
@@ -1941,6 +2708,74 @@ Examples:
         help="Output as JSON with platform and branch info",
     )
 
+    # -- resolve subcommand --------------------------------------------------
+    resolve_parser = subparsers.add_parser(
+        "resolve",
+        help="Resolve PR/MR metadata (branch, state, repo URL) via gh/glab CLI",
+    )
+    resolve_parser.add_argument("pr_url", help="GitHub PR or GitLab MR URL")
+    resolve_parser.add_argument(
+        "--json",
+        action="store_true",
+        default=True,
+        help="Output as JSON (default)",
+    )
+
+    # -- metadata subcommand -------------------------------------------------
+    metadata_parser = subparsers.add_parser(
+        "metadata",
+        help="Get combined PR/MR metadata (author, labels, commits, files, state)",
+    )
+    metadata_parser.add_argument("pr_url", help="GitHub PR or GitLab MR URL")
+    metadata_parser.add_argument(
+        "--diff-output",
+        metavar="PATH",
+        help="Also save the unified diff to this file path",
+    )
+
+    # -- clone subcommand ----------------------------------------------------
+    clone_parser = subparsers.add_parser(
+        "clone",
+        help="Clone a repo (fork-aware) or verify an existing clone",
+    )
+    clone_parser.add_argument(
+        "repo_url",
+        nargs="?",
+        help="Remote git URL to clone",
+    )
+    clone_parser.add_argument(
+        "--output-dir",
+        help="Target directory for the clone",
+    )
+    clone_parser.add_argument(
+        "--depth",
+        type=int,
+        default=1,
+        help="Clone depth (0 = full history, default: 1)",
+    )
+    clone_parser.add_argument(
+        "--ref",
+        help="Branch, tag, or commit to checkout after cloning",
+    )
+    clone_parser.add_argument(
+        "--pr-url",
+        help="PR/MR URL for fork ref fallback (refs/pull/N/head)",
+    )
+    clone_parser.add_argument(
+        "--verify",
+        metavar="PATH",
+        help="Verify an existing clone instead of cloning",
+    )
+    clone_parser.add_argument(
+        "--expected-url",
+        help="Expected origin URL (used with --verify)",
+    )
+    clone_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Return success without cloning",
+    )
+
     # -- parse and dispatch --------------------------------------------------
     args = parser.parse_args()
 
@@ -1957,6 +2792,9 @@ Examples:
         "post": cmd_post,
         "extract": cmd_extract,
         "detect": cmd_detect,
+        "resolve": cmd_resolve,
+        "metadata": cmd_metadata,
+        "clone": cmd_clone,
     }
 
     handler = handlers.get(args.command)

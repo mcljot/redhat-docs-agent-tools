@@ -64,21 +64,36 @@ mkdir -p "$OUTPUT_DIR"
 >
 > Save the complete plan to: `<OUTPUT_FILE>`
 
-**[Include only if `<BASE_PATH>/scope-req-audit/evidence-status.json` exists]** Append the following paragraph to the prompt:
+**[Include only if `<BASE_PATH>/code-analysis/ONBOARDING.md` exists]** Append the following paragraph to the prompt:
 
-> Code evidence status is available at `<BASE_PATH>/scope-req-audit/evidence-status.json`. Read it and use the evidence status when making scoping decisions:
+> ## MANDATORY: Scope gating by code analysis
 >
-> - **Grounded** requirements: create full module specifications as normal. Use the `key_files` for each grounded requirement as content source references in the module spec — these are the actual source files where the feature is implemented. The code-evidence step will use them for targeted retrieval
-> - **Partial** requirements: create module specifications but note what evidence was found and what is missing — flag for SME review. Include available `key_files` as partial source references
-> - **Absent** requirements: do NOT create module specifications. Instead, list them in a "Deferred requirements (no code evidence)" section at the end of the plan, including the recommended action from the evidence status. These may be unimplemented features — documenting them risks fabrication
+> **You MUST read** `<BASE_PATH>/code-analysis/ONBOARDING.md` and `<BASE_PATH>/code-analysis/registry.json` before creating any module specifications. These files contain structured analysis of the source repository produced by code-learner.
 >
-> If `discovered_repos` lists repos that weren't indexed, note them in the deferred section as potential sources for resolving absent requirements.
+> **This is not optional. The module registry must inform your planning.**
+>
+> Use the module registry's `onboarding_priority` field to scope documentation:
+> - **read-first** modules: create full module specifications. These are the core modules that new developers must understand first
+> - **read-second** modules: create summary module specifications. Include purpose and key APIs but less detail than read-first modules
+> - **skip** modules: **Do NOT create module specifications.** These are utility, test, or generated modules that don't warrant standalone documentation. If relevant to a read-first module, mention them briefly in that module's context
+>
+> Use the `public_api`, `dependencies`, and `data_flow` fields from module summaries in `<BASE_PATH>/code-analysis/summaries/` to inform content points and prerequisites in each module specification.
+>
+> **Self-check before writing the plan:** Count your module specifications. Verify that no skip-priority module has a full module specification — if any does, remove it or downgrade to a brief mention within a related module.
+
+**[Include only if `<BASE_PATH>/pr-analysis/` exists]** Also append:
+
+> ## PR change context
+>
+> Read the PR analysis from `<BASE_PATH>/pr-analysis/PR-*-ANALYSIS.md`. Focus documentation on modules listed in the "Changes by Module" section — these are the modules directly affected by the code changes that triggered this documentation work. Prioritize these modules for full specifications regardless of their onboarding_priority.
 
 ### 3. Verify output
 
 After the agent completes, verify the output file exists at `<OUTPUT_FILE>`.
 
 If no output file is found, report an error.
+
+**[If `<BASE_PATH>/code-analysis/registry.json` exists]** Cross-check the plan against the registry: read the module registry and verify that no skip-priority module has a full module specification in the plan. If any skip module was given a full spec, log a warning: "Plan includes full specs for skip-priority module(s): <list>. These are typically utility modules that don't warrant standalone documentation." This is a warning, not a blocker.
 
 ### 4. Write step-result.json
 
@@ -88,6 +103,7 @@ Read `<OUTPUT_FILE>` and count the number of module specifications. Count each o
 - Numbered or bulleted list items within the "Module Specifications" section that start with `Module:`
 
 Ignore headings or list items outside the "Module Specifications" section, and skip items inside code blocks or blockquotes. Treat duplicate module titles as separate modules (no deduplication). This count becomes the `module_count` field.
+
 
 Write the sidecar to `<OUTPUT_DIR>/step-result.json`:
 

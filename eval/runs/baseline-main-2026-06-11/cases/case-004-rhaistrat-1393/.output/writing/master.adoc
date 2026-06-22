@@ -1,0 +1,21 @@
+:self-managed:
+include::_artifacts/document-attributes-global.adoc[]
+
+= Working with Llama Stack
+:doctype: book
+:toc: left
+:compat-mode:
+:context: rag
+
+include::upstream-modules/overview-of-llama-stack.adoc[leveloffset=+1]
+include::upstream-modules/llama-stack-apis.adoc[leveloffset=+2]
+include::upstream-modules/openai-compatible-apis-in-llama-stack.adoc[leveloffset=+2]
+include::upstream-modules/openai-compatibility-for-rag-apis-in-llama-stack.adoc[leveloffset=+3]
+include::assemblies/openai-compatible-file-citation-annotations.adoc[leveloffset=+2]
+include::upstream-modules/llama-stack-providers-support.adoc[leveloffset=+2]
+include::upstream-modules/activating-the-llama-stack-operator.adoc[leveloffset=+1]
+include::upstream-modules/deploying-llama-stack-server.adoc[leveloffset=+1]
+include::assemblies/llama-stack-adv-examples.adoc[leveloffset=+1]
+include::assemblies/deploying-langgraph-agents-from-local-to-rhoai.adoc[leveloffset=+1]
+include::assemblies/maintaining-agent-state-in-production.adoc[leveloffset=+1]
+include::assemblies/integrating-mcp-tools-with-langgraph-agents.adoc[leveloffset=+1]

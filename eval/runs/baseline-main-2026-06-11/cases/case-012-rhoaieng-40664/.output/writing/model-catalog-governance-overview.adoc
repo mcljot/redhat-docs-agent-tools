@@ -1,0 +1,87 @@
+:_mod-docs-content-type: CONCEPT
+
+[id="model-catalog-governance-overview_{context}"]
+= Model catalog governance
+
+[role='_abstract']
+You can enforce organizational policies on AI model usage by controlling which models are visible and available in the model catalog.
+Model catalog governance helps you meet compliance, security, regulatory, and intellectual property requirements by preventing unapproved or high-risk models from being discoverable by non-administrator users.
+
+In regulated industries such as financial services, healthcare, and government, organizations must restrict end-user access to third-party models that have not been approved for internal use.
+Model catalog governance provides the controls to enforce these policies at the platform level, so that data scientists and developers only see models that your organization has approved.
+
+[id="how-disallow-listing-works_{context}"]
+== How disallow-listing works
+
+Disallow-listing removes a model from the catalog for non-administrator users.
+When you disallow-list a model, the catalog service filters results before returning them to non-administrator users.
+
+The following behavior occurs:
+
+* Non-administrator users no longer see the model when browsing the catalog.
+* If a non-administrator user accesses a disallow-listed model through a direct link or API query, they receive the message "Model is disabled by your administrator".
+* Administrator users can still see and access disallow-listed models in the catalog.
+* Disallow-listing does not affect running services or model instances that are already deployed.
+Only the visibility and availability of the model in the catalog are changed.
+
+Governance rules are stored as part of the catalog configuration and are managed through the AI Catalog Settings page in the {productname-short} dashboard.
+You can re-enable a disallow-listed model at any time to restore its visibility to all users.
+
+[id="disallow-listing-compared-to-source-level-filtering_{context}"]
+== Disallow-listing compared to source-level filtering
+
+{productname-short} provides two complementary levels of governance for the model catalog:
+
+Disallow-listing individual models::
+Hides specific models from non-administrator users across all catalog sources.
+Use disallow-listing when you need to block individual models regardless of their source.
+
+Source-level include and exclude filters::
+Controls which models from a specific catalog source appear in the catalog.
+Use source-level filters when you want to limit the models available from a particular Hugging Face organization or YAML source.
+
+You can use both approaches together.
+For example, you can use source-level filters to include only a subset of models from a large Hugging Face organization.
+You can then disallow-list specific models from any source that violate your organizational policies.
+
+[NOTE]
+====
+The model identifier format for disallow-listing depends on the source type.
+For models from YAML-file sources, use the full `__organization__/__model-name__` format.
+For models from Hugging Face sources, use only the `__model-name__` format.
+For more information about the differences, see xref:model-catalog-source-types_{context}[Model catalog source types].
+====
+
+[id="role-based-access-control-for-governance-settings_{context}"]
+== Role-based access control for governance settings
+
+Only users with the Cluster Admin or {productname-short} Admin role can access the AI Catalog Settings page in the {productname-short} dashboard.
+This page has both the model catalog source management controls and the disallow-list interface.
+
+Regular users and data scientists cannot view or change governance settings.
+If a non-administrator user needs access to a disallow-listed model, they must contact their {productname-short} administrator.
+
+The following table summarizes the governance permissions by role.
+
+.Governance permissions by role
+[cols="1,1,1", options="header"]
+|===
+|Role
+|Governance access
+|Model visibility
+
+|Cluster Admin
+|Full access to governance settings and disallow list
+|Can see all models, including disallow-listed models
+
+|{productname-short} Admin
+|Full access to governance settings and disallow list
+|Can see all models, including disallow-listed models
+
+|Non-administrator users
+|No access to governance settings
+|Cannot see disallow-listed models in the catalog
+|===
+
+//[role="_additional-resources"]
+//.Additional resources

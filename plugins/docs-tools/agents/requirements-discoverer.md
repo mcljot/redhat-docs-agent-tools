@@ -39,10 +39,14 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/jira-reader/scripts/jira_reader.py --issue 
 
 Record the ticket's summary, description, priority, fix version, and labels.
 
+### 1a. Extract PR/repo URLs from description text
+
+Scan the description for GitHub PR URLs (`github.com/.../pull/NNN`), GitLab MR URLs (`gitlab.../merge_requests/NNN`), and bare repo URLs (`github.com/org/repo`). Add any found URLs to the PR/repo list — these are treated the same as manually-provided or graph-discovered URLs. Include them in `sources_consulted.pull_requests` in the output.
+
 ### 2. Traverse the JIRA ticket graph
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/jira-reader/scripts/jira_reader.py --graph <TICKET>
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/jira-reader/scripts/jira_reader.py --graph <TICKET> --max-graph-tokens 15000
 ```
 
 From the graph output, collect:
@@ -56,26 +60,45 @@ From the graph output, collect:
 
 Handle errors gracefully: the script exits 0 if the primary ticket was fetched, even with partial traversal failures.
 
-### 3. List PR/MR details
+### 2a. Persist comments to disk
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/jira-reader/scripts/jira_reader.py \
+  --issue <TICKET> --include-comments --save-comments <OUTPUT_DIR> --brief
+```
+
+The full comments are written to `<OUTPUT_DIR>/comments.json` and a brief digest to `<OUTPUT_DIR>/comments-brief.md`. Stdout returns metadata only (comment count, authors, date range, brief file path). Record this metadata for the `persisted_sources` output.
+
+### 2b. Fetch attachments to disk
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/jira-reader/scripts/jira_reader.py \
+  --attachments <TICKET> --output-dir <OUTPUT_DIR>
+```
+
+Text-extractable files are downloaded first; binary files get placeholders. Record the attachment count and directory path for `persisted_sources`.
+
+### 3. List PR/MR details and persist diffs
 
 For each PR/MR URL (manually-provided and auto-discovered, deduplicated):
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py info <pr-url> --json
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py files <pr-url> --json
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py diff <pr-url> --save-diff <OUTPUT_DIR>/pr-<number>.diff
 ```
 
-Record: PR title, description summary, changed file paths. Do NOT fetch full diffs — that belongs to deep analysis.
+Record: PR title, description summary, changed file paths. The full diff is saved to disk for the analyst to read. Record the diff file path and line count for `persisted_sources`.
 
-### 4. Identify specifications
+### 4. Identify specifications and persist full docs
 
-For each Google Doc URL discovered, convert to markdown:
+For each Google Doc URL discovered, convert to markdown and generate a manifest:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/docs-convert-gdoc-md/scripts/gdoc2md.py "<google-doc-url>"
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/docs-convert-gdoc-md/scripts/gdoc2md.py --manifest --split-sections "<google-doc-url>" <OUTPUT_DIR>/spec-<id>.md
 ```
 
-The script auto-detects URL type (document, slides, spreadsheet) and outputs markdown or CSV. Read the converted file to extract spec content.
+The full document is written to `<OUTPUT_DIR>/spec-<id>.md`, per-section files to `<OUTPUT_DIR>/spec-<id>-section-NN.md`, and the manifest to `<OUTPUT_DIR>/spec-<id>.md.manifest.md`. Record the file path, manifest path, section file paths, and character count for `persisted_sources`.
 
 For other spec links (Confluence, etc.), note them as sources but do not deep-read.
 
@@ -153,6 +176,27 @@ Print exactly one JSON object to the file path provided in your prompt. Nothing 
     "siblings": [],
     "linked": [],
     "web_links": []
+  },
+  "persisted_sources": {
+    "comments_file": "<OUTPUT_DIR>/comments.json",
+    "comments_brief_file": "<OUTPUT_DIR>/comments-brief.md",
+    "comments_total": 80,
+    "attachment_dir": "<OUTPUT_DIR>/attachments/",
+    "attachment_count": 3,
+    "spec_files": [
+      {
+        "file": "<OUTPUT_DIR>/spec-abc123.md",
+        "manifest": "<OUTPUT_DIR>/spec-abc123.md.manifest.md",
+        "section_files": [
+          {"file": "<OUTPUT_DIR>/spec-abc123-section-01.md", "heading": "Introduction", "chars": 12000, "brief": "This document describes..."},
+          {"file": "<OUTPUT_DIR>/spec-abc123-section-02.md", "heading": "Architecture", "chars": 28000, "brief": "The system uses a microservices..."}
+        ],
+        "chars": 184000
+      }
+    ],
+    "diff_files": [
+      {"file": "<OUTPUT_DIR>/pr-42.diff", "lines": 3200}
+    ]
   },
   "errors": []
 }

@@ -6,9 +6,9 @@
 
 ## Prerequisites
 
-- Install the [Red Hat Docs Agent Tools marketplace](https://redhat-documentation.github.io/redhat-docs-agent-tools/install/)
+- Install the [Red Hat Docs Agent Tools marketplace](https://aireilly.gitlab.cee.redhat.com/redhat-docs-agent-tools/install/)
 
-- Install [software dependencies](https://redhat-documentation.github.io/redhat-docs-agent-tools/install/#software-dependencies)
+- Install [software dependencies](https://aireilly.gitlab.cee.redhat.com/redhat-docs-agent-tools/install/#software-dependencies)
 
 ### Vale configuration
 

@@ -1,0 +1,83 @@
+:_mod-docs-content-type: PROCEDURE
+
+[id="deploying-inferenceservice-with-cached-model_{context}"]
+= Deploy an InferenceService with a cached model
+
+[role="_abstract"]
+You can deploy an `InferenceService` that uses a locally cached model for faster startup.
+When the `storageUri` in your `InferenceService` matches the `sourceModelUri` of a cached `LocalModelCache` resource, a mutating webhook automatically rewrites the URI to use the local persistent volume.
+Using a cached model reduces startup time from 15-20 minutes to about one minute.
+
+.Prerequisites
+
+* A cluster administrator has enabled model cache and cached the model on the target nodes.
+For more information, see xref:enabling-model-cache_{context}[Enable model cache] and xref:caching-a-model-for-faster-loading_{context}[Cache a model for faster loading].
+* The `LocalModelCache` status shows `NodeDownloaded` for all target nodes.
+* You know the `sourceModelUri` of the cached model.
+
+.Procedure
+
+. Create an `InferenceService` with a `storageUri` that matches the cached model:
++
+[source,yaml]
+----
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: <inference_service_name>
+  namespace: <namespace>
+spec:
+  predictor:
+    model:
+      modelFormat:
+        name: <model_format> <1>
+      storageUri: "<model_uri>" <2>
+      resources:
+        limits:
+          nvidia.com/gpu: "<gpu_count>"
+        requests:
+          nvidia.com/gpu: "<gpu_count>"
+----
++
+--
+Where:
+
+`<model_format>`:: Specifies the model format, such as `vLLM`.
+`<model_uri>`:: Specifies the model URI that matches the `sourceModelUri` of the `LocalModelCache` resource, such as `hf://meta-llama/Llama-3-70B`.
+--
++
+You do not need annotations or additional YAML modifications.
+The mutating webhook detects that a cached model matches the `storageUri` and rewrites the pod spec to mount the local persistent volume.
+
+. Apply the resource:
++
+[source,terminal]
+----
+$ oc apply -f <inference_service_file>.yaml
+----
+
+. Monitor the pod startup:
++
+[source,terminal]
+----
+$ oc get pods -n <namespace> -w
+----
++
+When using a cached model, the pod transitions to the `Running` state in about one minute instead of 15-20 minutes.
++
+[NOTE]
+====
+If the `storageUri` does not match any cached model, the `InferenceService` falls back to downloading the model from remote storage.
+The inference service functions normally, but with the standard download latency.
+====
+
+.Verification
+
+* Verify that the pod spec shows a persistent volume claim mount instead of a storage initializer init container:
++
+[source,terminal]
+----
+$ oc get pod <pod_name> -n <namespace> -o jsonpath='{.spec.volumes[*].persistentVolumeClaim}'
+----
++
+The output shows the persistent volume claim name associated with the cached model.

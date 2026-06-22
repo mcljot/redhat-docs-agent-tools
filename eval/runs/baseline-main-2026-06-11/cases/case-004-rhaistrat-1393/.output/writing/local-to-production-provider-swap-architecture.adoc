@@ -1,0 +1,126 @@
+:_mod-docs-content-type: CONCEPT
+
+[id="local-to-production-provider-swap-architecture_{context}"]
+= Local-to-production provider swap architecture for LangGraph agents
+
+[role="_abstract"]
+You can deploy a LangGraph agent that you built and tested on your local machine to {productname-long} by changing provider configuration for inference, vector storage, and state providers, without modifying your application code.
+The Llama Stack API serves as a standardized provider abstraction layer between your agent application and infrastructure services, routing requests to the appropriate backend provider based on configuration.
+
+The agentic starter kits offer production-ready agent templates that use the Llama Stack API as a common interface.
+By updating environment variables and Llama Stack configuration files, you swap local development providers for production services running on {productname-short}.
+Your application code interacts only with the Llama Stack OpenAI-compatible API, so the same code runs unchanged in both environments.
+
+== Provider abstraction layer
+
+The Llama Stack API acts as a proxy between your LangGraph agent and the underlying infrastructure services.
+In local development, you configure Llama Stack to route requests to lightweight providers such as Ollama for inference and Chroma for vector storage.
+In production on {productname-short}, you reconfigure Llama Stack to route the same requests to enterprise-grade services such as vLLM or llm-d for inference and Milvus or PGVector for vector storage.
+
+Because the API contract between your agent and Llama Stack remains the same, your application code does not change for inference, vector storage, and state providers.
+Only the Llama Stack configuration and environment variables differ between environments.
+Tool integration might require code changes to define Model Context Protocol (MCP) tool objects and pass them to the Responses API.
+For more information about MCP tool integration, see xref:mcp-tool-integration-llama-stack_{context}[MCP tool integration with the Llama Stack tools API].
+
+The following table shows how each agentic component maps from local development providers to production providers on {productname-short}.
+
+.Provider mapping for local and production environments
+[cols="1,1,1,1", options="header"]
+|===
+|Component
+|Local provider
+|Production provider
+|Key environment variables
+
+|Inference
+|Ollama
+|vLLM or llm-d via KServe InferenceService
+|`INFERENCE_MODEL`, `LLAMA_STACK_SERVER_OPENAI`, `OPENAI_API_KEY`
+
+|Vector storage
+|Chroma or Milvus Lite
+|Milvus or PGVector
+|`MILVUS_URL`, `MILVUS_DB_PATH`
+
+|State and memory
+|SQLite or in-memory
+|PostgreSQL. See xref:maintaining-agent-state-in-production[Maintain agent state and reliability in production].
+|Configured in `run.yaml` under `providers.agents`
+
+|Tools
+|Local functions
+|MCP servers: Kubernetes MCP Server, GitHub MCP Server
+|`MCP_TOOL_MODEL`, `GIT_TOKEN`, `GITHUB_URL`
+
+|Observability
+|Local MLflow
+|{productname-short} MLflow (planned -- not available in {vernum})
+|`MLFLOW_TRACKING_URI`, `MLFLOW_EXPERIMENT_NAME` -- do not configure in {vernum}
+|===
+
+[NOTE]
+====
+MLflow-based observability and tracing for agentic applications is planned for a future release of {productname-short}.
+Do not configure MLflow tracing environment variables for agent deployments in {productname-long} {vernum}.
+====
+
+== Configuration layers
+
+The local-to-production migration involves four configuration layers.
+Each layer controls a different aspect of the deployment.
+
+`.env` file:: Specifies environment variables for inference endpoints, model identifiers, API keys, and MCP tool configuration. This file is the primary mechanism for switching between local and production providers.
+
+`run.yaml`:: Defines the Llama Stack provider configuration. Each section, including `providers.inference`, `providers.vector_io`, `providers.agents`, `providers.tool_runtime`, and `providers.safety`, specifies which backend provider to use and how to connect to it. Environment variable substitution within `run.yaml` allows the same file to adapt to both environments.
+
+Helm `values.yaml`:: Controls the Kubernetes deployment configuration, including the container image, resource limits, environment variable injection, and OpenShift route configuration. Per-agent value overrides customize the deployment for each agent variant.
+
+Agent-specific configuration:: Defines agent behavior, including the LangGraph workflow, structured output schemas, and tool definitions. This configuration is part of your application code and does not change between environments.
+
+== {productname-short}-managed and user-managed components
+
+When deploying LangGraph agents on {productname-short}, some infrastructure components are managed by {productname-short} and some must be managed by the cluster administrator or the developer.
+
+{productname-short}-managed components::
+* Llama Stack operator and `LlamaStackDistribution` custom resource
+* Model serving via KServe `InferenceService` with vLLM or llm-d runtime
+* MLflow operator and tracking server (when enabled)
+
+User-managed components::
+* Vector storage services such as Milvus or PGVector
+* PostgreSQL for agent state persistence
+* MCP server deployments such as Kubernetes MCP Server and GitHub MCP Server
+* Container image builds and registry management
+
+[IMPORTANT]
+====
+The Helm chart provided by the agentic starter kits generates only `Deployment`, `Service`, `Route`, and `Secret` resources for your agent application.
+The Llama Stack operator, `InferenceService`, and vector storage services are cluster prerequisites that must be configured separately before deploying your agent.
+====
+
+== Available agent templates
+
+The agentic starter kits include the following LangGraph agent variants:
+
+ReAct Agent:: A general-purpose agent that uses the ReAct pattern for reasoning and acting. Supports tool calling through MCP servers.
+
+Agentic RAG:: An agent that combines Retrieval-Augmented Generation (RAG) with agentic reasoning. Connects to vector storage for document retrieval.
+
+ReAct with Database Memory:: A ReAct agent with persistent state backed by PostgreSQL. Maintains conversation history across sessions.
+
+Human-in-the-Loop:: An agent that includes approval checkpoints for human review before executing certain actions.
+
+Each variant uses the same Llama Stack provider abstraction and can be deployed using the shared Helm chart with per-agent value overrides.
+
+[NOTE]
+====
+The agentic starter kits also include a LlamaIndex WebSearch Agent.
+For information about LlamaIndex agents, see the link:https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents[agentic starter kits repository].
+====
+
+[role="_additional-resources"]
+.Additional resources
+
+* link:https://github.com/red-hat-data-services/agentic-starter-kits[Agentic starter kits repository]
+* link:https://llamastack.readthedocs.io/[Llama Stack documentation]
+* link:https://github.com/opendatahub-io/agents/tree/main/examples/langchain-langgraph[LangChain and LangGraph reference agent implementation]

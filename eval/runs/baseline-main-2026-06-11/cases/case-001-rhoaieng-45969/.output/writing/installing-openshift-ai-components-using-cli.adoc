@@ -1,0 +1,179 @@
+:_mod-docs-content-type: PROCEDURE
+
+[id='installing-openshift-ai-components-using-cli_{context}']
+= Installing {productname-long} components by using the CLI
+
+//This module is used only for Self-Managed
+
+[role='_abstract']
+To install {productname-long} components by using the {openshift-cli}, you must create and configure a `DataScienceCluster` object. 
+
+[IMPORTANT]
+====
+The following procedure describes how to create and configure a `DataScienceCluster` object to install {productname-long} components as part of a _new_ installation.
+
+ifndef::disconnected[]
+For information about changing the installation status of {productname-short} components _after_ installation, see link:{rhoaidocshome}{default-format-url}/installing_and_uninstalling_{url-productname-short}/installing-and-deploying-openshift-ai_install#updating-installation-status-of-openshift-ai-components-using-web-console_component-install[Updating the installation status of Red Hat OpenShift AI components by using the web console].
+
+////
+For information about _upgrading_ {productname-short}, see link:{rhoaidocshome}{default-format-url}/upgrading_{url-productname-short}/index[Upgrading {productname-short} Self-Managed].
+////
+endif::[]
+
+ifdef::disconnected[]
+For information about changing the installation status of {productname-short} components _after_ installation, see link:{rhoaidocshome}{default-format-url}/installing_and_uninstalling_{url-productname-short}_in_a_disconnected_environment/deploying-openshift-ai-in-a-disconnected-environment_install#updating-installation-status-of-openshift-ai-components-using-web-console_component-install[Updating the installation status of Red Hat OpenShift AI components by using the web console].
+
+////
+For information about _upgrading_ {productname-short}, see link:{rhoaidocshome}{default-format-url}/upgrading_{url-productname-short}_in_a_disconnected_environment/index[Upgrading {productname-short} Self-Managed in a disconnected environment].
+////
+endif::[]
+====
+
+.Prerequisites
+ifdef::disconnected[]
+* The {productname-long} Operator is installed on your {openshift-platform} cluster. See link:{rhoaidocshome}{default-format-url}/installing_and_uninstalling_{url-productname-short}_in_a_disconnected_environment/deploying-openshift-ai-in-a-disconnected-environment_install#installing-the-openshift-ai-operator_operator-install[Installing the {productname-long} Operator].
+endif::[]
+ifndef::disconnected[]
+* The {productname-long} Operator is installed on your {openshift-platform} cluster. See link:{rhoaidocshome}{default-format-url}/installing_and_uninstalling_{url-productname-short}/installing-and-deploying-openshift-ai_install#installing-the-openshift-ai-operator_operator-install[Installing the {productname-long} Operator].
+endif::[]
+* You have cluster administrator privileges for your {openshift-platform} cluster.
+* You have installed the {openshift-cli} as described in the appropriate documentation for your cluster:
+** link:https://docs.redhat.com/en/documentation/openshift_container_platform/{ocp-latest-version}/html/cli_tools/openshift-cli-oc#installing-openshift-cli[Installing the OpenShift CLI^] for OpenShift Container Platform  
+** link:https://docs.redhat.com/en/documentation/red_hat_openshift_service_on_aws/{rosa-latest-version}/html/cli_tools/openshift-cli-oc#installing-openshift-cli[Installing the OpenShift CLI^] for {rosa-productname}
+
+* If you are using custom namespaces, you have created the namespaces.
+
+.Procedure
+
+. Open a new terminal window.
+. Follow these steps to log in to your {openshift-platform} cluster as a cluster administrator:
+.. In the upper-right corner of the OpenShift web console, click your user name and select *Copy login command*. 
+.. After you have logged in, click *Display token*.
+.. Copy the *Log in with this token* command and paste it in your terminal.
++
+[source,subs="+quotes"]
+----
+$ oc login --token=__<token>__ --server=__<openshift_cluster_url>__
+----
+
+. Create a `DataScienceCluster` object custom resource (CR) file, for example, `rhods-operator-dsc.yaml`.
++
+[source, yaml, subs="attributes+"]
+----
+apiVersion: datasciencecluster.opendatahub.io/v2
+kind: DataScienceCluster
+metadata:
+  name: default-dsc
+spec:
+  components:
+    aipipelines:
+      argoWorkflowsControllers:
+        managementState: Removed <1>
+      managementState: Removed
+    dashboard:
+      managementState: Removed
+    feastoperator:
+      managementState: Removed
+    kserve:
+      managementState: Removed
+    kueue:
+      defaultClusterQueueName: default
+      defaultLocalQueueName: default
+      managementState: Removed
+    llamastackoperator:
+      managementState: Removed
+    mlflowoperator:
+      managementState: Removed
+    modelregistry:
+      managementState: Removed
+      registriesNamespace: {mr-default-namespace}
+    ray:
+      managementState: Removed
+    trainingoperator:
+      managementState: Removed
+    trustyai:
+      managementState: Removed
+    workbenches:
+      managementState: Removed
+      workbenchNamespace: {workbench-default-namespace} <2>
+----
++
+<1> To use your own Argo Workflows instance with the `aipipelines` component, set `argoWorkflowsControllers.managementState` to `Removed`. You can then integrate with a managed Argo Workflows installation already on your {openshift-platform} cluster and avoid conflicts with the embedded controller. See _Configuring pipelines with your own Argo Workflows instance_.
+<2> To use the predefined workbench namespace, set this value to `pass:attributes[{workbench-default-namespace}]` or omit this line. To use a custom workbench namespace, set this value to your namespace.
+
+. In the `spec.components` section of the CR, for each {productname-short} component shown, set the value of the `managementState` field to either `Managed` or `Removed`. These values are defined as follows:
++
+--
+Managed::
+The Operator actively manages the component, installs it, and tries to keep it active. The Operator will upgrade the component only if it is safe to do so.
+
+Removed::
+The Operator actively manages the component but does not install it. If the component is already installed, the Operator will try to remove it.
+--
++
+[IMPORTANT]
+====
+ifndef::disconnected[]
+* To learn how to install the distributed workloads components, see link:{rhoaidocshome}{default-format-url}/installing_and_uninstalling_{url-productname-short}/installing-the-distributed-workloads-components_install[Installing the distributed workloads components].
+endif::[]
+
+ifdef::disconnected[]
+* To learn how to install the distributed workloads components, see link:{rhoaidocshome}{default-format-url}/installing_and_uninstalling_{url-productname-short}_in_a_disconnected_environment/installing-the-distributed-workloads-components_install[Installing the distributed workloads components].
+* To learn how to run distributed workloads in a disconnected environment, see link:{rhoaidocshome}{default-format-url}/working_with_distributed_workloads/running-ray-based-distributed-workloads_distributed-workloads#running-distributed-data-science-workloads-disconnected-env_distributed-workloads[Running distributed data science workloads in a disconnected environment].
+endif::[]
+====
+
+. Create the `DataScienceCluster` object in your {openshift-platform} cluster to install the specified {productname-short} components.
++
+[source]
+----
+$ oc create -f rhods-operator-dsc.yaml
+----
++
+You see output similar to the following:
++
+[source]
+----
+datasciencecluster.datasciencecluster.opendatahub.io/default created
+----
+
+.Verification
+. Confirm that there is at least one running pod for each component:
+.. In the {openshift-platform} web console, click *Workloads* → *Pods*.
+.. In the *Project* list at the top of the page, select `redhat-ods-applications`.
+.. In the applications namespace, confirm that there are one or more running pods for each of the {productname-short} components that you installed.
+
+. Confirm the status of all installed components:
+.. In the {openshift-platform} web console, click *Operators* → *Installed Operators*.
+.. Click the *{productname-long}* Operator.
+.. Click the *Data Science Cluster* tab.
+.. For the `DataScienceCluster` object called `default-dsc`, verify that the status is `Phase: Ready`. 	
++
+[NOTE]
+====
+When you edit the `spec.components` section to change the installation status of a component, the `default-dsc` status also changes. 
+During the initial installation, it might take a few minutes for the status phase to change from `Progressing` to `Ready`. 
+You can access the {productname-short} dashboard before the `default-dsc` status phase is `Ready`, but all components might not be ready.
+====
+
+.. Click the `default-dsc` link to display the data science cluster details. 	
+.. Select the *YAML* tab.
+.. In the `status.installedComponents` section, confirm that the components you installed have a status value of `true`.
++
+[NOTE]
+====
+If a component shows with the `component-name: {}` format in the `spec.components` section of the CR, the component is not installed.
+====
+
+ifndef::disconnected[]
+. In the {productname-short} dashboard, users can view the list of the installed {productname-short} components, their corresponding source (upstream) components, and the versions of the installed components, as described in link:{rhoaidocshome}{default-format-url}/installing_and_uninstalling_openshift_ai_self-managed/installing-and-deploying-openshift-ai_install#viewing-installed-components_component-install[Viewing installed {productname-short} components].
+endif::[]
+ifdef::disconnected[]
+. In the {productname-short} dashboard, users can view the list of the installed {productname-short} components, their corresponding source (upstream) components, and the versions of the installed components, as described in link:{rhoaidocshome}{default-format-url}/installing_and_uninstalling_openshift_ai_self-managed_in_a_disconnected_environment/deploying-openshift-ai-in-a-disconnected-environment_install#viewing-installed-components_component-install[Viewing installed {productname-short} components].
+endif::[]
+
+.Next steps
+
+* If you are using OpenStack, CodeReady Containers (CRC), or other private cloud environments without integrated external DNS, manually configure DNS A or CNAME records after the `LoadBalancer` IP becomes available. For more information, see link:https://access.redhat.com/articles/7133770[Configuring External DNS for RHOAI 3.x on OpenStack and Private Clouds].
+
+* Complete any additional configuration required for the components you enabled. See the component-specific configuration sections for details.

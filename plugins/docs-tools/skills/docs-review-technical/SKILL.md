@@ -3,9 +3,6 @@ name: docs-review-technical
 description: Technical accuracy review and code-aware validation with confidence scoring. Supports local branch review, PR/MR review with optional inline comment posting, interactive comment actioning, and code-aware technical validation against source code repos. MUST BE USED when the user asks to validate documentation against code, check technical accuracy, verify commands/APIs/configs in docs match source code, or run a technical review. Also use when the user provides a --code URL or mentions code-aware review.
 argument-hint: "[--local | --pr <url> [--post-comments] | --action-comments [url]] [--code <url>] [--fix] [--threshold <0-100>]"
 allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, Agent, WebSearch, WebFetch, AskUserQuestion
-dependencies:
-  python:
-    - code-finder
 ---
 
 # Technical Accuracy and Code-Aware Review
@@ -177,10 +174,7 @@ fi
 ### For --local mode
 
 ```bash
-git diff --name-only "$BASE_BRANCH"...HEAD > /tmp/docs-review-all-files.txt
-git diff --name-only HEAD >> /tmp/docs-review-all-files.txt
-git diff --name-only --cached >> /tmp/docs-review-all-files.txt
-sort -u /tmp/docs-review-all-files.txt | grep -E '\.(adoc|md)$' > /tmp/docs-review-doc-files.txt || true
+git diff --name-only "$BASE_BRANCH"...HEAD | sort -u | grep -E '\.(adoc|md)$' > /tmp/docs-review-doc-files.txt || true
 DOC_FILES=$(wc -l < /tmp/docs-review-doc-files.txt)
 ```
 
@@ -231,7 +225,7 @@ For `--local` mode: `git diff "$BASE_BRANCH"...HEAD -- $(cat /tmp/docs-review-do
 
 ## Step 4: Agent 1 — Technical Accuracy and Consistency
 
-- `subagent_type`: `docs-tools:technical-reviewer`
+- `subagent_type`: `technical-reviewer`
 - `model`: `opus`
 
 Follow the full technical review process: doc type detection, reviewer persona (developer/architect lens), 6 review dimensions, confidence scoring, and output format. Use `jira-reader`, `git-pr-reader`, and `article-extractor` skills to cross-check technical claims. Do not duplicate style or formatting checks.
@@ -256,13 +250,16 @@ For `--pr` mode, use `python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts
 
 Workflow:
 
-1. **Clone repos** to `/tmp/tech-review/<repo-name>/` using `git clone` (full history, not `--depth 1` — `git log` search needs history).
+1. **Clone repos** to `/tmp/tech-review/<repo-name>/` using full history (needed for `git log` search):
+
+   ```bash
+   python3 ${CLAUDE_PLUGIN_ROOT}/skills/git-pr-reader/scripts/git_pr_reader.py clone <repo-url> \
+     --output-dir /tmp/tech-review/<repo-name>/ --depth 0 [--ref <ref>]
+   ```
 
    **Repository discovery priority**: `--code` (explicit) > PR URL linked repos > `--jira` ticket linked repos > `:code-repo-url:` AsciiDoc attributes.
 
    If `--jira` is provided, fetch the ticket using `jira-reader` and extract linked PR/MR URLs and repository references. Parse repo URLs from PR links and JIRA ticket fields.
-
-   If `--ref` was specified for a repo, check out that ref after cloning: `git checkout <ref>`. Otherwise use the default branch.
 
 2. **Extract references** from doc files:
    ```bash
@@ -270,87 +267,63 @@ Workflow:
    python3 ${CLAUDE_SKILL_DIR}/scripts/extract_refs.py "${DOC_FILES[@]}" --output /tmp/tech-review-refs.json
    ```
 
-3. **Validate claims against code** — Run grounded review on each doc file against the cloned repos. First check if code-finder is installed:
+3. **Validate claims against code** — For each cloned repo, check if learn-code analysis exists:
    ```bash
-   python3 -c "import claude_context" 2>/dev/null && echo "INSTALLED" || echo "NOT_INSTALLED"
+   ls /tmp/tech-review/repo-name/.code-learner/ONBOARDING.md 2>/dev/null
    ```
 
-   Build a drafts JSON file listing all doc files:
-   ```json
-   [{"draft": "/path/to/file1.adoc"}, {"draft": "/path/to/file2.md"}]
-   ```
+   **If learn-code analysis exists**, read the module summaries from `.code-learner/summaries/` to get `public_api`, `dependencies`, and `data_flow` for each module. Cross-reference documentation claims against these structured summaries.
 
-   If **INSTALLED**, run directly:
+   **If learn-code analysis does NOT exist**, use direct source file reading: read the extracted references from `/tmp/tech-review-refs.json` and use Grep/Read to verify each reference against the actual source files. This is slower but works without prior analysis.
+
+   For each claim in the documentation (function names, parameter types, configuration options, API endpoints, class names), verify against the source using the best available method (analysis data or direct reading). Record findings as:
+   - **verified**: claim matches source code
+   - **inaccurate**: claim contradicts source code (include what the source actually says)
+   - **stale**: referenced symbol exists but has changed (renamed, deprecated, different signature)
+   - **unverifiable**: cannot determine from available sources
+
+4. **Extract API surface** — For each cloned repo:
+
+   **If learn-code analysis exists** (`.code-learner/summaries/`), read the `public_api` field from each module summary. This provides classes, functions, methods with their purposes and dependencies.
+
+   **If no analysis**, use Grep and Read to identify public API symbols:
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/skills/code-evidence/scripts/grounded_review.py \
-     --repo /tmp/tech-review/repo-name \
-     --drafts-file /tmp/tech-review-drafts.json \
-     --reindex > /tmp/tech-review-grounded.json
+   # For Go repos: find exported symbols (uppercase)
+   grep -rn "^func [A-Z]" /tmp/tech-review/repo-name/
+   grep -rn "^type [A-Z]" /tmp/tech-review/repo-name/
+
+   # For Python repos: find public functions/classes
+   grep -rn "^def [a-z]" /tmp/tech-review/repo-name/ --include="*.py" | grep -v "^def _"
+   grep -rn "^class [A-Z]" /tmp/tech-review/repo-name/ --include="*.py"
    ```
 
-   If **NOT_INSTALLED**, prefix with uv:
-   ```bash
-   uv run --with code-finder python3 ${CLAUDE_PLUGIN_ROOT}/skills/code-evidence/scripts/grounded_review.py \
-     --repo /tmp/tech-review/repo-name \
-     --drafts-file /tmp/tech-review-drafts.json \
-     --reindex > /tmp/tech-review-grounded.json
-   ```
+   Build an API reference list for comparison against documentation references.
 
-   The grounded review output includes per-claim structured data:
-   - **claim_id**, **text**: the extracted claim from the document
-   - **verdict**: `supported`, `partially_supported`, `unsupported`, or `no_evidence_found`
-   - **confidence**: 0.0–1.0 relevance score
-   - **evidence**: array of `{file_path, start_line, end_line, chunk_type, chunk_name, relevance_score, content_snippet}`
-
-4. **Extract API surface** — Run api_surface extraction to discover public classes, functions, and methods in the code:
-   ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/skills/code-evidence/scripts/api_surface.py \
-     --target /tmp/tech-review/repo-name > /tmp/tech-review-api-surface.json
-   ```
-   (Prefix with `uv run --with code-finder` if NOT_INSTALLED.)
-
-   The API surface output includes:
-   - **api_surface**: per-file map of entities (classes, functions, methods with signatures and line ranges)
-   - **total_entities**, **files_processed**, **files_with_api**: summary counts
-
-   Optionally, run supplemental evidence queries for categories api_surface does not cover (env vars, config keys):
-   ```json
-   [
-     {"query": "environment variable access os.environ getenv", "limit": 10},
-     {"query": "configuration key config.get viper.Get settings", "limit": 10}
-   ]
-   ```
-   ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/skills/code-evidence/scripts/find_evidence.py \
-     --repo /tmp/tech-review/repo-name \
-     --queries-file /tmp/tech-review-supplemental-queries.json > /tmp/tech-review-supplemental.json
-   ```
-
-5. **Triage results** — Read `/tmp/tech-review-grounded.json`, `/tmp/tech-review-api-surface.json`, and `/tmp/tech-review-refs.json`. Apply the structured triage pipeline from Step 6 (below). Use native tools (Grep, Glob, Read) only to verify ambiguous results.
+5. **Triage results** — Review the claim validation findings and API reference list against the extracted references (`/tmp/tech-review-refs.json`). Apply the structured triage pipeline from Step 6 (below). Use Read and Grep on source files to verify ambiguous results.
 
 6. Return issues in the standard format: `file`, `line`, `description`, `reason`, `confidence`, `severity`. Include the code evidence in `reason`.
 
 ## Step 6: Structured Triage (Evidence-Based Classification)
 
-Process ALL grounded review results from `/tmp/tech-review-grounded.json` and the API surface from `/tmp/tech-review-api-surface.json` through a classification pipeline. Do NOT skip this step or use ad-hoc exploration.
+Process ALL claim validation findings and API reference data through a classification pipeline. Do NOT skip this step or use ad-hoc exploration.
 
 **Pass 1: Scope filtering (commands only)** — For each command in the extracted references (`/tmp/tech-review-refs.json`), classify the binary as external or in-scope. External system commands (sudo, dnf, oc, kubectl, docker, git, curl, etc.) cannot be validated against the code repo — tag as `out-of-scope` and skip further analysis.
 
-**Pass 2: Claim verdict analysis** — For each claim result from grounded review:
-- `verdict: "unsupported"` with `confidence > 0.5` → Flag as likely inaccurate. Read the evidence to understand why the claim is unsupported. High confidence (>=80%) when the evidence clearly contradicts the claim.
-- `verdict: "no_evidence_found"` → Check if the claim references something that should be in the repo. Could be wrong repo, or reference lives elsewhere. Medium confidence (50-70%).
-- `verdict: "partially_supported"` with `confidence < 0.5` → Medium confidence. Cross-reference the evidence content snippets to determine what part is wrong.
-- `verdict: "supported"` → No issue. Skip.
+**Pass 2: Claim validation analysis** — For each validated claim:
+- `inaccurate` claims → Flag as likely incorrect. Read source to understand the discrepancy. High confidence (>=80%) when source clearly contradicts the claim.
+- `unverifiable` claims → Check if the claim references something that should be in the repo. Could be wrong repo, or reference lives elsewhere. Medium confidence (50-70%).
+- `stale` claims → Medium-high confidence. Cross-reference the actual current implementation to determine what changed.
+- `verified` claims → No issue. Skip.
 
-**Pass 3: API surface comparison** — Compare the extracted references (`/tmp/tech-review-refs.json`) against the API surface (`/tmp/tech-review-api-surface.json`):
-- For each API, class, or function referenced in the docs, check if it appears in the api_surface output. If absent, flag as potentially stale or renamed. Confidence: 60-80%.
-- For each entity in api_surface not mentioned in the doc references, note as potentially undocumented. Severity: Low-Medium. Confidence: 60-80% (absence from *changed* docs doesn't mean absence from *all* docs).
+**Pass 3: API surface comparison** — Compare the extracted references (`/tmp/tech-review-refs.json`) against the API reference list:
+- For each API, class, or function referenced in the docs, check if it appears in the API reference. If absent, flag as potentially stale or renamed. Confidence: 60-80%.
+- For each entity in the API reference not mentioned in the doc references, note as potentially undocumented. Severity: Low-Medium. Confidence: 60-80%.
 
-**Pass 4: Read source files** — For items flagged in passes 2-3 with confidence >=50%, read the actual source file referenced in the grounded review evidence or api_surface to confirm the issue. Do not report issues based solely on verdict output without verifying against the source.
+**Pass 4: Read source files** — For items flagged in passes 2-3 with confidence >=50%, read the actual source file to confirm the issue. Do not report issues based solely on analysis output without verifying against the source.
 
 **Pass 5: Cross-reference and deduplicate** — Merge findings from passes 2-4:
 - If a claim flagged in Pass 2 also has a missing API in Pass 3, consolidate into a single issue with the stronger evidence.
-- If an entity flagged as undocumented in Pass 3 appears in supplemental evidence queries, downgrade or remove.
+- If an entity flagged as undocumented in Pass 3 is found via additional Grep searches in the source, downgrade or remove.
 - Remove duplicate findings that flag the same underlying problem from different angles.
 
 **Assigning severity**: `High` = users will hit errors (broken commands, missing APIs). `Medium` = misleading but not blocking (wrong names, stale options). `Low` = cosmetic or informational (undocumented features, formatting).
@@ -776,8 +749,5 @@ Entities found in API surface but not referenced in reviewed documentation:
 - Include source code evidence in each issue's `reason` field
 - Comments are posted under YOUR username using tokens from `.env` files
 - `scripts/extract_refs.py` extracts technical references from doc files (commands, APIs, configs, file paths)
-- Code-finder wrappers live in `${CLAUDE_PLUGIN_ROOT}/skills/code-evidence/scripts/`:
-  - `grounded_review.py` — validates doc claims against code (verdicts: supported/unsupported/partially_supported/no_evidence_found)
-  - `api_surface.py` — extracts public API surface from code (classes, functions, methods with signatures)
-  - `find_evidence.py` — retrieves code snippets matching natural language queries
+- When reviewing repos with learn-code analysis (`.code-learner/` directory), read ONBOARDING.md and module summaries for structured code understanding. When no analysis exists, use Read/Grep directly on source files.
 - Vale linting is NOT part of the technical review — use `docs-review-style` for that

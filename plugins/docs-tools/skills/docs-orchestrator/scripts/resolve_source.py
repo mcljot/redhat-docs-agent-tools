@@ -1,25 +1,21 @@
 #!/usr/bin/env python3
 """Resolve and clone/verify a source code repository for a docs workflow.
 
-Extracts the deterministic repo-resolution logic from the orchestrator skill
-into a standalone script. The orchestrator calls this script and makes
-decisions (user prompts, deferred step management) based on the JSON output.
+Handles repo cloning, source.yaml management, PR branch checkout, and
+progress file synchronization. JIRA-based repo discovery is handled
+upstream by the requirements step (extract_discovered_repos.py writes
+discovered_repos.json, which this script reads at Priority 4).
 
-Modes:
+Resolution priority:
+    1. Explicit --repo flag
+    2. Per-ticket source.yaml
+    3. PR-derived (--pr without --repo)
+    4. discovered_repos.json (from requirements step)
+    5. Scan requirements.md for PR URLs (--scan-requirements)
 
-1. Explicit source (--repo and/or --pr):
-    python3 resolve_source.py --base-path .agent_workspace/proj-123 \
-        --repo https://github.com/org/repo.git --pr https://github.com/org/repo/pull/42
-
-2. From existing source.yaml:
-    python3 resolve_source.py --base-path .agent_workspace/proj-123
-
-3. JIRA ticket discovery (auto-discover repo from ticket git links):
-    python3 resolve_source.py --base-path .agent_workspace/proj-123 \
-        --ticket PROJ-123 --plugin-root /path/to/docs-tools
-
-4. Scan requirements.md for PR URLs (post-requirements discovery):
-    python3 resolve_source.py --base-path .agent_workspace/proj-123 --scan-requirements
+When --progress-file is passed, writes resolved source info into the
+workflow progress JSON and flips deferred steps to pending (or skipped
+if --skip-deferred-on-no-source and no source found).
 
 Output: JSON to stdout with the resolved source info, or an error status.
 
@@ -54,47 +50,11 @@ def _is_remote_url(value):
     return value.startswith(("https://", "git@", "ssh://"))
 
 
-def _run_git(args, cwd=None, check=True):
-    """Run a git command and return stdout."""
-    result = subprocess.run(  # noqa: S603
-        ["git"] + args,
-        cwd=cwd,
-        capture_output=True,
-        text=True,
+def _git_pr_reader_path():
+    """Locate git_pr_reader.py relative to this script."""
+    return str(
+        Path(__file__).resolve().parents[2] / "git-pr-reader" / "scripts" / "git_pr_reader.py"
     )
-    if check and result.returncode != 0:
-        raise subprocess.CalledProcessError(
-            result.returncode, ["git"] + args, result.stdout, result.stderr
-        )
-    return result
-
-
-def _run_gh(args, check=True):
-    """Run a gh CLI command and return stdout."""
-    result = subprocess.run(  # noqa: S603
-        ["gh"] + args,
-        capture_output=True,
-        text=True,
-    )
-    if check and result.returncode != 0:
-        raise subprocess.CalledProcessError(
-            result.returncode, ["gh"] + args, result.stdout, result.stderr
-        )
-    return result.stdout.strip()
-
-
-def _run_glab(args, check=True):
-    """Run a glab CLI command and return stdout."""
-    result = subprocess.run(  # noqa: S603
-        ["glab"] + args,
-        capture_output=True,
-        text=True,
-    )
-    if check and result.returncode != 0:
-        raise subprocess.CalledProcessError(
-            result.returncode, ["glab"] + args, result.stdout, result.stderr
-        )
-    return result.stdout.strip()
 
 
 def _read_source_yaml(base_path):
@@ -168,101 +128,37 @@ def _parse_simple_yaml(path):
     return result
 
 
-def _normalize_git_url(url):
+def normalize_git_url(url):
     """Normalize a git URL for comparison (strip .git suffix and trailing slash)."""
     return url.rstrip("/").removesuffix(".git")
 
 
-def _repo_name_from_url(url):
+def repo_name_from_url(url):
     """Extract the repository name from a git URL."""
-    return _normalize_git_url(url).split("/")[-1]
+    return normalize_git_url(url).split("/")[-1]
 
 
 def _resolve_pr_info(pr_url):
     """Extract repo URL and branch from a GitHub PR or GitLab MR URL.
 
-    Dispatches to gh CLI for GitHub PRs and glab CLI for GitLab MRs.
-    Derives the clone URL from the PR/MR URL (base repo), not the
-    head/source repository (which may be a fork).
+    Delegates to git_pr_reader.py resolve, which uses PyGithub/python-gitlab.
+    Returns (repo_url, branch) where branch is None for merged PRs.
     """
-    if GITLAB_MR_RE.match(pr_url):
-        return _resolve_mr_info(pr_url)
-
-    match = GITHUB_PR_RE.match(pr_url)
-    if match:
-        repo_slug = match.group(1)
-        repo_url = f"https://github.com/{repo_slug}.git"
-    else:
-        repo_url = _run_gh(
-            [
-                "pr",
-                "view",
-                pr_url,
-                "--json",
-                "url",
-                "--jq",
-                '.url | split("/pull/")[0] + ".git"',
-            ]
-        )
-
-    pr_branch = _run_gh(
-        [
-            "pr",
-            "view",
-            pr_url,
-            "--json",
-            "headRefName",
-            "--jq",
-            ".headRefName",
-        ]
+    result = subprocess.run(  # noqa: S603
+        ["python3", _git_pr_reader_path(), "resolve", pr_url, "--json"],  # noqa: S607
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
-    return repo_url, pr_branch
-
-
-def _resolve_mr_info(mr_url):
-    """Extract repo URL and branch from a GitLab MR URL using glab CLI.
-
-    Parses the project path and MR number from the URL, then uses
-    glab mr view <number> -R <project> with GITLAB_HOST set for the
-    correct instance.
-    """
-    import os
-    from urllib.parse import urlparse
-
-    match = GITLAB_MR_RE.match(mr_url)
-    if not match:
-        raise ValueError(f"Not a valid GitLab MR URL: {mr_url}")
-    project_path = match.group(1)
-    mr_number = match.group(2)
-    hostname = urlparse(mr_url).hostname
-
-    prev_host = os.environ.get("GITLAB_HOST")
-    os.environ["GITLAB_HOST"] = f"https://{hostname}"
-    try:
-        mr_json = _run_glab(
-            [
-                "mr",
-                "view",
-                mr_number,
-                "-R",
-                project_path,
-                "--output",
-                "json",
-            ]
+    if result.returncode != 0:
+        raise subprocess.CalledProcessError(
+            result.returncode,
+            ["git_pr_reader.py", "resolve"],
+            result.stdout,
+            result.stderr,
         )
-    finally:
-        if prev_host is None:
-            os.environ.pop("GITLAB_HOST", None)
-        else:
-            os.environ["GITLAB_HOST"] = prev_host
-
-    mr_data = json.loads(mr_json)
-    source_branch = mr_data.get("source_branch", "")
-
-    base_url = mr_url.split("/-/merge_requests/")[0]
-    repo_url = f"{base_url}.git"
-
-    return repo_url, source_branch
+    data = json.loads(result.stdout)
+    return data["repo_url"], data["branch"]
 
 
 def _scan_requirements_for_prs(base_path):
@@ -301,7 +197,100 @@ def _scan_requirements_for_prs(base_path):
     return repos
 
 
-def _extract_repo_url(link_url):
+def _read_discovered_repos(base_path):
+    """Read discovered_repos.json if it exists.
+
+    Returns list of repo dicts [{"repo_url": ..., "pr_urls": [...]}] or empty list.
+    """
+    repos_file = Path(base_path) / "requirements" / "discovered_repos.json"
+    if not repos_file.exists():
+        return []
+    try:
+        with open(repos_file) as f:
+            data = json.load(f)
+        return data.get("repos", [])
+    except (json.JSONDecodeError, KeyError):
+        return []
+
+
+def _resolve_discovered_repos(discovered, base_path, dry_run=False):
+    """Clone all repos from discovered_repos.json.
+
+    Clones each remote repo into code-repo/<repo_name>/. For repos with
+    PR URLs, resolves the first PR's branch and checks it out.
+
+    Returns a result dict (same contract as resolve()).
+    """
+    if not discovered:
+        return {"status": "no_source"}
+
+    resolved_repos = []
+    errors = []
+
+    for repo_entry in discovered:
+        repo_url = repo_entry.get("repo_url")
+        if not repo_url:
+            continue
+
+        pr_urls = repo_entry.get("pr_urls", [])
+        ref = None
+
+        if pr_urls:
+            try:
+                _, pr_branch = _resolve_pr_info(pr_urls[0])
+                ref = pr_branch
+            except (subprocess.CalledProcessError, Exception) as e:
+                print(
+                    f"WARNING: Could not resolve PR branch from {pr_urls[0]}: {e}",
+                    file=sys.stderr,
+                )
+
+        repo_name = repo_name_from_url(repo_url)
+        clone_dir = Path(base_path) / "code-repo" / repo_name
+
+        if not dry_run:
+            if clone_dir.exists():
+                if not _verify_existing_clone(clone_dir, ref, expected_repo_url=repo_url):
+                    errors.append(f"Existing clone at {clone_dir} is invalid.")
+                    continue
+            else:
+                first_pr = pr_urls[0] if pr_urls else None
+                if not _clone_repo(repo_url, clone_dir, ref, pr_url=first_pr):
+                    errors.append(f"Could not clone {repo_url}.")
+                    continue
+
+        resolved_repos.append(
+            {
+                "repo_path": str(clone_dir),
+                "repo_url": repo_url,
+                "ref": ref,
+            }
+        )
+
+    if not resolved_repos:
+        return {
+            "status": "error" if errors else "no_source",
+            "message": (f"Could not clone any discovered repos. Errors: {'; '.join(errors)}")
+            if errors
+            else None,
+        }
+
+    primary = resolved_repos[0]
+    _write_source_yaml(base_path, primary["repo_url"], primary["ref"], dry_run=dry_run)
+
+    result = _success(
+        primary["repo_path"],
+        repo_url=primary["repo_url"],
+        ref=primary["ref"],
+    )
+    if len(resolved_repos) > 1:
+        result["additional_repos"] = resolved_repos[1:]
+    if errors:
+        result["warnings"] = errors
+    return result
+
+
+def extract_repo_url(link_url):
     """Extract a normalized repo URL from a GitHub/GitLab link.
 
     Handles PR URLs, commit URLs, file URLs, tree URLs, and plain repo URLs.
@@ -316,12 +305,12 @@ def _extract_repo_url(link_url):
     match = GITLAB_MR_RE.match(link_url)
     if match:
         base = link_url.split("/-/merge_requests/")[0]
-        return _normalize_git_url(base)
+        return normalize_git_url(base)
 
     # GitLab other paths (commits, tree, blob, etc.)
     match = GITLAB_REPO_RE.match(link_url)
     if match:
-        return _normalize_git_url(match.group(1))
+        return normalize_git_url(match.group(1))
 
     # GitHub other paths (commits, tree, blob, actions, etc.)
     match = GITHUB_REPO_RE.match(link_url)
@@ -335,197 +324,63 @@ def _extract_repo_url(link_url):
     return None
 
 
-def _discover_from_jira(ticket, base_path, plugin_root):
-    """Discover source repo(s) from JIRA ticket git_links and auto-discovered PRs.
+def _clone_repo(repo_url, clone_dir, ref=None, pr_url=None, dry_run=False):
+    """Clone a repo to clone_dir. Returns True on success.
 
-    Calls jira_reader.py to fetch the ticket's remote links, extracts repo URLs,
-    groups by repo, and selects the primary repo by reference count.
-
-    Returns a result dict (same contract as resolve()).
+    Delegates to git_pr_reader.py clone which handles fork-aware PR ref
+    fallback (refs/pull/N/head, refs/merge-requests/N/head).
     """
-    jira_script = Path(plugin_root) / "skills" / "jira-reader" / "scripts" / "jira_reader.py"
-    if not jira_script.exists():
-        return {
-            "status": "error",
-            "message": f"jira_reader.py not found at {jira_script}",
-        }
-
-    # Fetch git_links from --issue
-    git_links = []
-    try:
-        result = subprocess.run(  # noqa: S603
-            ["python3", str(jira_script), "--issue", ticket],  # noqa: S607
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        if result.returncode == 0:
-            issue_data = json.loads(result.stdout)
-            if isinstance(issue_data, list):
-                issue_data = issue_data[0]
-            git_links = issue_data.get("git_links", [])
-    except (json.JSONDecodeError, subprocess.TimeoutExpired, IndexError):
-        pass
-
-    # Fetch auto_discovered_urls.pull_requests from --graph
-    auto_prs = []
-    try:
-        result = subprocess.run(  # noqa: S603
-            ["python3", str(jira_script), "--graph", ticket],  # noqa: S607
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        if result.returncode == 0:
-            graph_data = json.loads(result.stdout)
-            auto_prs = graph_data.get("auto_discovered_urls", {}).get("pull_requests", [])
-    except (json.JSONDecodeError, subprocess.TimeoutExpired):
-        pass
-
-    # Combine all discovered URLs (dedup)
-    all_urls = list(dict.fromkeys(git_links + auto_prs))
-    if not all_urls:
-        return {"status": "no_source"}
-
-    # Group by normalized repo URL and count references
-    repo_counts = {}  # normalized_url -> {"url": canonical_url, "count": N, "pr_urls": [...]}
-    for url in all_urls:
-        repo_url = _extract_repo_url(url)
-        if not repo_url:
-            continue
-        normalized = _normalize_git_url(repo_url)
-        if normalized not in repo_counts:
-            repo_counts[normalized] = {"url": repo_url, "count": 0, "pr_urls": []}
-        repo_counts[normalized]["count"] += 1
-        if GITHUB_PR_RE.match(url) or GITLAB_MR_RE.match(url):
-            repo_counts[normalized]["pr_urls"].append(url)
-
-    if not repo_counts:
-        return {"status": "no_source"}
-
-    # Sort by count descending
-    ranked = sorted(repo_counts.values(), key=lambda r: r["count"], reverse=True)
-
-    if len(ranked) == 1:
-        winner = ranked[0]
-    elif ranked[0]["count"] > ranked[1]["count"]:
-        winner = ranked[0]
-    else:
-        # Tie — fail with candidates
-        tied = [r for r in ranked if r["count"] == ranked[0]["count"]]
-        candidates = ", ".join(r["url"] for r in tied)
-        return {
-            "status": "error",
-            "message": (
-                f"Multiple source repos discovered from JIRA ticket {ticket} "
-                f"with equal reference counts ({ranked[0]['count']} each): {candidates}. "
-                "Pass --source-code-repo <url> to select one."
-            ),
-        }
-
-    # Resolve the winner
-    if winner["pr_urls"]:
-        result = _resolve_multiple_prs(winner["pr_urls"], base_path)
-    else:
-        result = _resolve_explicit_repos([winner["url"]], [], base_path)
-
-    # Include all discovered repos in the result for logging
-    if len(ranked) > 1 and result.get("status") == "resolved":
-        result["discovered_repos"] = {_normalize_git_url(r["url"]): r["count"] for r in ranked}
-
-    return result
-
-
-def _clone_repo(repo_url, clone_dir, ref=None):
-    """Clone a repo to clone_dir. Returns True on success."""
-    clone_dir = str(clone_dir)
-
+    cmd = [
+        "python3",
+        _git_pr_reader_path(),
+        "clone",
+        repo_url,
+        "--output-dir",
+        str(clone_dir),
+    ]
     if ref:
-        # Try cloning at the specific branch first
-        result = _run_git(
-            ["clone", "--depth", "1", "--branch", ref, repo_url, clone_dir],
-            check=False,
-        )
-        if result.returncode == 0:
-            return True
+        cmd += ["--ref", ref]
+    if pr_url:
+        cmd += ["--pr-url", pr_url]
+    if dry_run:
+        cmd += ["--dry-run"]
 
-        # Fallback: clone default branch, then fetch and checkout the ref
-        result = _run_git(
-            ["clone", "--depth", "1", repo_url, clone_dir],
-            check=False,
-        )
-        if result.returncode != 0:
-            return False
-
-        fetch = _run_git(["fetch", "origin", ref], cwd=clone_dir, check=False)
-        if fetch.returncode != 0:
-            return False
-
-        checkout = _run_git(["checkout", "FETCH_HEAD"], cwd=clone_dir, check=False)
-        return checkout.returncode == 0
-
-    result = _run_git(
-        ["clone", "--depth", "1", repo_url, clone_dir],
-        check=False,
+    result = subprocess.run(  # noqa: S603
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=300,
     )
     return result.returncode == 0
 
 
-def _verify_existing_clone(clone_dir, ref=None, expected_repo_url=None):
+def _verify_existing_clone(clone_dir, ref=None, expected_repo_url=None, dry_run=False):
     """Verify an existing clone is valid. Optionally checkout a different ref.
 
-    Assumes the remote is named "origin". This is always true for repos cloned
-    by this script. For user-provided local paths where the remote was renamed,
-    the origin check will fail gracefully (returns False).
+    Delegates to git_pr_reader.py clone --verify.
     """
-    result = _run_git(["rev-parse", "HEAD"], cwd=str(clone_dir), check=False)
-    if result.returncode != 0:
-        return False
+    if dry_run:
+        return True
 
-    if expected_repo_url:
-        origin = _run_git(
-            ["remote", "get-url", "origin"],
-            cwd=str(clone_dir),
-            check=False,
-        )
-        if origin.returncode != 0:
-            return False
-        if _normalize_git_url(origin.stdout.strip()) != _normalize_git_url(expected_repo_url):
-            return False
-
+    cmd = ["python3", _git_pr_reader_path(), "clone", "--verify", str(clone_dir)]
     if ref:
-        current = _run_git(
-            ["rev-parse", "--abbrev-ref", "HEAD"],
-            cwd=str(clone_dir),
-            check=False,
-        )
-        current_branch = current.stdout.strip()
-        if current_branch != ref:
-            fetch = _run_git(
-                ["fetch", "origin", ref],
-                cwd=str(clone_dir),
-                check=False,
-            )
-            if fetch.returncode != 0:
-                return False
-            checkout = _run_git(
-                ["checkout", ref],
-                cwd=str(clone_dir),
-                check=False,
-            )
-            if checkout.returncode != 0:
-                fallback = _run_git(
-                    ["checkout", "FETCH_HEAD"],
-                    cwd=str(clone_dir),
-                    check=False,
-                )
-                if fallback.returncode != 0:
-                    return False
-    return True
+        cmd += ["--ref", ref]
+    if expected_repo_url:
+        cmd += ["--expected-url", expected_repo_url]
+
+    result = subprocess.run(  # noqa: S603
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    return result.returncode == 0
 
 
-def _write_source_yaml(base_path, repo, ref):
+def _write_source_yaml(base_path, repo, ref, dry_run=False):
     """Write source.yaml for workflow resume."""
+    if dry_run:
+        return
     source_file = Path(base_path) / "source.yaml"
     if source_file.exists():
         return  # Don't overwrite existing config
@@ -535,7 +390,7 @@ def _write_source_yaml(base_path, repo, ref):
     source_file.write_text("\n".join(lines) + "\n")
 
 
-def _resolve_multiple_prs(pr_urls, base_path):
+def _resolve_multiple_prs(pr_urls, base_path, dry_run=False):
     """Resolve and clone repos from a list of PR/MR URLs.
 
     Groups PRs by repo, clones each into code-repo/<repo_name>/,
@@ -548,7 +403,7 @@ def _resolve_multiple_prs(pr_urls, base_path):
             repo_url, branch = _resolve_pr_info(url)
         except subprocess.CalledProcessError:
             continue
-        normalized = _normalize_git_url(repo_url)
+        normalized = normalize_git_url(repo_url)
         if normalized not in repo_groups:
             repo_groups[normalized] = {"repo_url": repo_url, "ref": branch, "urls": []}
         repo_groups[normalized]["urls"].append(url)
@@ -565,17 +420,19 @@ def _resolve_multiple_prs(pr_urls, base_path):
         repo_url = info["repo_url"]
         ref = info["ref"]
 
-        repo_name = _repo_name_from_url(repo_url)
+        repo_name = repo_name_from_url(repo_url)
         repo_clone_dir = base_path / "code-repo" / repo_name
 
-        if repo_clone_dir.exists():
-            if not _verify_existing_clone(repo_clone_dir, ref, expected_repo_url=repo_url):
-                errors.append(f"Existing clone at {repo_clone_dir} is invalid.")
-                continue
-        else:
-            if not _clone_repo(repo_url, repo_clone_dir, ref):
-                errors.append(f"Could not clone {repo_url}.")
-                continue
+        if not dry_run:
+            if repo_clone_dir.exists():
+                if not _verify_existing_clone(repo_clone_dir, ref, expected_repo_url=repo_url):
+                    errors.append(f"Existing clone at {repo_clone_dir} is invalid.")
+                    continue
+            else:
+                first_pr = info["urls"][0] if info["urls"] else None
+                if not _clone_repo(repo_url, repo_clone_dir, ref, pr_url=first_pr):
+                    errors.append(f"Could not clone {repo_url}.")
+                    continue
 
         resolved_repos.append(
             {
@@ -592,10 +449,10 @@ def _resolve_multiple_prs(pr_urls, base_path):
         }
 
     primary = resolved_repos[0]
-    _write_source_yaml(base_path, primary["repo_url"], primary["ref"])
+    _write_source_yaml(base_path, primary["repo_url"], primary["ref"], dry_run=dry_run)
 
     discovered = {
-        _normalize_git_url(info["repo_url"]): len(info["urls"]) for info in repo_groups.values()
+        normalize_git_url(info["repo_url"]): len(info["urls"]) for info in repo_groups.values()
     }
 
     result = _success(
@@ -625,7 +482,7 @@ def _success(repo_path, repo_url=None, ref=None, scope=None, discovered_repos=No
     return result
 
 
-def _resolve_explicit_repos(repo_values, pr_urls, base_path):
+def _resolve_explicit_repos(repo_values, pr_urls, base_path, dry_run=False):
     """Resolve one or more explicit --repo values.
 
     Clones each remote repo into code-repo/<repo_name>/.
@@ -639,7 +496,7 @@ def _resolve_explicit_repos(repo_values, pr_urls, base_path):
         ref = None
 
         if _is_remote_url(repo_value):
-            clone_dir = base_path / "code-repo" / _repo_name_from_url(repo_value)
+            clone_dir = base_path / "code-repo" / repo_name_from_url(repo_value)
 
             # First repo gets the PR branch (if any)
             if i == 0 and pr_urls:
@@ -652,18 +509,23 @@ def _resolve_explicit_repos(repo_values, pr_urls, base_path):
                         file=sys.stderr,
                     )
 
-            if clone_dir.exists():
-                if not _verify_existing_clone(clone_dir, ref, expected_repo_url=repo_value):
-                    errors.append(
-                        f"Existing clone at {clone_dir} is invalid or points to a different repo."
-                    )
-                    continue
-            else:
-                if not _clone_repo(repo_value, clone_dir, ref):
-                    errors.append(
-                        f"Cannot clone {repo_value}. For private repos, ensure gh is authenticated."
-                    )
-                    continue
+            if not dry_run:
+                if clone_dir.exists():
+                    if not _verify_existing_clone(clone_dir, ref, expected_repo_url=repo_value):
+                        errors.append(
+                            f"Existing clone at {clone_dir} is invalid"
+                            " or points to a different repo."
+                        )
+                        continue
+                else:
+                    first_pr = pr_urls[0] if pr_urls else None
+                    if not _clone_repo(repo_value, clone_dir, ref, pr_url=first_pr):
+                        errors.append(
+                            f"Cannot clone {repo_value}."
+                            " For private repos, ensure gh"
+                            " is authenticated."
+                        )
+                        continue
 
             resolved_repos.append(
                 {
@@ -674,7 +536,7 @@ def _resolve_explicit_repos(repo_values, pr_urls, base_path):
             )
         else:
             local = Path(repo_value)
-            if not local.exists() or not local.is_dir():
+            if not dry_run and (not local.exists() or not local.is_dir()):
                 errors.append(f"Source repo path does not exist: {repo_value}")
                 continue
             resolved_repos.append(
@@ -692,7 +554,8 @@ def _resolve_explicit_repos(repo_values, pr_urls, base_path):
         }
 
     primary = resolved_repos[0]
-    _write_source_yaml(base_path, primary.get("repo_url") or primary["repo_path"], primary["ref"])
+    repo = primary.get("repo_url") or primary["repo_path"]
+    _write_source_yaml(base_path, repo, primary["ref"], dry_run=dry_run)
 
     result = _success(
         primary["repo_path"],
@@ -708,6 +571,7 @@ def _resolve_explicit_repos(repo_values, pr_urls, base_path):
 
 def resolve(args):
     """Main resolution logic. Returns a result dict."""
+    dry_run = getattr(args, "dry_run", False)
     base_path = Path(args.base_path)
 
     # Collect PR URLs from args
@@ -715,7 +579,7 @@ def resolve(args):
 
     # --- Priority 1: Explicit --repo flag ---
     if args.repo:
-        return _resolve_explicit_repos(args.repo, pr_urls, base_path)
+        return _resolve_explicit_repos(args.repo, pr_urls, base_path, dry_run=dry_run)
 
     # --- Priority 2: source.yaml ---
     source_config = _read_source_yaml(base_path)
@@ -733,26 +597,28 @@ def resolve(args):
                 pass
 
         if _is_remote_url(repo_value):
-            clone_dir = base_path / "code-repo" / _repo_name_from_url(repo_value)
-            if clone_dir.exists():
-                if not _verify_existing_clone(clone_dir, ref, expected_repo_url=repo_value):
-                    return {
-                        "status": "error",
-                        "message": (
-                            f"Existing clone at {clone_dir} is invalid "
-                            "or points to a different repo."
-                        ),
-                    }
-            else:
-                if not _clone_repo(repo_value, clone_dir, ref):
-                    return {
-                        "status": "error",
-                        "message": f"Cannot clone {repo_value}.",
-                    }
+            clone_dir = base_path / "code-repo" / repo_name_from_url(repo_value)
+            if not dry_run:
+                if clone_dir.exists():
+                    if not _verify_existing_clone(clone_dir, ref, expected_repo_url=repo_value):
+                        return {
+                            "status": "error",
+                            "message": (
+                                f"Existing clone at {clone_dir} is invalid "
+                                "or points to a different repo."
+                            ),
+                        }
+                else:
+                    first_pr = pr_urls[0] if pr_urls else None
+                    if not _clone_repo(repo_value, clone_dir, ref, pr_url=first_pr):
+                        return {
+                            "status": "error",
+                            "message": f"Cannot clone {repo_value}.",
+                        }
             return _success(clone_dir, repo_url=repo_value, ref=ref, scope=scope)
         else:
             local = Path(repo_value)
-            if not local.exists() or not local.is_dir():
+            if not dry_run and (not local.exists() or not local.is_dir()):
                 return {
                     "status": "error",
                     "message": f"Source repo path does not exist: {repo_value}",
@@ -761,29 +627,73 @@ def resolve(args):
 
     # --- Priority 3: PR-derived (--pr without --repo) ---
     if pr_urls:
-        return _resolve_multiple_prs(pr_urls, base_path)
+        return _resolve_multiple_prs(pr_urls, base_path, dry_run=dry_run)
 
-    # --- Priority 4: JIRA ticket discovery ---
-    ticket = getattr(args, "ticket", None)
-    plugin_root = getattr(args, "plugin_root", None)
-    if ticket and plugin_root:
-        result = _discover_from_jira(ticket, base_path, plugin_root)
+    # --- Priority 4: discovered_repos.json (from requirements step) ---
+    discovered = _read_discovered_repos(base_path)
+    if discovered:
+        result = _resolve_discovered_repos(discovered, base_path, dry_run=dry_run)
         if result["status"] != "no_source":
             return result
 
-    # --- Priority 5: Scan requirements for PRs ---
+    # --- Priority 5: Scan requirements.md for PRs ---
     if args.scan_requirements:
         repos = _scan_requirements_for_prs(base_path)
 
         if not repos:
             return {"status": "no_source"}
 
-        # Collect first PR URL from each discovered repo
-        all_pr_urls = [prs[0]["url"] for prs in repos.values()]
-        return _resolve_multiple_prs(all_pr_urls, base_path)
+        sorted_repos = sorted(repos.values(), key=len, reverse=True)
+        all_pr_urls = [prs[0]["url"] for prs in sorted_repos]
+        return _resolve_multiple_prs(all_pr_urls, base_path, dry_run=dry_run)
 
     # --- Priority 6: No source ---
     return {"status": "no_source"}
+
+
+def _sync_progress(result, progress_file, skip_deferred_on_no_source=False):
+    """Write resolved source info into a workflow progress file.
+
+    On success: records options.source and flips deferred steps to pending.
+    On no_source with skip flag: flips deferred steps to skipped.
+    Returns the result dict with an added progress_updated field.
+    """
+    from datetime import datetime, timezone
+
+    with open(progress_file) as f:
+        progress = json.load(f)
+
+    options = progress.setdefault("options", {})
+    progress_updated = False
+
+    if result["status"] == "resolved":
+        options["source"] = {
+            "repo_path": result["repo_path"],
+            "repo_url": result.get("repo_url"),
+            "ref": result.get("ref"),
+            "scope": result.get("scope"),
+        }
+        options["additional_sources"] = result.get("additional_repos", [])
+        for step_data in progress.get("steps", {}).values():
+            if step_data.get("status") == "deferred":
+                step_data["status"] = "pending"
+        progress_updated = True
+    elif result["status"] == "no_source" and skip_deferred_on_no_source:
+        for step_data in progress.get("steps", {}).values():
+            if step_data.get("status") == "deferred":
+                step_data["status"] = "skipped"
+        progress_updated = True
+
+    if progress_updated:
+        progress["updated_at"] = (
+            datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        )
+        with open(progress_file, "w") as f:
+            json.dump(progress, f, indent=2)
+            f.write("\n")
+
+    result["progress_updated"] = progress_updated
+    return result
 
 
 def main():
@@ -806,21 +716,56 @@ def main():
         help="PR/MR URL(s), space-delimited",
     )
     parser.add_argument(
-        "--ticket",
-        help="JIRA ticket ID for auto-discovery of source repo from git links",
-    )
-    parser.add_argument(
-        "--plugin-root",
-        help="Plugin root directory (for locating jira_reader.py)",
-    )
-    parser.add_argument(
         "--scan-requirements",
         action="store_true",
         help="Scan requirements.md for PR URLs (post-requirements discovery)",
     )
+    parser.add_argument(
+        "--progress-file",
+        help="Workflow progress JSON file to update with resolved source",
+    )
+    parser.add_argument(
+        "--skip-deferred-on-no-source",
+        action="store_true",
+        help="Mark deferred steps skipped when no source is found",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Check if a source repo can be resolved without cloning or writing files",
+    )
+    parser.add_argument(
+        "--priority",
+        choices=["primary", "secondary"],
+        default="primary",
+        help="Repo priority level (default: primary). Secondary repos skip source.yaml overwrite",
+    )
     args = parser.parse_args()
 
-    result = resolve(args)
+    if args.progress_file:
+        try:
+            pr_urls = args.pr
+            if not pr_urls:
+                with open(args.progress_file) as f:
+                    progress = json.load(f)
+                pr_urls = progress.get("options", {}).get("pr_urls") or None
+            resolve_args = argparse.Namespace(
+                base_path=args.base_path,
+                repo=args.repo,
+                pr=pr_urls,
+                scan_requirements=args.scan_requirements,
+                dry_run=False,
+            )
+            result = resolve(resolve_args)
+            result = _sync_progress(result, args.progress_file, args.skip_deferred_on_no_source)
+        except (OSError, json.JSONDecodeError) as e:
+            result = {"status": "error", "message": str(e)}
+    else:
+        result = resolve(args)
+        if args.priority == "secondary":
+            result["priority"] = "secondary"
+        if args.dry_run:
+            result["dry_run"] = "true"
 
     json.dump(result, sys.stdout, indent=2)
     print()

@@ -29,6 +29,13 @@ if [ ${#PROGRESS_FILES[@]} -eq 0 ]; then
   exit 0
 fi
 
+MARKER=".agent_workspace/.active-workflow"
+
+# No marker → no active workflow → allow stop
+if [ ! -f "$MARKER" ]; then
+  exit 0
+fi
+
 # Read the marker — fail closed on parse errors
 PROGRESS_FILE=$(jq -r '.progress_file // empty' "$MARKER" 2>/dev/null)
 JQ_RC_PF=$?
@@ -94,7 +101,7 @@ done
 
 if [ -n "$NEXT_STEP" ]; then
   echo "$((COUNT + 1))" > "$COUNTER_FILE"
-  echo "Documentation workflow '$WORKFLOW_TYPE' for $TICKET is not complete. Next step: $NEXT_STEP. Continue the workflow." >&2
+  echo "Documentation workflow '$WORKFLOW_TYPE' for $TICKET is not complete. Next step: $NEXT_STEP. Read the progress file at $PROGRESS_FILE then continue the workflow." >&2
   exit 2
 fi
 

@@ -1,0 +1,395 @@
+:_mod-docs-content-type: REFERENCE
+
+[id='technology-preview-features_{context}']
+= Technology Preview features
+
+[role='_abstract']
+
+ifdef::self-managed[]
+[IMPORTANT]
+====
+The following Technology Preview features are available in {productname-long} 3.3.
+Technology Preview features are not supported with Red{nbsp}Hat production service level agreements (SLAs) and might not be functionally complete.
+Red{nbsp}Hat does not recommend using them in production.
+These features provide early access to upcoming product features, enabling customers to test functionality and provide feedback during the development process.
+
+For more information about the support scope of Red{nbsp}Hat Technology Preview features, see link:https://access.redhat.com/support/offerings/techpreview/[Technology Preview Features Support Scope].
+====
+endif::[]
+
+ifdef::cloud-service[]
+[IMPORTANT]
+====
+The following Technology Preview features are available in {productname-long}.
+Technology Preview features are not supported with Red{nbsp}Hat production service level agreements (SLAs) and might not be functionally complete.
+Red{nbsp}Hat does not recommend using them in production.
+These features provide early access to upcoming product features, enabling customers to test functionality and provide feedback during the development process.
+
+For more information about the support scope of Red{nbsp}Hat Technology Preview features, see link:https://access.redhat.com/support/offerings/techpreview/[Technology Preview Features Support Scope].
+====
+endif::[]
+
+// 3.3 Technology Preview features
+
+//RHAISTRAT-189, RHAIENG-2620
+OpenAI-compatible file citation annotations in Llama Stack::
+Starting with {productname-short} 3.3, Llama Stack supports OpenAI-compatible file citation annotations in Responses API outputs when you use the `file_search` tool for retrieval-augmented generation (RAG) workflows as a Technology Preview feature.
++
+When you query ingested content through the Responses API with the `file_search` tool, the response includes `file_citation` annotations that identify the source documents used during retrieval, including the file identifier, filename, and index.
+You can use these annotations to trace generated responses back to source files without changing existing OpenAI client code.
++
+Only the `file_citation` annotation type is supported.
+The `url_citation`, `container_file_citation`, and `file_path` annotation types are not produced.
+Attribution is provided at the document level only.
+Confidence scores and chunk-level attribution are not available.
++
+For more information, see link:{rhoaidocshome}{default-format-url}/working_with_llama_stack/index#openai-compatible-file-citation-annotations[OpenAI-compatible file citation annotations].
+
+//RHAIENG-3153
+The Llama Stack Operator available on multi-architecture clusters::
+The Llama Stack Operator is now deployable on multi-architecture clusters in {productname-short} version 3.3 and is available by default.
+
+//RHAIENG-2993
+Llama Stack versions in {productname-short} 3.3::
+{productname-short} 3.3.0 includes Open Data Hub Llama Stack version link:https://github.com/opendatahub-io/llama-stack/releases/tag/v0.4.2.1+rhai0[0.4.2.1+rhai0], which is based on upstream Llama Stack version link:https://github.com/llamastack/llama-stack/releases/tag/v0.4.2[0.4.2].
+
+//RHAIENG-3154
+The Llama Stack Operator with ConfigMap driven image updates::
+The Llama Stack Operator in {productname-short} 3.3 now offers ConfigMap driven image updates for `LlamaStackDistribution` resources. You can patch security or bug fixes without new Operator versions. To enable this feature, update your ConfigMap with the following parameters:
++
+[source,yaml]
+----
+ image-overrides: |
+    starter-gpu: registry.redhat.io/rhoai/odh-llama-stack-core-rhel9:v3.3
+    starter: registry.redhat.io/rhoai/odh-llama-stack-core-rhel9:v3.3
+----
++
+Using the `starter-gpu` and `starter` distributions names as the key allows the operator to apply these overrides automatically.
++
+To update the Llama Stack Distributions image for all `starter` distributions, run the following command:
++
+[source,terminal]
+----
+$ kubectl patch configmap llama-stack-operator-config -n llama-stack-k8s-operator-system --type merge -p '{"data":{"image-overrides":"starter: quay.io/opendatahub/llama-stack:latest"}}'
+----
++
+This allows the `LlamaStackDistribution` resources to restart with the new image.
+
+//RHAISTRAT-174
+Model-as-a-Service (MaaS) integration::
+This feature is available as a Technology Preview.  
++
+{productname-short} now includes Model-as-a-Service (MaaS) to address resource consumption and governance challenges associated with serving large language models (LLMs).  
++
+MaaS provides centralized control over model access and resource usage by exposing models through managed API endpoints, allowing administrators to enforce consumption policies across teams.  
++
+This Technology Preview introduces the following capabilities:
+
+* Policy and quota management  
+* Authentication and authorization  
+* Usage tracking  
+* User management
+* Zero-Touch setup through {productname-long} operator  
++
+For more information, see link:{rhoaidocshome}{default-format-url}/govern_llm_access_with_models-as-a-service/index[Governing LLM access with models-as-a-service].
+
+//RHAISTRAT-793
+MLServer ServingRuntime for KServe::
+
+The MLServer serving runtime for KServe is now available as a Technology Preview feature in Red Hat OpenShift AI. You can use this runtime to deploy models trained on structured data, such as classical machine learning models. You can deploy models directly without converting them to ONNX format, which simplifies the deployment process and improves performance.
++
+This feature provides support for the following common machine learning frameworks:
+
+* scikit-learn
+* XGBoost
+* LightGBM 
++
+For more information, see link:{rhoaidocshome}{default-format-url}/deploying_models/deploying_models#deploying-models-using-mlserver-runtime_rhoai-user[Deploying models using the mlserver runtime] and link:https://access.redhat.com/articles/rhoai-supported-configs[Supported configurations].
+////
+// 3.2 Technology Preview features
+
+//RHAISTRAT-105
+pgvector support as a remote vector store provider in Llama Stack::
+Starting with {productname-short} 3.2, you can use PostgreSQL with the pgvector extension as a remote vector store provider for the Llama Stack `vector_store` endpoint as a Technology Preview feature.
++
+This enhancement enables vector storage backed by PostgreSQL, providing durable and transactional persistence for vector embeddings. For more information, see link:{rhoaidocshome}{default-format-url}/working_with_llama_stack/overview-of-llama-stack_rag#llama_stack_api_provider_support[Llama Stack API provider support] and link:{rhoaidocshome}{default-format-url}/working_with_llama_stack/using-postgresql-in-llama-stack_rag#deploying-a-postgresql-instance-with-pgvector_rag[Deploying a PostgreSQL instance with pgvector].
+
+//RHAIENG-969
+Llama Stack versions in {productname-short} 3.2::
+{productname-short} 3.2.0 uses the Open Data Hub Llama Stack version 0.3.5+rhai0 in the Llama Stack Distribution, which is based on the upstream Llama Stack version 0.3.5.
+
+//RHAIENG-2106
+Llama Stack servers now require installation of the PostgreSQL Operator::
+In {productname-short} 3.2, the PostgreSQL Operator is now required to deploy a Llama Stack server. For more information, see the _Deploying a Llama Stack server_ documentation.
+
+//RHAIENG-2328
+Enabling high availability on Llama Stack::
+Llama Stack servers can be configured to remain operational in the event of a single point of failure as a Technology Preview feature. You can enable PostgreSQL high-availability settings in your `LlamaStackDistribution` custom resource. For more information, see the _Enabling high availability on Llama Stack (Optional)_ documentation.
+
+//RHAIENG-2491
+Custom embeddings on Llama Stack::
+{productname-short} 3.2 allows you to customize your embedding models as a Technology Preview feature. In the version of Llama Stack shipped in {productname-short} 3.2, vLLM controls embeddings by default. You can update the `VLLM_EMBEDDING_URL` environment variable in your `LlamaStackDistribution` custom resource to enable embeddings, or you can use custom embeddings providers. For example:
++
+[source,yaml]
+----
+  - name: ENABLE_SENTENCE_TRANSFORMERS
+    value: "true"
+  - name: EMBEDDING_PROVIDER
+    value: "sentence-transformers"
+----
+
+//RHAISTRAT-61
+NVIDIA NeMo Guardrails::
+You can use NVIDIA NeMo Guardrails as a Technology Preview feature to add guardrails and safety controls to your deployed models in {productname-long}. NeMo Guardrails provides a framework for controlling conversations with large language models, enabling you to define a variety of rails, such as sensitive data detection, content filtering, or custom validation rules.
+
+//RHOAIENG-38774
+Stop button for chatbot in Generative AI Studio::
+You can interrupt the chatbot as it is composing a response to a prompt. In the Playground, after you send a prompt, the *Send* button in the chat input field changes to a *Stop* button. Click it if you want to interrupt the model's response, for example, when the response takes longer than you anticipated or if you notice that you made an error in your prompt. The chatbot posts "You stopped this message" to confirm your stop request.
+
+//RHOAIENG-42591, RHAISTRAT-149
+Kubeflow Trainer v2::
+Kubeflow Trainer v2 is now available as a Technology Preview feature in {productname-short} 3.2.
++
+Kubeflow Trainer v2 is the next generation of distributed training for {productname-short}, replacing the Kubeflow Training Operator v1 (KFTOv1). This Kubernetes-native solution simplifies how data scientists and ML engineers run PyTorch training workloads at scale using a unified TrainJob API and Python SDK.
++
+This Technology Preview release introduces the following capabilities:
++
+* Simplified job definitions using TrainJob and TrainingRuntime resources
+* Python SDK for programmatic job creation and management
+* A new web-based user interface for inspecting and interacting with training jobs
+* Real-time progress tracking with visibility into training steps, epochs, and metrics
+* Smart checkpoint management with automatic preservation during pod preemption or termination
+* Pausing and resuming train jobs
+* Resource-aware scheduling via native integration with Red Hat build of Kueue
++
+Users of the deprecated Kubeflow Training Operator v1 (KFTOv1) should migrate their workloads to Kubeflow Trainer v2 before KFTOv1 is removed. For guidance and more details, see the migration guide.
++
+For more information about Kubeflow Trainer v2 features and usage, see the Kubeflow Trainer v2 documentation.
+
+
+//RHOAISTRAT-719
+TrustyAI–Llama Stack integration for safety, guardrails, and evaluation::
+You can now use the Guardrails Orchestrator from TrustyAI with Llama Stack as a Technology Preview feature.  
++
+This integration enables built-in detection and evaluation workflows to support AI safety and content moderation. When TrustyAI is enabled and the FMS Orchestrator and detectors are configured, no manual setup is required.  
++
+To activate this feature, set the following field in the `DataScienceCluster` custom resource for the {productname-short} Operator:  
+`spec.llamastackoperator.managementState: Managed`  
++
+For more information, see the TrustyAI FMS Provider on GitHub:
+link:https://github.com/trustyai-explainability/llama-stack-provider-trustyai-fms[TrustyAI FMS Provider].
+
+//RHOAISTRAT-671
+AI Available Assets page for deployed models and MCP servers::
+A new *AI Available Assets* page enables AI engineers and application developers to view and consume deployed AI resources within their projects.  
++
+This enhancement introduces a filterable UI that lists available models and Model Context Protocol (MCP) servers in the selected project, allowing users with appropriate permissions to identify accessible endpoints and integrate them directly into the AI Playground or other applications.
+
+//RHOAISTRAT-647
+Generative AI Playground for model testing and evaluation::
+The Generative AI (GenAI) Playground introduces a unified, interactive experience within the {productname-short} dashboard for experimenting with foundation and custom models.  
++
+Users can test prompts, compare models, and evaluate Retrieval-Augmented Generation (RAG) workflows by uploading documents and chatting with their content. The GenAI Playground also supports integration with approved Model Context Protocol (MCP) servers and enables export of prompts and agent configurations as runnable code for continued iteration in local IDEs.
++
+Chat context is preserved within each session, providing a suitable environment for prompt engineering and model experimentation.
+
+//RHOAISTRAT-643
+Support for air-gapped Llama Stack deployments::
+You can now install and operate Llama Stack and RAG/Agentic components in fully disconnected (air-gapped) {productname-short} environments.  
++
+This enhancement enables secure deployment of Llama Stack features without internet access, allowing organizations to use AI capabilities while maintaining compliance with strict network security policies.
+
+//RHOAISTRAT-591
+Feature Store integration with Workbenches and new user access capabilities::
+This feature is available as a Technology Preview.  
++
+The Feature Store is now integrated with {productname-short}, data science projects, and workbenches. This integration also introduces centrally managed, role-based access control (RBAC) capabilities for improved governance.  
++
+These enhancements provide two key capabilities:
+
+* Feature development within the workbench environment.
+* Administrator-controlled user access.  
++
+This update simplifies and accelerates feature discovery and consumption for data scientists while allowing platform teams to maintain full control over infrastructure and feature access.
+
+
+//RHOAISTRAT-562
+Feature Store user interface::
+The *Feature Store* component now includes a web-based user interface (UI).  
++
+You can use the UI to view registered Feature Store objects and their relationships, such as features, data sources, entities, and feature services.  
++
+To enable the UI, edit your `FeatureStore` custom resource (CR) instance. When you save the change, the Feature Store Operator starts the UI container and creates an {openshift-platform} route for access.  
++
+For more information, see _Setting up the Feature Store user interface for initial use_.
+
+//RHOAISTRAT-551
+IBM Spyre AI Accelerator model serving support on x86 platforms::
+Model serving with the IBM Spyre AI Accelerator is now available as a Technology Preview feature for x86 platforms. The IBM Spyre Operator automates installation and integrates the device plugin, secondary scheduler, and monitoring. For more information, see the link:https://catalog.redhat.com/en/software/containers/ibm-aiu/spyre-operator/688a1121575e62c686a471d4[IBM Spyre Operator catalog entry].
+
+//RHOAISTRAT-512
+Build Generative AI Apps with Llama Stack on {productname-short}::
+With this release, the Llama Stack Technology Preview feature enables Retrieval-Augmented Generation (RAG) and agentic workflows for building next-generation generative AI applications. It supports remote inference, built-in embeddings, and vector database operations. It also integrates with providers like TrustyAI's provider for safety and Trusty AI's LM-Eval provider for evaluation.
++
+This preview includes tools, components, and guidance for enabling the Llama Stack Operator, interacting with the RAG Tool, and automating PDF ingestion and keyword search capabilities to enhance document discovery.
+
+// RHOAISTRAT-575, RHOAISTRAT-614, RHOAISTRAT-615, RHOAISTRAT-25581
+Centralized platform observability::
+Centralized platform observability, including metrics, traces, and built-in alerts, is available as a Technology Preview feature. This solution introduces a dedicated, pre-configured observability stack for {productname-short} that allows cluster administrators to perform the following actions:
++
+* View platform metrics (Prometheus) and distributed traces (Tempo) for {productname-short} components and workloads.
+* Manage a set of built-in alerts (alertmanager) that cover critical component health and performance issues.
+* Export platform and workload metrics to external 3rd party observability tools by editing the `DataScienceClusterInitialization` (DSCI) custom resource.
++
+You can enable this feature by integrating with the Cluster Observability Operator, Red Hat build of OpenTelemetry, and Tempo Operator. For more information, see Monitoring and observability. For more information, see link:{rhoaidocshome}{default-format-url}/managing_openshift_ai/managing-observability_managing-rhoai[Managing observability].
+
+Support for Llama Stack Distribution version 0.3.0::
+The Llama Stack Distribution now includes version 0.3.0 as a Technology Preview feature.  
++
+This update introduces several enhancements, including expanded support for retrieval-augmented generation (RAG) pipelines, improved evaluation provider integration, and updated APIs for agent and vector store management. It also provides compatibility updates aligned with recent OpenAI API extensions and infrastructure optimizations for distributed inference.  
++
+The previously supported version was 0.2.22.
+
+// RHOAISTRAT-520
+Support for Kubernetes Event-driven Autoscaling (KEDA)::
+{productname-short} now supports Kubernetes Event-driven Autoscaling (KEDA) in its KServe RawDeployment mode. This Technology Preview feature enables metrics-based autoscaling for inference services, allowing for more efficient management of accelerator resources, reduced operational costs, and improved performance for your inference services.
++
+To set up autoscaling for your inference service in KServe RawDeployment mode, you need to install and configure the OpenShift Custom Metrics Autoscaler (CMA), which is based on KEDA. 
++
+For more information about this feature, see: link:{rhoaidocshome}{default-format-url}/managing_and_monitoring_models/managing_and_monitoring_models#configuring-metrics-based-autoscaling_cluster-admin[Configuring metrics-based autoscaling]. 
+
+// RHOAIENG-26716
+LM-Eval model evaluation UI feature::
+TrustyAI now offers a user-friendly UI for LM-Eval model evaluations as Technology Preview. This feature allows you to input evaluation parameters for a given model and returns an evaluation-results page, all from the UI.
+
+// RHOAISTRAT-610
+Use Guardrails Orchestrator with LlamaStack::
+You can now run detections using the Guardrails Orchestrator tool from TrustyAI with Llama Stack as a Technology Preview feature, using the built-in detection component. To use this feature, ensure TrustyAI is enabled, the FMS Orchestrator and detectors are set up, and KServe RawDeployment mode is in use for full compatibility if needed. There is no manual set up required. Then, in the `DataScienceCluster` custom resource for the {productname-long} Operator, set the `spec.llamastackoperator.managementState` field to `Managed`.
++
+For more information, see link:https://github.com/trustyai-explainability/llama-stack-provider-trustyai-fms[Trusty AI FMS Provider] on GitHub.
+
+//RHOAISTRAT-433
+Support for creating and managing Ray Jobs with the CodeFlare SDK::
+You can now create and manage Ray Jobs on Ray Clusters directly through the CodeFlare SDK.  
++
+This enhancement aligns the CodeFlare SDK workflow with the KubernetesFlow Training Operator (KFTO) model, where a job is created, run, and completed automatically. This enhancement simplifies manual cluster management by preventing Ray Clusters from remaining active after job completion.
+
+//RHOAISTRAT-418
+Support for direct authentication with an OIDC identity provider::
+Direct authentication with an OpenID Connect (OIDC) identity provider is now available as a Technology Preview feature.  
++
+This enhancement centralizes {productname-short} service authentication through the Gateway API, providing a secure, scalable, and manageable authentication model. You can configure the Gateway API with your external OIDC provider by using the `GatewayConfig` custom resource.
+
+//RHAISTRAT-154
+Custom flow estimator for Synthetic Data Generation pipelines::
+You can now use a custom flow estimator for synthetic data generation (SDG) pipelines.  
++
+For supported and compatible tagged SDG teacher models, the estimator helps you evaluate a chosen teacher model, custom flow, and supported hardware on a sample dataset before running full workloads.
+
+//RHAISTRAT-95
+Llama Stack support and optimization for single node OpenShift (SNO)::
+Llama Stack core can now deploy and run efficiently on single node OpenShift (SNO).  
++
+This enhancement optimizes component startup and resource usage so that Llama Stack can operate reliably in single-node cluster environments.
+
+//RHAISTRAT-80
+FAISS vector storage integration::
+You can now use the FAISS (Facebook AI Similarity Search) library as an inline vector store in {productname-short}.  
++
+FAISS is an open-source framework for high-performance vector search and clustering, optimized for dense numerical embeddings with both CPU and GPU support. When enabled with an embedded SQLite backend in the Llama Stack Distribution, FAISS stores embeddings locally within the container, removing the need for an external vector database service.
+
+// RHOAISTRAT-79
+New Feature Store component::
+
+You can now install and manage Feature Store as a configurable component in {productname-short}. Based on the open-source link:https://feast.dev/[Feast] project, Feature Store acts as a bridge between ML models and data, enabling consistent and scalable feature management across the ML lifecycle.
++
+This Technology Preview release introduces the following capabilities:
++
+* Centralized feature repository for consistent feature reuse
+* Python SDK and CLI for programmatic and command-line interactions to define, manage, and retrieve features for ML models
+* Feature definition and management
+* Support for a wide range of data sources
+* Data ingestion via feature materialization
+* Feature retrieval for both online model inference and offline model training
+* Role-Based Access Control (RBAC) to protect sensitive features
+* Extensibility and integration with third-party data and compute providers
+* Scalability to meet enterprise ML needs
+* Searchable feature catalog
+* Data lineage tracking for enhanced observability
++
+For configuration details, see link:{rhoaidocshome}{default-format-url}/working_with_machine_learning_features/configuring_feature_store[Configuring Feature Store].
+
+//RHAISTRAT-78
+FIPS support for Llama Stack and RAG deployments::
+You can now deploy Llama Stack and RAG or agentic solutions in regulated environments that require FIPS compliance.  
++
+This enhancement provides FIPS-certified and compatible deployment patterns to help organizations meet strict regulatory and certification requirements for AI workloads.
+
+//RHAISTRAT-51
+Validated sdg-hub notebooks for Red Hat AI Platform::
+Validated `sdg_hub` example notebooks are now available to provide a notebook-driven user experience in {productname-short} 3.0.  
++
+These notebooks support multiple Red Hat platforms and enable customization through SDG pipelines. They include examples for the following use cases:  
++
+* Knowledge and skills tuning, including annotated examples for fine-tuning models.  
+* Synthetic data generation with reasoning traces to customize reasoning models.  
+* Custom SDG pipelines that demonstrate using default blocks and creating new blocks for specialized workflows.
+
+//RHAISTRAT-43, RHAISTRAT-92
+RAGAS evaluation provider for Llama Stack (inline and remote)::
+You can now use the Retrieval-Augmented Generation Assessment (RAGAS) evaluation provider to measure the quality and reliability of RAG systems in {productname-short}.  
++
+RAGAS provides metrics for retrieval quality, answer relevance, and factual consistency, helping you identify issues and optimize RAG pipeline configurations.  
++
+The integration with the Llama Stack evaluation API supports two deployment modes:
+  
+* Inline provider: Runs RAGAS evaluation directly within the Llama Stack server process.  
+* Remote provider: Runs RAGAS evaluation as distributed jobs using {productname-short} pipelines.  
++
+The RAGAS evaluation provider is now included in the Llama Stack distribution.
+
+//RHOAISTRAT-269
+Enable targeted deployment of workbenches to specific worker nodes in {productname-long} Dashboard using node selectors::
+
+Hardware profiles are now available as a Technology Preview. The hardware profiles feature enables users to target specific worker nodes for workbenches or model-serving workloads. It allows users to target specific accelerator types or CPU-only nodes. 
++
+This feature replaces the current accelerator profiles feature and container size selector field, offering a broader set of capabilities for targeting different hardware configurations. While accelerator profiles, taints, and tolerations provide some capabilities for matching workloads to hardware, they do not ensure that workloads land on specific nodes, especially if some nodes lack the appropriate taints. 
++
+The hardware profiles feature supports both accelerator and CPU-only configurations, along with node selectors, to enhance targeting capabilities for specific worker nodes. Administrators can configure hardware profiles in the settings menu. Users can select the enabled profiles using the UI for workbenches, model serving, and AI pipelines where applicable. 
+
+RStudio Server workbench image::
+
+With the RStudio Server workbench image, you can access the RStudio IDE, an integrated development environment for R. The R programming language is used for statistical computing and graphics to support data analysis and predictions.
++
+To use the RStudio Server workbench image, you must first build it by creating a secret and triggering the `BuildConfig`, and then enable it in the {productname-short} UI by editing the `rstudio-rhel9` image stream. 
+For more information, see link:{rhoaidocshome}{default-format-url}/getting_started_with_{url-productname-long}/creating-a-workbench-select-ide_get-started#building-the-rstudio-server-workbench-images_get-started[Building the RStudio Server workbench images].
++
+[IMPORTANT] 
+====
+*Disclaimer:* 
+{org-name} supports managing workbenches in {productname-short}. However, {org-name} does not provide support for the RStudio software. RStudio Server is available through link:https://rstudio.org[rstudio.org] and is subject to their licensing terms. You should review their licensing terms before you use this sample workbench.
+====
+
+CUDA - RStudio Server workbench image::
+
+With the CUDA - RStudio Server workbench image, you can access the RStudio IDE and NVIDIA CUDA Toolkit. 
+The RStudio IDE is an integrated development environment for the R programming language for statistical computing and graphics. 
+With the NVIDIA CUDA toolkit, you can enhance your work by using GPU-accelerated libraries and optimization tools.
++
+To use the CUDA - RStudio Server workbench image, you must first build it by creating a secret and triggering the `BuildConfig`, and then enable it in the {productname-short} UI by editing the `rstudio-rhel9` image stream. 
+For more information, see link:{rhoaidocshome}{default-format-url}/getting_started_with_{url-productname-long}/creating-a-workbench-select-ide_get-started#building-the-rstudio-server-workbench-images_get-started[Building the RStudio Server workbench images].
++
+[IMPORTANT] 
+====
+*Disclaimer:* 
+{org-name} supports managing workbenches in {productname-short}. However, {org-name} does not provide support for the RStudio software. RStudio Server is available through link:https://rstudio.org[rstudio.org] and is subject to their licensing terms. You should review their licensing terms before you use this sample workbench.
+
+The CUDA - RStudio Server workbench image contains NVIDIA CUDA technology. CUDA licensing information is available in the link:https://docs.nvidia.com/cuda/[CUDA Toolkit] documentation. You should review their licensing terms before you use this sample workbench.
+====
+
+Support for multinode deployment of very large models::
+Serving models over multiple graphical processing unit (GPU) nodes when using a single-model serving runtime is now available as a Technology Preview feature.
+Deploy your models across multiple GPU nodes to improve efficiency when deploying large models such as large language models (LLMs).
+For more information, see link:{rhoaidocshome}{default-format-url}/managing_and_monitoring_models/managing_and_monitoring_models#deploying-models-using-multiple-gpu-nodes_cluster-admin[Deploying models by using multiple GPU nodes].
+////
+

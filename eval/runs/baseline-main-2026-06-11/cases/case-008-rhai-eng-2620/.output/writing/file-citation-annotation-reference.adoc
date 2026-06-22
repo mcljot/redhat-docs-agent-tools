@@ -1,0 +1,228 @@
+:_mod-docs-content-type: REFERENCE
+
+[id="file-citation-annotation-reference_{context}"]
+= File citation annotation reference
+
+[role="_abstract"]
+The `file_citation` annotation type is returned by Llama Stack through the OpenAI-compatible Responses API.
+You can use this information to parse and display citation data in your application.
+
+ifndef::upstream[]
+[IMPORTANT]
+====
+ifdef::self-managed[]
+This feature is currently available in {productname-long} {vernum} as a Technology Preview feature.
+endif::[]
+ifdef::cloud-service[]
+This feature is currently available in {productname-long} as a Technology Preview feature.
+endif::[]
+Technology Preview features are not supported with {org-name} production service level agreements (SLAs) and might not be functionally complete.
+{org-name} does not recommend using them in production.
+These features provide early access to upcoming product features, enabling customers to test functionality and provide feedback during the development process.
+
+For more information about the support scope of {org-name} Technology Preview features, see link:https://access.redhat.com/support/offerings/techpreview/[Technology Preview Features Support Scope].
+====
+endif::[]
+
+[id="annotation-location_{context}"]
+== Annotation location
+
+Annotations are returned in the `annotations` field of `output_text` content items within the `output[].content[]` structure of the Responses API response.
+
+The following example shows a complete Responses API response payload that includes file citation annotations.
+When the `file_search` tool is used, the `output` array contains a `file_search_call` item followed by a `message` item.
+The annotations appear in the `content` array of the `message` item.
+
+[source,json]
+----
+{
+  "id": "resp-abc123",
+  "object": "response",
+  "created_at": 1749638400,
+  "model": "meta-llama/Llama-3.3-70B-Instruct",
+  "output": [
+    {
+      "type": "file_search_call",
+      "id": "fs_abc123",
+      "status": "completed",
+      "queries": [
+        "Red Bank Financial overview"
+      ],
+      "results": null
+    },
+    {
+      "type": "message",
+      "id": "msg_abc123",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "According to the document, Red Bank Financial is a community-focused financial institution.",
+          "annotations": [
+            {
+              "type": "file_citation",
+              "file_id": "file-57610eaac6364459bfefae60377837b7",
+              "filename": "redbankfinancial_about.pdf",
+              "index": 139
+            },
+            {
+              "type": "file_citation",
+              "file_id": "file-a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
+              "filename": "redbankfinancial_services.pdf",
+              "index": 42
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "status": "completed"
+}
+----
+
+[NOTE]
+====
+When the `include` parameter is set to `file_search_call.results` in the request, the `file_search_call` item contains a `results` array with extended search result metadata.
+When `include` is not specified, the `results` field is `null`.
+====
+
+[id="supported-annotation-type_{context}"]
+== Supported annotation type
+
+In {productname-short}, Llama Stack returns the `file_citation` annotation type when using the `file_search` tool.
+
+[id="openai-annotation-type-compatibility_{context}"]
+== OpenAI annotation type compatibility
+
+The following table compares the annotation types defined in the OpenAI schema with their support status in Llama Stack in {productname-short} {vernum}.
+The request schema for `file_search` tool configuration, including the `vector_store_ids` parameter, is identical to the OpenAI specification.
+
+[cols="2,1,3",options="header"]
+|===
+|Annotation type |Status |Notes
+
+|`file_citation`
+|Supported
+|Returned when the `file_search` tool retrieves content from a vector store.
+Includes `file_id`, `filename`, and `index` fields.
+
+|`url_citation`
+|Not produced
+|Defined in the OpenAI schema for web search results.
+Llama Stack does not produce this type because it does not perform web searches.
+
+|`container_file_citation`
+|Not produced
+|Defined in the OpenAI schema for container-based file retrieval.
+This type is specific to OpenAI container environments.
+
+|`file_path`
+|Not produced
+|Defined in the OpenAI schema for Code Interpreter file outputs.
+Llama Stack does not include a Code Interpreter tool.
+|===
+
+[id="file-citation-fields_{context}"]
+== File citation fields
+
+The `file_citation` annotation includes the following fields:
+
+[cols="1,1,2",options="header"]
+|===
+|Field |Type |Description
+
+|type
+|string
+|Always `file_citation`.
+
+|file_id
+|string
+|Identifier of the source file used during retrieval.
+
+|filename
+|string
+|Name of the source file.
+
+|index
+|integer
+|Character position in the output text where the citation should be inserted.
+This value corresponds to the position in the generated text, not an index into a list of files.
+|===
+
+[NOTE]
+====
+Confidence scores are not included in file citation annotations.
+The annotation provides document-level attribution without a relevance or confidence indicator.
+====
+
+[id="metadata-availability-by-pipeline-stage_{context}"]
+== Metadata availability by pipeline stage
+
+The following table shows which metadata fields are available at each stage of the retrieval-augmented generation (RAG) pipeline.
+Custom attributes that you attach during file ingestion are preserved in search results but are not included in the final annotation output.
+
+[cols="2,1,1,1",options="header"]
+|===
+|Metadata field |Vector store |Search results |File citation annotations
+
+|`file_id`
+|Yes
+|Yes
+|Yes
+
+|`filename`
+|Yes
+|Yes
+|Yes
+
+|Custom attributes (for example, `title`, `author`)
+|Yes
+|Yes
+|No
+
+|Relevance score
+|No
+|Yes
+|No
+
+|Chunk text
+|No
+|Yes
+|No
+
+|`index`
+|No
+|No
+|Yes
+
+|Timestamps (created, modified)
+|No
+|No
+|No
+
+|Content type
+|No
+|No
+|No
+|===
+
+To access search result metadata that is not included in annotations, use the `include` parameter with the value `file_search_call.results` in your Responses API request.
+For more information, see xref:viewing-file-citation-annotations-in-responses-api-output_{context}[].
+
+[id="annotation-behavior_{context}"]
+== Annotation behavior
+
+* Llama Stack attributes citations at the document level.
+* Multiple annotations can reference the same index position.
+* Chunk-level and token-level attribution are not supported.
+* Annotations follow the OpenAI response schema without modification.
+
+[id="ui-display-behavior_{context}"]
+== UI display behavior
+
+In the Llama Stack UI, file citation annotations display the source filename in the response output.
+You can click the filename to download the corresponding source file.
+
+The UI displays only the filename.
+The `file_id` and `index` fields are accessible only through the API.
+For more information about viewing annotations in the UI, see xref:viewing-file-citation-annotations-in-llama-stack-ui_{context}[].

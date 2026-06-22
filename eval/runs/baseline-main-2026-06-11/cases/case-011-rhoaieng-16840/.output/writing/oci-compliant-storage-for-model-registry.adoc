@@ -1,0 +1,99 @@
+:_mod-docs-content-type: CONCEPT
+
+[id="oci-compliant-storage-for-model-registry_{context}"]
+= OCI-compliant storage for Model Registry
+
+[role="_abstract"]
+You can register and store model artifacts as Open Container Initiative (OCI) images in OCI-compliant registries such as Red Hat Quay.
+Storing models as OCI images enables fast deployment with `KServe` by using the `ModelCar` format, which reduces startup times and disk usage compared to traditional S3-based storage.
+
+[id="modelcar-format_{context}"]
+== `ModelCar` format
+
+The `ModelCar` format packages model files into a lightweight OCI container image that `KServe` can deploy directly.
+Instead of downloading model files from object storage after a container starts, `KServe` pulls the OCI image as part of pod scheduling.
+After the initial pull, container runtimes cache the image on the node, so later deployments of the same model version start without an additional download step.
+
+A `ModelCar` image consists of the following layers:
+
+* A minimal base image, such as `busybox`
+* Model files layered on top by using OCI Layers On Top (`olot`), a library that the transfer job and Python client use internally to construct the image layers
+
+When you register and store a model as an OCI image, {productname-short} creates the `ModelCar` image automatically.
+The resulting artifact URI uses the `oci://` scheme, for example, `oci://quay.io/myorg/granite-7b:v1`.
+
+[id="benefits-of-oci-storage_{context}"]
+== Benefits of OCI storage
+
+Storing model artifacts as OCI images provides the following advantages over S3-based or URI-based storage:
+
+Reduced startup times::
+`KServe` pulls the OCI image as part of pod scheduling rather than downloading files from an external source after the pod starts.
+
+Lower disk usage::
+Pre-fetched OCI images remove the need for local copies of model files on each serving node.
+
+Image caching::
+Container runtimes cache OCI images on nodes, so later deployments of the same model version start faster.
+
+Versioned artifacts::
+OCI registries offer tagging and versioning for model images, which aligns with container lifecycle management practices.
+
+`KServe` integration::
+`KServe` natively supports the `ModelCar` format, so you can deploy models stored as OCI images without additional configuration.
+
+[id="supported-oci-registries_{context}"]
+== Supported OCI registries
+
+You can use the following OCI-compliant registries to store model artifacts:
+
+* Red Hat Quay
+* Customer-provided OCI-compliant registries that support the OCI Distribution Specification
+
+For Quay destinations, {productname-short} automatically uses `quay.io/quay/busybox:latest` as the base image for `ModelCar` construction.
+For other registries, the base image depends on the default configured in the model-sync container.
+
+[id="oci-storage-architecture_{context}"]
+== Storage architecture
+
+Model Registry separates model metadata from model artifact storage.
+The metadata database stores the model name, version, format, author, and artifact URI, while the actual model files are stored in a separate storage backend.
+
+When you use OCI-compliant storage, the model artifacts are stored as OCI images in a container registry.
+The Model Registry metadata entry points to the artifact by using an `oci://` URI.
+This separation means you can manage model metadata (versioning, lifecycle, access control) independently from the underlying storage infrastructure.
+
+The model transfer job is a background Kubernetes Job that handles the conversion and push process.
+When you register and store a model by using the dashboard, {productname-short} creates a Job in the selected namespace that performs the following steps:
+
+. Downloads the model files from the source location (S3 object storage, URL, or Hugging Face Hub).
+. Packages the model files as a `ModelCar` OCI image by layering them on top of a base image.
+. Pushes the OCI image to the destination registry.
+. Calls the Model Registry API to create the model artifact entry with the `oci://` URI.
+
+The Job creates supporting Kubernetes resources (ConfigMap for model metadata, Secrets for source and destination credentials) that are owned by the Job and garbage-collected when the Job is deleted.
+
+[id="registration-paths_{context}"]
+== Registration paths
+
+{productname-short} provides two paths for registering and storing models as OCI images:
+
+Dashboard UI (Register and Store)::
+Use the {productname-short} dashboard to register a model from an existing source location, such as S3 object storage or a URL, and transform it into an OCI `ModelCar` image.
+The dashboard creates a background Kubernetes Job that copies the model files, packages them as a `ModelCar` image, and pushes the image to the OCI registry.
++
+Use this path when your model files are already in S3 storage, a URL, or a model catalog.
+
+Python client SDK::
+Use the `model-registry` Python package to upload locally-trained model files directly from your workbench or local environment to an OCI registry.
+The Python client uses the `skopeo` or `oras` CLI tool to push the `ModelCar` image.
++
+Use this path when your model files are on local disk and are not yet in external storage.
+
+[role="_additional-resources"]
+.Additional resources
+* xref:configuring-oci-storage-backend_{context}[Configure the OCI storage backend for Model Registry]
+* xref:registering-model-as-oci-image_{context}[Register and store a model as an OCI image using the dashboard]
+* xref:uploading-model-using-python-client_{context}[Upload a locally-trained model using the Python client]
+* xref:oci-storage-prerequisites_{context}[OCI-compliant storage prerequisites]
+* xref:oci-storage-configuration-parameters_{context}[OCI storage configuration and connection parameters]

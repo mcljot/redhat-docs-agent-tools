@@ -9,7 +9,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PLUGINS_DIR = REPO_ROOT / "plugins"
 DOCS_DIR = REPO_ROOT / "docs"
-GITHUB_BASE = "https://github.com/redhat-documentation/redhat-docs-agent-tools/blob/main"
+GITHUB_BASE = "https://gitlab.cee.redhat.com/aireilly/redhat-docs-agent-tools/-/blob/main"
 DEPS_FILE = REPO_ROOT / "scripts" / "deps.json"
 
 # Install hints for system tools (used in the install page)
@@ -360,7 +360,7 @@ def generate_installation_page(plugins: list[dict], deps: dict) -> str:
         "Add the plugin marketplace to your Claude Code configuration:",
         "",
         "```bash",
-        "/plugin marketplace add https://github.com/redhat-documentation/redhat-docs-agent-tools.git",
+        "/plugin marketplace add https://gitlab.cee.redhat.com/aireilly/redhat-docs-agent-tools.git",
         "```",
         "",
         "Then install any plugin:",

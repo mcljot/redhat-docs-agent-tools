@@ -32,13 +32,15 @@ All sidecars share these fields:
   "step": "requirements",
   "ticket": "PROJ-123",
   "completed_at": "2026-04-23T14:30:00Z",
-  "title": "Add installation guide for the Operator"
+  "title": "Add installation guide for the Operator",
+  "requirement_count": 8
 }
 ```
 
 | Field | Type | Description | Consumed by |
 |---|---|---|---|
 | `title` | string | First heading from requirements.md (max 80 chars, ticket prefix stripped) | `create_merge_request.sh` — PR/MR title |
+| `requirement_count` | integer | Number of requirements discovered in pass 1 | Orchestrator — `when: has_many_requirements` condition for quality-gate |
 
 ### scope-req-audit
 
@@ -49,22 +51,24 @@ All sidecars share these fields:
   "ticket": "PROJ-123",
   "completed_at": "2026-04-23T14:35:00Z",
   "recommendation": "proceed",
-  "grounded": 6,
+  "grounded": 8,
   "partial": 2,
   "absent": 1,
-  "total": 9,
-  "discovered_repos_count": 2
+  "total": 11,
+  "discovered_repos_count": 2,
+  "secondary_repos_count": 1
 }
 ```
 
 | Field | Type | Description | Consumed by |
 |---|---|---|---|
 | `recommendation` | string | `"proceed"`, `"gather-more"`, or `"review-needed"` | Orchestrator — post-step logging |
-| `grounded` | integer | Requirements with strong code evidence | Orchestrator — post-step logging |
-| `partial` | integer | Requirements with weak or ambiguous evidence | Orchestrator — post-step logging |
-| `absent` | integer | Requirements with no code evidence | Orchestrator — post-step logging |
+| `grounded` | integer | Count of grounded requirements | Orchestrator — post-step logging |
+| `partial` | integer | Count of partial requirements | Orchestrator — post-step logging |
+| `absent` | integer | Count of absent requirements | Orchestrator — post-step logging |
 | `total` | integer | Total requirements classified | Orchestrator — post-step logging |
-| `discovered_repos_count` | integer | Number of related repos found but not indexed | Orchestrator — post-step logging |
+| `discovered_repos_count` | integer | Count of repos found in README/docs | Orchestrator — post-step logging |
+| `secondary_repos_count` | integer | Count of repos from gap classification actions | Orchestrator — post-step logging |
 
 ### planning
 
@@ -81,6 +85,50 @@ All sidecars share these fields:
 | Field | Type | Description | Consumed by |
 |---|---|---|---|
 | `module_count` | integer | Number of documentation modules in the plan | Informational (orchestrator summary) |
+
+### code-analysis
+
+```json
+{
+  "schema_version": 1,
+  "step": "code-analysis",
+  "ticket": "PROJ-123",
+  "completed_at": "2026-04-23T14:40:00Z",
+  "module_count": 12,
+  "relationship_count": 8,
+  "languages_detected": ["go", "python"],
+  "repo_path": "/home/user/docs-repo/.agent_workspace/proj-123/code-repo/my-project"
+}
+```
+
+| Field | Type | Description | Consumed by |
+|---|---|---|---|
+| `module_count` | integer | Number of modules analyzed by learn-code | Informational (orchestrator summary) |
+| `relationship_count` | integer | Number of cross-module relationships discovered | Informational (orchestrator summary) |
+| `languages_detected` | string[] | Programming languages found in the repo | Informational |
+| `repo_path` | string | Absolute path to the analyzed source repository | Informational |
+
+### pr-analysis
+
+```json
+{
+  "schema_version": 1,
+  "step": "pr-analysis",
+  "ticket": "PROJ-123",
+  "completed_at": "2026-04-23T14:50:00Z",
+  "pr_number": 42,
+  "pr_url": "https://github.com/org/repo/pull/42",
+  "modules_affected": 3,
+  "platform": "github"
+}
+```
+
+| Field | Type | Description | Consumed by |
+|---|---|---|---|
+| `pr_number` | integer | PR/MR number | Informational |
+| `pr_url` | string | Full URL to the PR/MR | Informational |
+| `modules_affected` | integer | Number of modules with changes in the PR | Informational (orchestrator summary) |
+| `platform` | string | `"github"` or `"gitlab"` | Informational |
 
 ### writing
 
@@ -135,7 +183,7 @@ All sidecars share these fields:
 | `severity_counts.minor` | integer | Minor issues found | Orchestrator |
 | `severity_counts.sme` | integer | Issues requiring SME verification | Orchestrator |
 | `iteration` | integer | Which iteration of review this represents (1-based) | Orchestrator |
-| `code_grounded` | boolean | Whether the code-grounded pre-scan ran (source repo was available and `grounded_review.py` succeeded) | Informational |
+| `code_grounded` | boolean | Whether code-learner analysis was available for claim validation (code-analysis step completed) | Informational |
 
 ### style-review
 
@@ -149,26 +197,6 @@ All sidecars share these fields:
 ```
 
 No extra fields. Common schema only.
-
-### code-evidence
-
-```json
-{
-  "schema_version": 1,
-  "step": "code-evidence",
-  "ticket": "PROJ-123",
-  "completed_at": "2026-04-23T15:00:00Z",
-  "topic_count": 8,
-  "snippet_count": 42,
-  "repo_path": "/home/user/docs-repo/.agent_workspace/proj-123/code-repo/my-project"
-}
-```
-
-| Field | Type | Description | Consumed by |
-|---|---|---|---|
-| `topic_count` | integer | Number of search topics extracted from the plan | Informational (orchestrator summary) |
-| `snippet_count` | integer | Total code snippets retrieved across all topics (source + context) | Informational (orchestrator summary) |
-| `repo_path` | string | Absolute path to the source repository searched | Informational |
 
 ### create-merge-request
 
@@ -258,6 +286,78 @@ When an existing linked ticket is found:
 | `action` | string | `"created"`, `"found_existing"`, or `"skipped"` | Orchestrator |
 | `skipped` | boolean | Whether JIRA creation was skipped | Orchestrator |
 | `skip_reason` | string\|null | Reason when skipped (e.g., `"existing_link"`) | Orchestrator |
+
+### quality-gate
+
+```json
+{
+  "schema_version": 1,
+  "step": "quality-gate",
+  "ticket": "PROJ-123",
+  "completed_at": "2026-04-23T15:50:00Z",
+  "doc_quality": 4,
+  "intent_alignment": 3,
+  "passed": false,
+  "iteration": 1,
+  "gaps": [
+    {
+      "ac_item": "Document confidence scores",
+      "judge": "intent_alignment",
+      "evidence_status": "absent",
+      "action": "document_as_unsupported",
+      "file": "proc-deploying-model.adoc",
+      "section": "After 'Verifying the deployment' — add a note about confidence scores"
+    }
+  ],
+  "rationales": {
+    "doc_quality": "Full judge rationale text...",
+    "intent_alignment": "Full judge rationale text with per-AC coverage assessments..."
+  }
+}
+```
+
+| Field | Type | Description | Consumed by |
+|---|---|---|---|
+| `doc_quality` | integer | Doc quality score (1-5) from Opus judge agent | Orchestrator — iteration logic |
+| `intent_alignment` | integer | Intent alignment score (1-5) from Opus judge agent | Orchestrator — iteration logic |
+| `passed` | boolean | Whether intent_alignment >= 4 (doc_quality is informational only) | Orchestrator — iteration logic |
+| `iteration` | integer | Which iteration of the quality gate loop (1-based) | Orchestrator |
+| `gaps` | array | Identified gaps with evidence status and recommended action | resolve-feedback step |
+| `gaps[].ac_item` | string | The acceptance criteria item that was missed | resolve-feedback |
+| `gaps[].judge` | string | Which judge flagged the gap (e.g., `"intent_alignment"`) | Informational |
+| `gaps[].evidence_status` | string | Cross-referenced against scope-req-audit: `"grounded"`, `"partial"`, `"absent"`, or `"unknown"` | resolve-feedback — determines fix strategy |
+| `gaps[].action` | string | Recommended action: `"document_as_unsupported"`, `"expand_with_evidence"`, `"add_missing_section"`, or `"investigate"` | resolve-feedback |
+| `gaps[].file` | string\|null | AsciiDoc filename where the fix should be applied | resolve-feedback — targeted file edits |
+| `gaps[].section` | string\|null | Section heading or insertion point within the file | resolve-feedback — targeted section edits |
+| `rationales` | object | Full judge rationale texts for the feedback brief | resolve-feedback |
+| `rationales.doc_quality` | string | Complete doc_quality judge rationale | resolve-feedback — included verbatim in feedback brief |
+| `rationales.intent_alignment` | string | Complete intent_alignment judge rationale with per-AC coverage assessments, missing artifacts, scope analysis | resolve-feedback — included verbatim in feedback brief |
+
+### resolve-feedback
+
+```json
+{
+  "schema_version": 1,
+  "step": "resolve-feedback",
+  "ticket": "PROJ-123",
+  "completed_at": "2026-04-23T16:00:00Z",
+  "gaps_resolved": 1,
+  "gaps_deferred": 0,
+  "sme_comments_resolved": 2,
+  "sme_comments_deferred": 1,
+  "files_modified": ["modules/proc-installing-operator.adoc"],
+  "sources": ["quality-gate", "sme-comments"]
+}
+```
+
+| Field | Type | Description | Consumed by |
+|---|---|---|---|
+| `gaps_resolved` | integer | Number of quality-gate gaps addressed | Informational |
+| `gaps_deferred` | integer | Number of gaps deferred (requires SME input) | Informational |
+| `sme_comments_resolved` | integer | Number of SME review comments addressed | Informational |
+| `sme_comments_deferred` | integer | Number of SME comments not addressable automatically | Informational |
+| `files_modified` | string[] | Absolute paths of files modified by the fix | Informational |
+| `sources` | string[] | Which input sources were used: `"quality-gate"`, `"sme-comments"`, or both | Informational |
 
 ## Backward compatibility
 

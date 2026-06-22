@@ -1,0 +1,56 @@
+:_mod-docs-content-type: ASSEMBLY
+
+ifdef::context[:parent-context: {context}]
+
+:context: model-cache
+
+[id="reducing-model-loading-time-with-model-cache"]
+= Reduce model loading time with model cache
+
+[role="_abstract"]
+As a cluster administrator, you can enable model cache to pre-download large machine learning models to local node storage or network volumes.
+Model cache reduces inference service cold-start times from 15-20 minutes to about one minute for large models, enabling faster autoscaling and shorter deployment cycles.
+As a data scientist, you can deploy inference services that automatically use cached models without modifying your deployment YAML.
+
+include::modules/understanding-model-cache.adoc[leveloffset=+1]
+
+== Setting up model cache
+
+Complete the following tasks to enable model cache on your cluster, configure node groups and download credentials, and cache your first model.
+
+include::modules/enabling-model-cache.adoc[leveloffset=+2]
+
+include::modules/configuring-model-cache-node-groups.adoc[leveloffset=+2]
+
+include::modules/configuring-model-download-credentials.adoc[leveloffset=+2]
+
+== Caching models
+
+You can cache models on local node disks for cross-namespace sharing, or on network volumes by using a custom `StorageClass`.
+
+include::modules/caching-a-model-for-faster-loading.adoc[leveloffset=+2]
+
+include::modules/caching-a-model-on-network-volumes.adoc[leveloffset=+2]
+
+== Deploying models from cache
+
+After a cluster administrator has cached a model, you can deploy inference services that automatically load the model from local storage.
+
+include::modules/deploying-inferenceservice-with-cached-model.adoc[leveloffset=+2]
+
+include::modules/deploying-llminferenceservice-with-cached-model.adoc[leveloffset=+2]
+
+== Managing cached models
+
+include::modules/deleting-a-cached-model.adoc[leveloffset=+2]
+
+== Reference
+
+include::modules/model-cache-configuration-reference.adoc[leveloffset=+2]
+
+include::modules/model-cache-known-limitations.adoc[leveloffset=+2]
+
+include::modules/troubleshooting-model-cache.adoc[leveloffset=+2]
+
+ifdef::parent-context[:context: {parent-context}]
+ifndef::parent-context[:!context:]

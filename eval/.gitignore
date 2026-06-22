@@ -1,0 +1,7 @@
+# Docs repo cache and worktrees (large, local-only)
+.docs-repo-cache/
+dataset/cases/*/.docs-worktree/
+
+# Eval run results (generated, not committed — except shared baselines)
+runs/*
+!runs/baseline-main-*/

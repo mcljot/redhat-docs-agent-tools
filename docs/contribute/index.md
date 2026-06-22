@@ -6,7 +6,7 @@ icon: lucide/git-pull-request
 
 This repository is a collection of plugins for Red Hat documentation workflows. Contributions are primarily Markdown files — skills, reference material, checklists, and style guides — that can be authored in any editor or AI coding tool. Contributions are welcome from anyone in the community.
 
-For the full contributor guide, see [CONTRIBUTING.md](https://github.com/redhat-documentation/redhat-docs-agent-tools/blob/main/CONTRIBUTING.md).
+For the full contributor guide, see [CONTRIBUTING.md](https://gitlab.cee.redhat.com/aireilly/redhat-docs-agent-tools/-/blob/main/CONTRIBUTING.md).
 
 If you use **Cursor**, start with [Get Started with Cursor](../get-started/index.md) and [Cursor fundamentals](../get-started/cursor-fundamentals.md). Then pick the guide that matches your task:
 

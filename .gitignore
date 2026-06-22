@@ -13,6 +13,7 @@ site/
 .venv/
 .vale/
 __pycache__/
+node_modules/
 .pytest_cache/
 *.pyc
 .work/
@@ -27,3 +28,6 @@ docs/install/
 docs/superpowers/
 .vibe2doc
 .ruff_cache
+
+# Local specs and design docs (not tracked in source)
+specs/

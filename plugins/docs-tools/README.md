@@ -6,9 +6,9 @@
 
 ## Prerequisites
 
-- Install the [Red Hat Docs Agent Tools marketplace](https://redhat-documentation.github.io/redhat-docs-agent-tools/install/)
+- Install the [Red Hat Docs Agent Tools marketplace](https://aireilly.gitlab.cee.redhat.com/redhat-docs-agent-tools/install/)
 
-- Install [software dependencies](https://redhat-documentation.github.io/redhat-docs-agent-tools/install/#software-dependencies)
+- Install [software dependencies](https://aireilly.gitlab.cee.redhat.com/redhat-docs-agent-tools/install/#software-dependencies)
 
 - Create an `.env` file with your tokens. You can use either location:
 
@@ -49,14 +49,15 @@ The docs orchestrator (`/docs-orchestrator`) runs a YAML-defined step list. You 
 The orchestrator looks for workflow YAML in this order:
 
 1. `.agent_workspace/docs-<name>.yaml` — if `--workflow <name>` is passed
-2. `.agent_workspace/docs-workflow.yaml` — project-level default (when no `--workflow` is specified)
-3. Plugin default — `skills/docs-orchestrator/defaults/docs-workflow.yaml`
+2. Matching plugin default — `skills/docs-orchestrator/defaults/docs-<name>.yaml` if that project-level file is absent
+3. `.agent_workspace/docs-workflow.yaml` — project-level default (when no `--workflow` is specified)
+4. Plugin default — `skills/docs-orchestrator/defaults/docs-workflow.yaml`
 
 To customize, download the default into your docs repo and edit it:
 
 ```bash
 mkdir -p .agent_workspace
-curl -sL https://raw.githubusercontent.com/redhat-documentation/redhat-docs-agent-tools/main/plugins/docs-tools/skills/docs-orchestrator/defaults/docs-workflow.yaml \
+curl -sL https://gitlab.cee.redhat.com/aireilly/redhat-docs-agent-tools/-/raw/main/plugins/docs-tools/skills/docs-orchestrator/defaults/docs-workflow.yaml \
    -o .agent_workspace/docs-workflow.yaml
 ```
 
@@ -137,35 +138,37 @@ The default workflow includes a **create-merge-request** step that is off by def
 
 Without the flag, the workflow ends at style-review and leaves the files as uncommitted changes in the repo, so you can create your own branch and MR manually.
 
-### Code-evidence workflow
+### Code-analysis workflow
 
-The `workflow-code-evidence` variant adds two code-analysis steps to the standard pipeline: **scope-req-audit** (classifies each JIRA requirement as grounded, partial, or absent in the codebase) and **code-evidence** (retrieves relevant code snippets for each topic in the documentation plan). This workflow requires a source code repository — the orchestrator fails at load time if neither `--source-code-repo` nor `--pr` is provided.
+The `workflow-code-analysis` variant adds code-learner analysis steps to the standard pipeline: **code-analysis** (runs learn-code to produce structured analysis of the source repository — module registry, per-module summaries, cross-module relationships) and optionally **pr-analysis** (analyzes PR changes against the module registry). This workflow requires a source code repository — the orchestrator fails at load time if neither `--source-code-repo` nor `--pr` is provided.
 
 ```bash
 /docs-orchestrator PROJ-123 \
-  --workflow workflow-code-evidence \
+  --workflow workflow-code-analysis \
   --source-code-repo https://github.com/org/operator
 ```
 
-The workflow runs the following steps in order:
+### Multi-repo evidence retrieval
 
 1. **requirements** — analyze documentation requirements from the JIRA ticket
-2. **scope-req-audit** — query the code-finder index to classify each requirement as grounded, partial, or absent
-3. **planning** — create the documentation plan, scoping modules based on evidence status
-4. **code-evidence** — retrieve code snippets (function signatures, class definitions, configuration) for each plan topic
-5. **writing** — write documentation grounded in the retrieved code evidence
-6. **technical-review** — verify technical accuracy against the source code
+2. **code-analysis** — run learn-code to produce ONBOARDING.md, module registry, per-module summaries, and cross-module relationship data
+3. **pr-analysis** _(conditional, runs when a PR URL is available)_ — analyze PR changes against the module registry
+4. **planning** — create the documentation plan, scoping modules based on onboarding priority (read-first, read-second, skip)
+5. **writing** — write documentation grounded in the code-learner analysis
+6. **technical-review** — verify technical accuracy with claim validation against code-learner analysis
 7. **style-review** — check style guide compliance
 8. **create-merge-request** _(optional, pass `--create-merge-request` to enable)_ — create a branch (if needed), commit, push, and open a merge request or pull request
 
-Compared to the default workflow, the code-evidence variant produces documentation with fewer technical review issues because the writer has actual function signatures and implementation details to work from, rather than generating from the JIRA description alone.
+Compared to the default workflow, the code-analysis variant produces documentation with fewer technical review issues because the writer has structured code understanding (module APIs, data flows, dependencies) to work from, rather than generating from the JIRA description alone.
 
-To use this workflow without the plugin default, download it into your docs repo:
+Maximum 3 secondary repos per run (configurable with `--max-secondary-repos`). Repos are ranked by the number of associated requirements.
 
 ```bash
-mkdir -p .agent_workspace
-curl -sL https://raw.githubusercontent.com/redhat-documentation/redhat-docs-agent-tools/main/plugins/docs-tools/skills/docs-orchestrator/defaults/docs-workflow-code-evidence.yaml \
-   -o .agent_workspace/docs-workflow-code-evidence.yaml
+# Auto-discover secondary repos without prompting (CI mode)
+/docs-orchestrator PROJ-123 --auto-discover-repos
+
+# Limit to 2 secondary repos with custom weight
+/docs-orchestrator PROJ-123 --max-secondary-repos 2 --secondary-weight 0.7
 ```
 
 ## Starting a docs workflow
@@ -227,25 +230,26 @@ In update-in-place mode, the orchestrator detects your repo's documentation fram
 
 ### Grounding documentation in source code
 
-When documenting a feature that lives in a source code repository, pass `--repo` to provide the code repository. The orchestrator clones the repo, indexes it using AST chunking and hybrid search, and retrieves relevant code snippets for each topic in the documentation plan. The writer then uses this evidence to ground its output in actual function signatures, class definitions, and configuration — rather than generating from the JIRA description alone.
+When documenting a feature that lives in a source code repository, pass `--repo` to provide the code repository. The orchestrator clones the repo, runs code-learner analysis (tree-sitter AST parsing + fan-out agents), and produces structured understanding of the codebase — module registry, per-module summaries, cross-module relationships, and an ONBOARDING.md guide. The writer then uses this analysis to ground its output in actual module APIs, data flows, and dependencies — rather than generating from the JIRA description alone.
 
 ```bash
 /docs-orchestrator PROJ-123 --repo https://github.com/org/repo
 ```
 
-The code-evidence step runs automatically when `--repo` is provided. It:
+The code-analysis step runs automatically when `--repo` is provided. It:
 
 1. Clones the repository (or uses it if it's a local path)
-2. Indexes the codebase using tree-sitter AST chunking
-3. Extracts search queries from the documentation plan
-4. Runs two-pass retrieval per query — source-scoped (function signatures, types) and unfiltered (READMEs, examples, docs)
-5. Writes `artifacts/<ticket>/code-evidence/evidence.json` for the writer and `summary.md` for human review
+2. Detects modules using tree-sitter AST parsing and language-specific heuristics
+3. Builds a module registry with onboarding priorities (read-first, read-second, skip)
+4. Runs per-module deep analysis agents in parallel
+5. Analyzes cross-module relationships
+6. Produces `ONBOARDING.md`, `registry.json`, per-module summaries, and relationship data
 
-Without `--repo`, the code-evidence step is skipped and the writer works from the JIRA ticket and documentation plan only.
+Without `--repo`, the code-analysis step is skipped and the writer works from the JIRA ticket and documentation plan only.
 
 !!! tip
 
-    Code-evidence is most effective when the JIRA ticket has a detailed description. A well-described ticket combined with source code evidence produces documentation with significantly fewer technical review issues.
+    Code analysis is most effective when the JIRA ticket has a detailed description. A well-described ticket combined with structured code analysis produces documentation with significantly fewer technical review issues.
 
 ### Including PR context
 
@@ -261,8 +265,12 @@ Multiple `--pr` flags can be passed. The requirements analyst will read the PR d
 
 | Flag | Description |
 |------|-------------|
-| `--repo <url-or-path>` | Source code repository for code-evidence grounding |
+| `--repo <url-or-path>` | Source code repository for code-learner analysis |
 | `--pr <url>` | PR/MR URL to include in requirements analysis (repeatable) |
+| `--no-source-repo` | Skip source resolution and all source-dependent steps |
+| `--auto-discover-repos` | Skip confirmation when secondary repos are discovered |
+| `--max-secondary-repos <N>` | Maximum secondary repos to clone (default: 3) |
+| `--secondary-weight <float>` | Relevance multiplier for secondary repo results (default: 0.8) |
 | `--mkdocs` | Generate Material for MkDocs Markdown instead of AsciiDoc |
 | `--repo-path <path>` | Write files to a specific repo path (e.g., an external clone) |
 | `--create-jira <PROJECT>` | Create a linked JIRA ticket in the specified project |
@@ -270,7 +278,7 @@ Multiple `--pr` flags can be passed. The requirements analyst will read the PR d
 
 ### Resuming a workflow
 
-The orchestrator saves progress to `artifacts/<ticket>/workflow/docs-workflow_<ticket>.json`. If a run is interrupted or fails, start the orchestrator again with the same ticket and it will resume from where it left off:
+The orchestrator saves progress to `.agent_workspace/<ticket>/workflow/<workflow-type>_<ticket>.json`. If a run is interrupted or fails, start the orchestrator again with the same ticket and workflow and it will resume from where it left off:
 
 ```bash
 /docs-orchestrator PROJ-123

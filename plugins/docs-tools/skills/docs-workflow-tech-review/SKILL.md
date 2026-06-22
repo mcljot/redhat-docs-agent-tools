@@ -1,15 +1,15 @@
 ---
 name: docs-workflow-tech-review
-description: Technical accuracy review of documentation drafts with optional code-grounded validation. When a source repo is available, runs grounded_review and api_surface against the code to validate documentation claims before dispatching the technical-reviewer agent. Iteration logic is owned by the orchestrator, not this skill.
-argument-hint: <ticket> --base-path <path> [--repo <path>]
+description: Technical accuracy review of documentation drafts with optional code-learner validation. When code analysis is available, validates documentation claims against learn-code analysis data before dispatching the technical-reviewer agent. Iteration logic is owned by the orchestrator, not this skill.
+argument-hint: <ticket> --base-path <path> [--repo <path>]...
 allowed-tools: Read, Write, Glob, Grep, Edit, Bash, Skill, Agent, WebSearch, WebFetch
 ---
 
 # Technical Review Step
 
-Step skill for the docs-orchestrator pipeline. Follows the step skill contract: **parse args → [run code-grounded pre-scan] → dispatch agent → write output**.
+Step skill for the docs-orchestrator pipeline. Follows the step skill contract: **parse args → [run claim validation] → dispatch agent → write output**.
 
-When a source code repository is available (`--repo`), this step runs the same code-grounded validation pipeline used by `docs-review-technical` (Agent 2): `grounded_review.py` validates documentation claims against source code, and `api_surface.py` extracts the public API surface. These results are passed to the `technical-reviewer` agent as pre-computed evidence, giving the reviewer concrete code verdicts alongside its engineering judgment.
+When code-learner analysis is available (from the `code-analysis` step), this step validates documentation claims against the analysis data by dispatching `code-questioner` agents. These validation results are passed to the `technical-reviewer` agent as pre-computed evidence, giving the reviewer concrete verdicts alongside its engineering judgment.
 
 This skill performs a single review pass. The iteration loop (re-running with fixes between passes) is driven by the orchestrator skill, not this step skill.
 
@@ -17,7 +17,7 @@ This skill performs a single review pass. The iteration loop (re-running with fi
 
 - `$1` — JIRA ticket ID (required)
 - `--base-path <path>` — Base output path (e.g., `.agent_workspace/proj-123`)
-- `--repo <path>` — Path to the source code repository (optional, provided by orchestrator when available)
+- `--repo <path>...` — Path to the source code repository (optional, repeatable, provided by orchestrator when available). The first `--repo` is the primary source repo. Additional `--repo` values are secondary repos with code-learner analysis at `<base-path>/code-analysis-<repo-name>/`
 
 ## Input
 
@@ -31,27 +31,28 @@ This skill performs a single review pass. The iteration loop (re-running with fi
 ```
 <base-path>/technical-review/review.md
 <base-path>/technical-review/step-result.json
-<base-path>/technical-review/grounded-review.json (when --repo provided)
-<base-path>/technical-review/api-surface.json (when --repo provided)
+<base-path>/technical-review/claim-validation.json (when code-analysis available)
 ```
 
 ## Execution
 
 ### 1. Parse arguments
 
-Extract the ticket ID, `--base-path`, and optional `--repo` from the args string.
+Extract the ticket ID, `--base-path`, and optional `--repo` value(s) from the args string.
+
+Collect all `--repo` values. The first becomes the primary `REPO_PATH`. Additional values are stored in an `ADDITIONAL_REPO_PATHS` list.
 
 Set the paths:
 
 ```bash
 OUTPUT_DIR="${BASE_PATH}/technical-review"
 OUTPUT_FILE="${OUTPUT_DIR}/review.md"
-GROUNDED_FILE="${OUTPUT_DIR}/grounded-review.json"
-API_SURFACE_FILE="${OUTPUT_DIR}/api-surface.json"
+CLAIMS_FILE="${OUTPUT_DIR}/claim-validation.json"
+CODE_ANALYSIS_DIR="${BASE_PATH}/code-analysis"
 mkdir -p "$OUTPUT_DIR"
 ```
 
-Set `HAS_REPO=true` if `--repo` was provided and the path exists as a directory. Otherwise `HAS_REPO=false`.
+Set `HAS_REPO=true` if at least one valid `--repo` path was provided and exists as a directory. Otherwise `HAS_REPO=false`.
 
 ### 2. Determine source files
 
@@ -75,83 +76,186 @@ Set `DRAFTS_DIR="${BASE_PATH}/writing"` and build the block as:
 Source drafts location: `<DRAFTS_DIR>/`
 ```
 
-### 3. Code-grounded pre-scan (conditional)
+### 3. Claim validation pre-scan (conditional)
 
-**Skip this step entirely if `HAS_REPO=false`.** Proceed directly to step 3.
+**Skip this step entirely if no code-analysis data exists** (check `${CODE_ANALYSIS_DIR}/ONBOARDING.md`). Proceed directly to step 4.
 
-When a source repo is available, run the code-grounded validation pipeline before dispatching the reviewer agent. This produces structured evidence the agent uses alongside its own analysis.
+When code-learner analysis is available from the code-analysis step, validate documentation claims against the analysis data before dispatching the reviewer agent.
 
-#### 2a. Collect draft file paths
+#### Reuse check (iterations 2+)
 
-Read the writing manifest at `<DRAFTS_DIR>/_index.md`. Extract the absolute file paths from the table rows. If the manifest doesn't exist, fall back to globbing `<DRAFTS_DIR>/` for `.adoc` and `.md` files recursively.
+Before running validation, check if `claim-validation.json` and `validation-summary.md` both exist in `$OUTPUT_DIR` (from a prior iteration). If both files exist and are non-empty:
 
-Build a JSON drafts file for batch mode:
+- Set `HAS_CLAIMS=true`
+- Skip steps 3a–3d entirely — reuse the existing files
+- Log: `"Reusing claim validation from prior iteration"`
 
-```bash
-# Build drafts batch file from the collected paths
-cat > "${OUTPUT_DIR}/drafts-batch.json" << 'EOF'
-[
-  {"draft": "/path/to/file1.adoc"},
-  {"draft": "/path/to/file2.adoc"}
-]
-EOF
+If only `claim-validation.json` exists but `validation-summary.md` is missing (possible from a partial prior run), skip steps 3a-3c and re-run step 3d only to generate the summary.
+
+This is safe because iterations only change the documentation (via the fix cycle), not the source code analysis. The validation from iteration 1 remains valid.
+
+#### 3a. Extract claims from draft documentation
+
+Delegate claim extraction to a subagent so that full draft file content (~50-100KB) stays out of the orchestrator's context.
+
+```
+Agent:
+  description: "Extract technical claims from docs for <TICKET>"
+  prompt: |
+    Extract verifiable technical claims from documentation draft files.
+
+    <SOURCE_FILES_BLOCK>
+
+    Read all .adoc and .md files from the source location above.
+    For each file, extract factual claims that can be verified against code:
+    - Function names, method signatures, parameter lists
+    - Behavior descriptions ("X happens when Y")
+    - Configuration options, environment variables, default values
+    - API endpoints, resource types, CRD kinds
+    - Class names, return types, data structures
+    - Command-line flags, subcommands, option values
+
+    Focus on claims that can be verified against source code.
+
+    Write the claims list to: <OUTPUT_DIR>/claims-list.json
+
+    Format:
+    [
+      {"id": "claim-1", "text": "The CreateCluster function accepts a ClusterConfig parameter", "file": "proc-creating-cluster.adoc", "line": 42},
+      {"id": "claim-2", "text": "Authentication uses JWT tokens stored in the session cookie", "file": "con-auth-overview.adoc", "line": 15}
+    ]
+
+    After writing, print ONLY: Written <OUTPUT_DIR>/claims-list.json
 ```
 
-#### 2b. Run grounded review
-
-Check if code-finder is installed:
+After the agent completes, extract the claims grouped by doc file from disk without reading the full file into context:
 
 ```bash
-python3 -c "import claude_context" 2>/dev/null && echo "INSTALLED" || echo "NOT_INSTALLED"
+python3 -c "
+import json
+claims = json.load(open('<OUTPUT_DIR>/claims-list.json'))
+by_file = {}
+for c in claims:
+    by_file.setdefault(c.get('file', 'unknown'), []).append(c)
+print(json.dumps({
+    'total_claims': len(claims),
+    'batch_count': len(by_file),
+    'batches': [{'file': f, 'count': len(cs), 'claims': [{'id': c['id'], 'text': c['text'][:60]} for c in cs]} for f, cs in sorted(by_file.items())]
+}))
+"
 ```
 
-If **INSTALLED**, run directly:
+This gives the orchestrator the claim batches grouped by doc file — enough to dispatch one code-questioner agent per batch without loading full claim details into context.
+
+#### 3b. Dispatch code-questioner agents for validation (batched by doc file)
+
+For each doc-file batch (from the step 3a grouped output), dispatch a single `code-questioner` agent that verifies ALL claims from that file. Launch ALL batch agents in a **single message** (parallel execution).
+
+Each agent reads analysis data from disk and writes its verdicts to a per-batch file. This keeps the orchestrator's context lean — agent prompts are compact (~0.5KB each) and agent results are one-line confirmations.
+
+For each batch, use:
+
+```
+Agent:
+  subagent_type: code-questioner
+  description: "Verify <N> claims from <file>"
+  prompt: |
+    Verify documentation claims from <DOC_FILE> against the source code.
+
+    CLAIMS:
+    1. [<claim-id>] "<claim text>"
+    2. [<claim-id>] "<claim text>"
+    ...
+
+    Read the learn-code analysis data from: <CODE_ANALYSIS_DIR>/
+    Files available:
+    - detection.json
+    - registry.json
+    - ONBOARDING.md
+    - summaries/ (per-module analysis)
+    - relationships/ (cross-module coupling)
+
+    REPO_PATH: <repo_path>
+
+    OUTPUT_FILE: <OUTPUT_DIR>/batch-verdict-<sanitized_file>.json
+
+    Write a JSON array of verdicts — one entry for EVERY claim listed above:
+    [
+      {"claim_id": "<id>", "claim_text": "<text>", "verdict": "supported|partially_supported|unsupported|no_evidence_found", "evidence": "<1-2 sentences with file:line refs>"},
+      ...
+    ]
+
+    IMPORTANT: You must produce a verdict for ALL claims. Do not skip any.
+    After writing, print ONLY: Written <OUTPUT_FILE>
+```
+
+Where `<sanitized_file>` is the doc filename with `.adoc`/`.md` extension stripped and non-alphanumeric characters replaced with hyphens (e.g., `pre-loaded-mcp-servers.adoc` → `pre-loaded-mcp-servers`).
+
+**Important:** All Agent calls MUST be in a single message so they run in parallel.
+
+#### 3c. Collect verdicts from disk
+
+After all code-questioner agents complete, verify which batch verdict files were written:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/code-evidence/scripts/grounded_review.py \
-  --repo "$REPO_PATH" \
-  --drafts-file "${OUTPUT_DIR}/drafts-batch.json" \
-  --reindex > "$GROUNDED_FILE"
+ls <OUTPUT_DIR>/batch-verdict-*.json 2>/dev/null | wc -l
 ```
 
-If **NOT_INSTALLED**, prefix with uv:
+Log: `"<found_count>/<batch_count> batch verdict files written to disk"`
 
-```bash
-uv run --with code-finder python3 ${CLAUDE_PLUGIN_ROOT}/skills/code-evidence/scripts/grounded_review.py \
-  --repo "$REPO_PATH" \
-  --drafts-file "${OUTPUT_DIR}/drafts-batch.json" \
-  --reindex > "$GROUNDED_FILE"
+For any missing batch verdict files (agent failed or was skipped), the merge agent in step 3d will create fallback entries with verdict `no_evidence_found` for all claims in that batch.
+
+#### 3d. Assemble claim-validation.json and validation summary via merge agent
+
+Delegate the assembly of the claim validation output to a merge subagent. This keeps the full validation data out of the orchestrator's context.
+
+```
+Agent:
+  description: "Merge claim verdicts for <TICKET>"
+  prompt: |
+    Assemble claim-validation.json and validation-summary.md from batch verdict files.
+
+    CLAIMS_LIST_FILE: <OUTPUT_DIR>/claims-list.json
+    OUTPUT_DIR: <OUTPUT_DIR>
+    CLAIMS_FILE: <OUTPUT_DIR>/claim-validation.json
+    SUMMARY_FILE: <OUTPUT_DIR>/validation-summary.md
+    CODE_ANALYSIS_DIR: <CODE_ANALYSIS_DIR>
+
+    Instructions:
+    1. Read CLAIMS_LIST_FILE for the full claims list (id, text, file, line)
+    2. Read all batch verdict files matching <OUTPUT_DIR>/batch-verdict-*.json
+       - Each file contains a JSON array of verdict objects with fields:
+         claim_id, claim_text, verdict, evidence
+       - Collect all verdicts across all batch files into a single map keyed by claim_id
+    3. Cross-reference against the claims list:
+       - For any claim in the claims list that has no matching verdict, create a fallback:
+         {"claim_id": "<id>", "claim_text": "<text>",
+          "verdict": "no_evidence_found",
+          "evidence": "Agent did not return a verdict for this claim"}
+    4. Assemble CLAIMS_FILE:
+       {
+         "claims": [
+           {"id": "<claim-id>", "text": "...", "verdict": "supported|...",
+            "evidence": "...", "file": "...", "line": N}
+         ],
+         "summary": {
+           "supported": N,
+           "partially_supported": N,
+           "unsupported": N,
+           "no_evidence_found": N
+         }
+       }
+    5. Read <CODE_ANALYSIS_DIR>/registry.json for module coverage context
+    6. Write SUMMARY_FILE as markdown containing:
+       - Count of claims by verdict
+       - List of unsupported and partially_supported claims with their evidence
+       - Module coverage summary from registry.json
+    7. After writing both files, print ONLY:
+       Written <CLAIMS_FILE>
+       Written <SUMMARY_FILE>
 ```
 
-If the command fails (non-zero exit), log a warning and continue without grounded review — set `HAS_GROUNDED=false`. Otherwise `HAS_GROUNDED=true`.
-
-#### 2c. Run API surface extraction
-
-```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/code-evidence/scripts/api_surface.py \
-  --target "$REPO_PATH" > "$API_SURFACE_FILE"
-```
-
-Or with uv fallback if code-finder is not installed.
-
-If the command fails, log a warning and continue without API surface — set `HAS_API_SURFACE=false`. Otherwise `HAS_API_SURFACE=true`.
-
-#### 2d. Summarize code-grounded findings
-
-Read `$GROUNDED_FILE` and triage the results. For each claim verdict:
-
-- `unsupported` — flag as likely inaccurate. Note the evidence that contradicts the claim.
-- `no_evidence_found` — note as unverifiable. The claim may reference something outside the repo scope.
-- `partially_supported` — note what part is supported and what isn't.
-- `supported` — no action needed.
-
-Read `$API_SURFACE_FILE` and note the total entity count and key classes/functions. This gives the reviewer a map of what exists in the code.
-
-Build a `CODE_EVIDENCE_SUMMARY` text block containing:
-- Count of claims by verdict (supported, partially_supported, unsupported, no_evidence_found)
-- List of unsupported and partially_supported claims with their evidence
-- Top-level API surface summary (number of classes, functions, methods)
-- List of any doc-referenced APIs not found in the API surface
+Set `HAS_CLAIMS=true`.
 
 ### 4. Dispatch agent
 
@@ -174,26 +278,30 @@ Build a `CODE_EVIDENCE_SUMMARY` text block containing:
 
 > Source code repository is available at `<REPO_PATH>`. You may read specific source files to verify technical claims in the documentation.
 
-**[Include only if HAS_GROUNDED=true]** Append:
+**[Include only if ADDITIONAL_REPO_PATHS is non-empty]** Append:
 
-> ## Code-Grounded Review Evidence
+> Additional source code repositories are available for cross-verification:
+> <for each path in ADDITIONAL_REPO_PATHS, output: "- `<path>`">
 >
-> A code-grounded review has been run against the documentation drafts using the source repository. The review extracted claims from the documentation and validated each one against the source code.
+> Additional code-learner analyses (if available):
+> <for each additional repo, if `<BASE_PATH>/code-analysis-<repo-name>/ONBOARDING.md` exists, output: "- `<BASE_PATH>/code-analysis-<repo-name>/`">
 >
-> Full results: `<GROUNDED_FILE>`
+> Use these to verify claims that reference features outside the primary repository.
+
+**[Include only if HAS_CLAIMS=true]** Append:
+
+> ## Claim Validation Evidence
 >
-> Summary of findings:
-> <CODE_EVIDENCE_SUMMARY>
+> Documentation claims have been validated against code-learner analysis of the source repository.
+>
+> Read the validation summary from: `<OUTPUT_DIR>/validation-summary.md`
+> Full claim-by-claim results are at: `<CLAIMS_FILE>`
 >
 > **How to use this evidence:**
 > - Claims with verdict `unsupported` are likely inaccurate — verify the evidence and flag as critical or significant issues
-> - Claims with verdict `no_evidence_found` may reference features outside the repo scope — flag as SME verification needed unless you can confirm from other sources
+> - Claims with verdict `no_evidence_found` may reference features outside the analyzed modules — flag as SME verification needed
 > - Claims with verdict `partially_supported` need targeted review — identify what part is wrong
-> - Claims with verdict `supported` have code backing — still apply your engineering judgment but these are lower risk
-
-**[Include only if HAS_API_SURFACE=true]** Append:
-
-> Cross-reference the API surface at `<API_SURFACE_FILE>` to check that documented class names, function signatures, and parameters match the actual code.
+> - Claims with verdict `supported` have analysis backing — still apply your engineering judgment but these are lower risk
 
 ### 5. Verify output
 
@@ -232,4 +340,4 @@ Write the sidecar to `${BASE_PATH}/technical-review/step-result.json`:
 
 The `iteration` field is `1` for the first review pass. If the orchestrator re-invokes this skill after a fix cycle, it passes the current iteration count — increment it for the sidecar.
 
-The `code_grounded` field records whether the code-grounded pre-scan ran (`HAS_GROUNDED`). This is informational — downstream consumers can use it to assess review thoroughness.
+The `code_grounded` field records whether code-learner analysis was available for claim validation — either from running the validation (`HAS_CLAIMS`) or from reusing prior iteration files. Set to `true` if the reviewer agent received claim validation evidence in its prompt, regardless of whether the validation ran in this invocation or a prior one.

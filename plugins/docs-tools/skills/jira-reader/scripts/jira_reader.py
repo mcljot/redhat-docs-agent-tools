@@ -21,7 +21,7 @@ import json
 import os
 import re
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import urllib3
 from ratelimit import limits, sleep_and_retry
@@ -31,6 +31,20 @@ try:
 except ImportError:
     print(json.dumps({"error": "jira package not installed. Run: python3 -m pip install jira"}))
     sys.exit(1)
+
+
+def _deep_to_dict(obj):
+    """Recursively convert JIRA PropertyHolder trees to plain dicts."""
+    if isinstance(obj, dict):
+        return {k: _deep_to_dict(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_deep_to_dict(item) for item in obj]
+    if isinstance(obj, (str, int, float, bool, type(None))):
+        return obj
+    try:
+        return {k: _deep_to_dict(v) for k, v in vars(obj).items()}
+    except TypeError:
+        return obj
 
 
 def adf_to_text(node):
@@ -55,7 +69,9 @@ def adf_to_text(node):
         return node
 
     if not isinstance(node, dict):
-        return ""
+        node = _deep_to_dict(node)
+        if not isinstance(node, dict):
+            return str(node) if node else ""
 
     node_type = node.get("type", "")
     content = node.get("content", [])
@@ -144,6 +160,103 @@ def load_env_file():
                         ):
                             value = value[1:-1]
                         os.environ.setdefault(key.strip(), value)
+
+
+_DECISION_KEYWORDS = re.compile(
+    r"\b(?:decided|agreed|requirement|must|blocked|changed|approved|rejected|architecture|design)\b",
+    re.IGNORECASE,
+)
+
+
+def generate_comments_brief(comments_json_path, max_bytes=30720, recent_days=30):
+    """Produce a comments-brief.md digest from a previously saved comments.json."""
+    with open(comments_json_path) as f:
+        data = json.load(f)
+
+    comments = data.get("comments", [])
+    if not comments:
+        brief_path = os.path.join(os.path.dirname(comments_json_path), "comments-brief.md")
+        with open(brief_path, "w") as f:
+            f.write("# Comments Brief\n\nNo comments found.\n")
+        return {
+            "brief_file": brief_path,
+            "brief_bytes": 0,
+            "recent_count": 0,
+            "decision_count": 0,
+            "omitted_count": 0,
+        }
+
+    cutoff = datetime.now() - timedelta(days=recent_days)
+
+    recent = []
+    older_decision = []
+    older_omitted = 0
+
+    for c in comments:
+        try:
+            created = datetime.strptime(c["created"], "%Y-%m-%d %H:%M")
+        except (ValueError, KeyError):
+            created = datetime.min
+        if created >= cutoff:
+            recent.append(c)
+        elif _DECISION_KEYWORDS.search(c["body"]):
+            older_decision.append(c)
+        else:
+            older_omitted += 1
+
+    date_range = data.get("date_range", {})
+    total = len(comments)
+
+    def _render_brief(recent, older_decision, older_omitted):
+        shown = len(recent) + len(older_decision)
+        lines = [
+            "# Comments Brief",
+            "",
+            f"Total comments: {total} | Showing: {shown} | Omitted: {older_omitted}",
+            f"Date range: {date_range.get('earliest', 'N/A')} to {date_range.get('latest', 'N/A')}",
+        ]
+        if recent:
+            lines.append("")
+            lines.append(f"## Recent comments (last {recent_days} days)")
+            for c in recent:
+                lines.append("")
+                lines.append(f"### [{c['author']}] — {c['created']}")
+                lines.append("")
+                lines.append(c["body"])
+        if older_decision:
+            lines.append("")
+            lines.append("## Decision-relevant older comments")
+            for c in older_decision:
+                lines.append("")
+                lines.append(f"### [{c['author']}] — {c['created']}")
+                lines.append("")
+                lines.append(c["body"])
+        if older_omitted:
+            lines.append("")
+            lines.append("---")
+            lines.append(f"{older_omitted} older comments omitted (no decision keywords found).")
+            lines.append(f"Full comments: {os.path.basename(comments_json_path)}")
+        return "\n".join(lines) + "\n"
+
+    content = _render_brief(recent, older_decision, older_omitted)
+
+    while len(content.encode("utf-8")) > max_bytes and older_decision:
+        older_decision.pop(0)
+        older_omitted += 1
+        content = _render_brief(recent, older_decision, older_omitted)
+
+    brief_path = os.path.join(os.path.dirname(comments_json_path), "comments-brief.md")
+    os.makedirs(os.path.dirname(brief_path) or ".", exist_ok=True)
+    with open(brief_path, "w") as f:
+        f.write(content)
+
+    return {
+        "brief_file": brief_path,
+        "brief_bytes": len(content.encode("utf-8")),
+        "recent_count": len(recent),
+        "decision_count": len(older_decision),
+        "omitted_count": older_omitted,
+    }
 
 
 class JiraReader:
@@ -557,7 +670,7 @@ class JiraReader:
                     "assignee": f.assignee.displayName
                     if f.assignee and hasattr(f.assignee, "displayName")
                     else None,
-                    "description": f.description or "",
+                    "description": adf_to_text(f.description),
                     "source": parent_source,
                 }
             )
@@ -566,9 +679,43 @@ class JiraReader:
 
         return ancestors, errors
 
+    def _build_child_info(self, issue):
+        """Build the metadata dict for a child/sibling issue."""
+        f = issue.fields
+        return {
+            "key": issue.key,
+            "summary": f.summary,
+            "status": str(f.status) if f.status else None,
+            "issuetype": str(f.issuetype) if f.issuetype else None,
+            "priority": str(f.priority) if f.priority else None,
+            "assignee": f.assignee.displayName
+            if f.assignee and hasattr(f.assignee, "displayName")
+            else None,
+        }
+
+    def _enrich_with_remote_links(self, issues, errors):
+        """Fetch remote links, adding git_links and auto_discovered_urls."""
+        for item in issues:
+            web_links, auto_discovered, link_errors = self._fetch_remote_links(item["key"])
+            item["git_links"] = []
+            for link in web_links.get("links", []):
+                url = link.get("url", "")
+                try:
+                    host = urllib3.util.parse_url(url).host
+                except Exception:  # noqa: BLE001, S112
+                    continue
+                if host and host.startswith(("github", "www.github", "gitlab")):
+                    item["git_links"].append(url)
+            item["auto_discovered_urls"] = auto_discovered
+            errors.extend(link_errors)
+
     def _fetch_children(self, ticket_key, max_children=25):
         """
         Fetch children via parent = KEY and "Epic Link" = KEY JQL queries.
+
+        Also fetches remote links for each child and grandchild to populate
+        git_links and auto_discovered_urls, so downstream consumers
+        (extract_discovered_repos) can find PRs attached to child tickets.
 
         Returns:
             Dictionary with total, showing, skipped, and issues list.
@@ -584,19 +731,7 @@ class JiraReader:
             for issue in results:
                 if issue.key not in seen_keys:
                     seen_keys.add(issue.key)
-                    f = issue.fields
-                    issues.append(
-                        {
-                            "key": issue.key,
-                            "summary": f.summary,
-                            "status": str(f.status) if f.status else None,
-                            "issuetype": str(f.issuetype) if f.issuetype else None,
-                            "priority": str(f.priority) if f.priority else None,
-                            "assignee": f.assignee.displayName
-                            if f.assignee and hasattr(f.assignee, "displayName")
-                            else None,
-                        }
-                    )
+                    issues.append(self._build_child_info(issue))
         except Exception as e:
             errors.append(f"Children query (parent field): {e}")
 
@@ -608,21 +743,29 @@ class JiraReader:
                 for issue in results:
                     if issue.key not in seen_keys:
                         seen_keys.add(issue.key)
-                        f = issue.fields
-                        issues.append(
-                            {
-                                "key": issue.key,
-                                "summary": f.summary,
-                                "status": str(f.status) if f.status else None,
-                                "issuetype": str(f.issuetype) if f.issuetype else None,
-                                "priority": str(f.priority) if f.priority else None,
-                                "assignee": f.assignee.displayName
-                                if f.assignee and hasattr(f.assignee, "displayName")
-                                else None,
-                            }
-                        )
+                        issues.append(self._build_child_info(issue))
             except Exception as e:
                 errors.append(f"Children query (Epic Link): {e}")
+
+        self._enrich_with_remote_links(issues, errors)
+
+        # Fetch grandchildren (children of children) with remote links
+        child_keys = [c["key"] for c in issues]
+        if child_keys:
+            keys_csv = ", ".join(child_keys)
+            jql_gc = f"parent in ({keys_csv}) ORDER BY status ASC, key ASC"
+            try:
+                gc_results = self.jira.search_issues(jql_gc, maxResults=max_children * 3)
+                grandchildren = []
+                for issue in gc_results:
+                    if issue.key not in seen_keys:
+                        seen_keys.add(issue.key)
+                        gc_info = self._build_child_info(issue)
+                        grandchildren.append(gc_info)
+                self._enrich_with_remote_links(grandchildren, errors)
+                issues.extend(grandchildren)
+            except Exception as e:
+                errors.append(f"Grandchildren query: {e}")
 
         showing = min(len(issues), max_children)
         issues = issues[:max_children]
@@ -683,9 +826,10 @@ class JiraReader:
 
     def _extract_issue_links(self, issue, max_links=15):
         """
-        Extract issue link summaries from an issue object.
+        Extract issue link summaries and fetch their remote links.
 
-        No additional API calls needed — data is embedded in the issuelinks field.
+        Link metadata comes from the embedded issuelinks field. Remote links
+        are fetched per linked issue to populate git_links/auto_discovered_urls.
         """
         raw_links = issue.fields.issuelinks if hasattr(issue.fields, "issuelinks") else []
         links = []
@@ -724,12 +868,16 @@ class JiraReader:
 
         total = len(raw_links)
         showing = len(links)
+
+        link_errors = []
+        self._enrich_with_remote_links(links, link_errors)
+
         return {
             "total": total,
             "showing": showing,
             "skipped": max(0, total - showing),
             "links": links,
-        }
+        }, link_errors
 
     def _classify_url(self, url):
         """Classify a URL as 'pull_request', 'google_doc', or 'other'."""
@@ -775,6 +923,173 @@ class JiraReader:
         web_links = {"total": len(links), "links": links}
         auto_discovered = {"pull_requests": pull_requests, "google_docs": google_docs}
         return web_links, auto_discovered, errors
+
+    def save_comments_to_disk(self, jira_id, output_path):
+        """
+        Fetch all comments for an issue and persist them to disk.
+
+        Args:
+            jira_id: JIRA issue key.
+            output_path: File path to write comments JSON. If it doesn't
+                end with '.json', '.json' is appended.
+
+        Returns metadata dict (no full comment text) for stdout output.
+        """
+        if not output_path.endswith(".json"):
+            output_path = output_path + ".json"
+        os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+
+        comments = self.jira.comments(jira_id)
+        processed = self.process_comments(comments)
+
+        comments_data = {
+            "total_comments": len(processed),
+            "comments": [
+                {
+                    "index": i,
+                    "author": c["participant"],
+                    "created": c["timestamp"],
+                    "body": c["body"],
+                }
+                for i, c in enumerate(processed)
+            ],
+        }
+
+        total_bytes = len(json.dumps(comments_data))
+        authors = sorted(set(c["participant"] for c in processed))
+        date_range = {}
+        if processed:
+            timestamps = [c["timestamp"] for c in processed]
+            date_range = {"earliest": timestamps[0], "latest": timestamps[-1]}
+
+        comments_data["total_bytes"] = total_bytes
+        comments_data["date_range"] = date_range
+        comments_data["authors"] = authors
+
+        with open(output_path, "w") as f:
+            json.dump(comments_data, f, indent=2)
+
+        return {
+            "comments_saved_to": output_path,
+            "comments_total": len(processed),
+            "comments_total_bytes": total_bytes,
+            "comments_date_range": date_range,
+            "comments_authors": authors,
+        }
+
+    def generate_comments_brief(self, comments_json_path, max_bytes=30720, recent_days=30):
+        return generate_comments_brief(comments_json_path, max_bytes, recent_days)
+
+    def fetch_attachments(self, issue_key, output_dir, max_total_bytes=5_000_000):
+        """
+        Download attachments for an issue to disk.
+
+        Text-extractable files are downloaded first. Binary files get placeholders.
+        Stops when cumulative bytes exceed max_total_bytes.
+        """
+        os.makedirs(output_dir, exist_ok=True)
+        attachments_dir = os.path.join(output_dir, "attachments")
+        os.makedirs(attachments_dir, exist_ok=True)
+
+        try:
+            issue = self.jira.issue(issue_key, fields="attachment")
+        except Exception as e:
+            return {"error": f"Failed to fetch attachments for {issue_key}: {e}"}
+
+        raw_attachments = issue.fields.attachment or []
+
+        text_extensions = {".txt", ".md", ".csv", ".yaml", ".yml", ".json", ".adoc", ".xml"}
+        text_items = []
+        binary_items = []
+
+        for att in raw_attachments:
+            ext = os.path.splitext(att.filename)[1].lower()
+            entry = {
+                "filename": att.filename,
+                "mime_type": getattr(att, "mimeType", "application/octet-stream"),
+                "size_bytes": int(att.size) if hasattr(att, "size") and att.size else 0,
+                "jira_id": att.id,
+            }
+            if ext in text_extensions:
+                text_items.append(entry)
+            else:
+                binary_items.append(entry)
+
+        sorted_items = text_items + binary_items
+        downloaded = []
+        total_downloaded = 0
+        skipped = []
+
+        for item in sorted_items:
+            if total_downloaded + item["size_bytes"] > max_total_bytes:
+                skipped.append(item["filename"])
+                continue
+
+            safe_name = os.path.basename(item["filename"])
+            ext = os.path.splitext(safe_name)[1].lower()
+            output_path = os.path.join(attachments_dir, safe_name)
+
+            if ext in text_extensions:
+                try:
+                    content = self.jira.attachment(item["jira_id"]).get()
+                    if isinstance(content, bytes):
+                        content = content.decode("utf-8", errors="replace")
+                    with open(output_path, "w") as f:
+                        f.write(content)
+                    token_estimate = len(content) // 3
+                    downloaded.append(
+                        {
+                            "filename": item["filename"],
+                            "mime_type": item["mime_type"],
+                            "size_bytes": item["size_bytes"],
+                            "extracted": True,
+                            "extracted_path": output_path,
+                            "token_estimate": token_estimate,
+                        }
+                    )
+                    total_downloaded += item["size_bytes"]
+                except Exception:
+                    placeholder_path = output_path + ".txt"
+                    with open(placeholder_path, "w") as f:
+                        f.write(
+                            f"[{ext} attachment: {item['filename']}, "
+                            f"{item['size_bytes']} bytes. Download failed.]"
+                        )
+                    downloaded.append(
+                        {
+                            "filename": item["filename"],
+                            "mime_type": item["mime_type"],
+                            "size_bytes": item["size_bytes"],
+                            "extracted": False,
+                            "extracted_path": placeholder_path,
+                            "token_estimate": 0,
+                        }
+                    )
+            else:
+                placeholder_path = output_path + ".txt"
+                with open(placeholder_path, "w") as f:
+                    f.write(
+                        f"[{ext.lstrip('.').upper() or 'binary'} attachment: "
+                        f"{item['filename']}, {item['size_bytes']} bytes. "
+                        f"Content not extracted.]"
+                    )
+                downloaded.append(
+                    {
+                        "filename": item["filename"],
+                        "mime_type": item["mime_type"],
+                        "size_bytes": item["size_bytes"],
+                        "extracted": False,
+                        "extracted_path": placeholder_path,
+                        "token_estimate": 0,
+                    }
+                )
+
+        return {
+            "attachments": downloaded,
+            "total_bytes_downloaded": total_downloaded,
+            "budget_bytes_remaining": max(0, max_total_bytes - total_downloaded),
+            "skipped": skipped,
+        }
 
     def get_ticket_graph(self, ticket_key, max_children=25, max_siblings=25, max_links=15):
         """
@@ -824,8 +1139,9 @@ class JiraReader:
             )
             all_errors.extend(errors)
 
-        # Step 6: Extract issue links (no extra API calls)
-        issue_links = self._extract_issue_links(issue, max_links)
+        # Step 6: Extract issue links and fetch their remote links
+        issue_links, errors = self._extract_issue_links(issue, max_links)
+        all_errors.extend(errors)
 
         # Step 7: Fetch remote/web links and classify URLs
         web_links, auto_discovered, errors = self._fetch_remote_links(ticket_key)
@@ -843,6 +1159,77 @@ class JiraReader:
             "auto_discovered_urls": auto_discovered,
             "errors": all_errors,
         }
+
+
+def trim_graph(graph, max_tokens):
+    """
+    Trim a ticket graph to fit within a token budget using depth-decay scoring.
+
+    Nodes closer to the primary ticket score higher. Within the same depth,
+    children/parent score higher than siblings, which score higher than links.
+    """
+    base_scores = {"parent": 1.0, "children": 1.0, "siblings": 0.6, "issue_links": 0.5}
+    decay = 0.8
+
+    scored_nodes = []
+
+    for i, ancestor in enumerate(graph.get("ancestors", [])):
+        depth = i + 1
+        score = base_scores["parent"] * (decay**depth)
+        scored_nodes.append(("ancestors", ancestor, score))
+
+    for child in graph.get("children", {}).get("issues", []):
+        score = base_scores["children"] * decay
+        scored_nodes.append(("children", child, score))
+
+    for sibling in graph.get("siblings", {}).get("issues", []):
+        score = base_scores["siblings"] * (decay**2)
+        scored_nodes.append(("siblings", sibling, score))
+
+    for link in graph.get("issue_links", {}).get("links", []):
+        score = base_scores["issue_links"] * decay
+        scored_nodes.append(("issue_links", link, score))
+
+    scored_nodes.sort(key=lambda x: x[2], reverse=True)
+
+    total_nodes = len(scored_nodes)
+    kept = {"ancestors": [], "children": [], "siblings": [], "issue_links": []}
+    used_tokens = len(json.dumps({"ticket": graph["ticket"]})) // 3
+
+    for category, node, _score in scored_nodes:
+        node_tokens = len(json.dumps(node)) // 3
+        if used_tokens + node_tokens > max_tokens:
+            continue
+        used_tokens += node_tokens
+        kept[category].append(node)
+
+    trimmed = dict(graph)
+    trimmed["ancestors"] = kept["ancestors"]
+    trimmed["parent"] = kept["ancestors"][0] if kept["ancestors"] else None
+    trimmed["children"] = {
+        "total": graph.get("children", {}).get("total", 0),
+        "showing": len(kept["children"]),
+        "skipped": max(0, graph.get("children", {}).get("total", 0) - len(kept["children"])),
+        "issues": kept["children"],
+    }
+    trimmed["siblings"] = {
+        "total": graph.get("siblings", {}).get("total", 0),
+        "showing": len(kept["siblings"]),
+        "skipped": max(0, graph.get("siblings", {}).get("total", 0) - len(kept["siblings"])),
+        "issues": kept["siblings"],
+    }
+    trimmed["issue_links"] = {
+        "total": graph.get("issue_links", {}).get("total", 0),
+        "showing": len(kept["issue_links"]),
+        "skipped": max(0, graph.get("issue_links", {}).get("total", 0) - len(kept["issue_links"])),
+        "links": kept["issue_links"],
+    }
+    nodes_included = sum(len(v) for v in kept.values())
+    trimmed["graph_trimmed"] = nodes_included < total_nodes
+    trimmed["nodes_included"] = nodes_included
+    trimmed["nodes_total"] = total_nodes
+
+    return trimmed
 
 
 def main():
@@ -901,15 +1288,66 @@ def main():
         default=15,
         help="Maximum issue links to extract in graph mode (default: 15)",
     )
+    parser.add_argument(
+        "--max-graph-tokens",
+        type=int,
+        default=None,
+        help="Token budget for graph output. Trims lowest-scored nodes using depth-decay scoring.",
+    )
+    parser.add_argument(
+        "--save-comments",
+        metavar="PATH",
+        help="Save full comments to <PATH>/comments.json and return metadata only in stdout.",
+    )
+    parser.add_argument(
+        "--brief",
+        action="store_true",
+        help="With --save-comments, also produce a comments-brief.md digest (under 30 KB).",
+    )
+    parser.add_argument(
+        "--attachments",
+        metavar="ISSUE_KEY",
+        help="Download attachments for an issue to --output-dir.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        metavar="PATH",
+        help="Output directory for attachments (required with --attachments).",
+    )
+    parser.add_argument(
+        "--max-bytes",
+        type=int,
+        default=5_000_000,
+        help="Maximum total bytes to download for attachments (default: 5000000).",
+    )
 
     args = parser.parse_args()
 
     # Validate arguments
-    if not args.issue and not args.jql and not args.graph:
-        parser.error("Must specify --issue, --jql, or --graph")
+    if not args.issue and not args.jql and not args.graph and not args.attachments:
+        parser.error("Must specify --issue, --jql, --graph, or --attachments")
+
+    if args.attachments and not args.output_dir:
+        parser.error("--output-dir is required with --attachments")
+
+    if args.brief and not args.save_comments:
+        parser.error("--brief requires --save-comments")
+
+    if args.save_comments:
+        args.include_comments = True
 
     try:
         reader = JiraReader()
+
+        # Handle attachments download
+        if args.attachments:
+            result = reader.fetch_attachments(
+                args.attachments, args.output_dir, max_total_bytes=args.max_bytes
+            )
+            print(json.dumps(result, indent=2))
+            if result.get("error"):
+                sys.exit(1)
+            return
 
         # Handle graph traversal
         if args.graph:
@@ -919,9 +1357,12 @@ def main():
                 max_siblings=args.max_siblings,
                 max_links=args.max_links,
             )
-            print(json.dumps(result, indent=2))
             if result.get("error"):
+                print(json.dumps(result, indent=2))
                 sys.exit(1)
+            if args.max_graph_tokens:
+                result = trim_graph(result, args.max_graph_tokens)
+            print(json.dumps(result, indent=2))
             return
 
         results = []
@@ -936,7 +1377,6 @@ def main():
                 sys.exit(1)
 
             if args.fetch_details:
-                # search_results contains issue keys, fetch details for each
                 for issue_key in search_results:
                     issue_data = reader.get_issue_data(
                         issue_key,
@@ -945,7 +1385,6 @@ def main():
                     )
                     results.append(issue_data)
             else:
-                # search_results already contains summaries, use directly
                 results = search_results
 
         # Handle individual issue requests
@@ -954,6 +1393,17 @@ def main():
                 issue_data = reader.get_issue_data(
                     issue_key, include_comments=args.include_comments, git_link_types=args.git_links
                 )
+
+                if args.save_comments and args.include_comments:
+                    comment_meta = reader.save_comments_to_disk(issue_key, args.save_comments)
+                    if args.brief:
+                        brief_meta = reader.generate_comments_brief(
+                            comment_meta["comments_saved_to"]
+                        )
+                        comment_meta.update(brief_meta)
+                    issue_data.pop("comments", None)
+                    issue_data["comments_metadata"] = comment_meta
+
                 results.append(issue_data)
 
         # Output results as JSON

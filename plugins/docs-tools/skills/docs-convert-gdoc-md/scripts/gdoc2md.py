@@ -41,7 +41,7 @@ EXTENSIONS = {"doc": ".md", "slides": ".md", "sheets": ".csv"}
 
 
 def parse_and_validate_args():
-    """Parse CLI arguments and return (file_id, output, mode, comments, include_resolved)."""
+    """Parse CLI arguments and return validated args tuple."""
     parser = argparse.ArgumentParser(
         description="Export Google Docs/Slides/Sheets to Markdown or CSV.",
     )
@@ -57,10 +57,25 @@ def parse_and_validate_args():
         action="store_true",
         help="Include resolved comment threads (requires --comments)",
     )
+    parser.add_argument(
+        "--manifest",
+        action="store_true",
+        help="Write a companion manifest file with section map (Docs only)",
+    )
+    parser.add_argument(
+        "--split-sections",
+        action="store_true",
+        help=(
+            "Split output into per-section files under 40 KB each (requires --manifest, Docs only)"
+        ),
+    )
     args = parser.parse_args()
 
     if args.include_resolved and not args.comments:
         parser.error("--include-resolved requires --comments")
+
+    if args.split_sections and not args.manifest:
+        parser.error("--split-sections requires --manifest")
 
     match = VALID_URL_RE.match(args.url)
     if not match:
@@ -78,7 +93,15 @@ def parse_and_validate_args():
             file=sys.stderr,
         )
 
-    return file_id, output, mode, args.comments, args.include_resolved
+    return (
+        file_id,
+        output,
+        mode,
+        args.comments,
+        args.include_resolved,
+        args.manifest,
+        args.split_sections,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -458,6 +481,234 @@ def _snap_to_word_boundary(text: str, pos: int) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Manifest generation
+# ---------------------------------------------------------------------------
+
+HEADING_RE = re.compile(r"^#{1,3}\s")
+SUB_HEADING_RE = re.compile(r"^#{4,6}\s")
+
+
+def _extract_brief(lines: list[str], max_len: int = 120) -> str:
+    """Return the first non-heading, non-blank line as a content brief, truncated to max_len."""
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if HEADING_RE.match(stripped) or SUB_HEADING_RE.match(stripped):
+            continue
+        if stripped.startswith(("---", "===", "```", "<!--", "|", "![")):
+            continue
+        if re.match(r"^[-*]\s|^\d+\.\s", stripped):
+            continue
+        if len(stripped) > max_len:
+            return stripped[: max_len - 1] + "…"
+        return stripped
+    return ""
+
+
+def generate_manifest(
+    content: str, output_path: str, section_files: list[dict] | None = None
+) -> dict:
+    lines = content.splitlines()
+    total_lines = len(lines)
+
+    title = Path(output_path).stem
+    for line in lines:
+        if HEADING_RE.match(line):
+            title = line.lstrip("#").strip()
+            break
+
+    sections: list[tuple[str, int, int]] = []
+    for i, line in enumerate(lines):
+        if HEADING_RE.match(line):
+            sections.append((line.strip(), i, -1))
+
+    section_entries: list[str] = []
+    for idx, (heading, start, _) in enumerate(sections):
+        end = sections[idx + 1][1] - 1 if idx + 1 < len(sections) else total_lines - 1
+        char_count = sum(len(lines[j]) for j in range(start, end + 1))
+        section_entries.append(
+            f"- Line {start + 1}-{end + 1}: {heading.lstrip('#').strip()} ({char_count:,} chars)"
+        )
+
+    total_chars = len(content)
+    total_estimated_tokens = total_chars // 3
+
+    manifest_lines = [
+        f"# Document Manifest: {title}",
+        f"Total characters: {total_chars}",
+        f"Total estimated tokens: {total_estimated_tokens}",
+        "",
+        "## Sections",
+    ]
+    manifest_lines.extend(section_entries)
+
+    if section_files:
+        manifest_lines.append("")
+        manifest_lines.append("## Section Files")
+        for sf in section_files:
+            brief = sf.get("brief", "")
+            brief_suffix = f" — {brief}" if brief else ""
+            manifest_lines.append(
+                f"- {Path(sf['file']).name}: {sf['heading']} ({sf['chars']:,} chars){brief_suffix}"
+            )
+
+    manifest_file = f"{output_path}.manifest.md"
+    Path(manifest_file).write_text("\n".join(manifest_lines) + "\n", encoding="utf-8")
+
+    result = {
+        "manifest_file": manifest_file,
+        "total_chars": total_chars,
+        "total_estimated_tokens": total_estimated_tokens,
+        "section_count": len(sections),
+    }
+    if section_files:
+        result["section_files"] = section_files
+    return result
+
+
+def _split_at_blank_lines(lines: list[str], max_bytes: int) -> list[list[str]]:
+    """Split a list of lines into chunks at blank-line boundaries, each under max_bytes."""
+    chunks: list[list[str]] = []
+    current: list[str] = []
+    current_bytes = 0
+    for line in lines:
+        line_bytes = len(line.encode("utf-8")) + 1
+        if current_bytes + line_bytes > max_bytes and current:
+            if line.strip() == "":
+                chunks.append(current)
+                current = []
+                current_bytes = 0
+            elif current_bytes >= max_bytes:
+                chunks.append(current)
+                current = []
+                current_bytes = 0
+        current.append(line)
+        current_bytes += line_bytes
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _split_oversized_section(
+    section_lines: list[str],
+    parent: Path,
+    stem: str,
+    section_idx: int,
+    max_bytes: int,
+) -> list[dict]:
+    """Split a section that exceeds max_bytes into sub-chunks."""
+    sub_boundaries = [0]
+    for i, line in enumerate(section_lines):
+        if i > 0 and SUB_HEADING_RE.match(line):
+            sub_boundaries.append(i)
+
+    if len(sub_boundaries) > 1:
+        sub_boundaries.append(len(section_lines))
+        raw_chunks = []
+        for j in range(len(sub_boundaries) - 1):
+            start, end = sub_boundaries[j], sub_boundaries[j + 1]
+            raw_chunks.append(section_lines[start:end])
+        chunks = []
+        for rc in raw_chunks:
+            rc_bytes = sum(len(line.encode("utf-8")) + 1 for line in rc)
+            if rc_bytes <= max_bytes:
+                chunks.append(rc)
+            else:
+                sub = _split_at_blank_lines(rc, max_bytes)
+                chunks.extend(sub)
+    else:
+        chunks = _split_at_blank_lines(section_lines, max_bytes)
+
+    results = []
+    for j, chunk in enumerate(chunks):
+        suffix = chr(97 + j) if j < 26 else str(j)
+        filename = f"{stem}-section-{section_idx:02d}{suffix}.md"
+        filepath = parent / filename
+        text = "\n".join(chunk)
+        filepath.write_text(text + "\n", encoding="utf-8")
+        heading = (
+            chunk[0].lstrip("#").strip()
+            if HEADING_RE.match(chunk[0]) or SUB_HEADING_RE.match(chunk[0])
+            else f"(continued part {suffix})"
+        )
+        results.append(
+            {
+                "file": str(filepath),
+                "heading": heading,
+                "chars": len(text),
+                "brief": _extract_brief(chunk),
+            }
+        )
+    return results
+
+
+def split_into_section_files(
+    content: str, output_path: str, max_section_bytes: int = 40000
+) -> list[dict]:
+    """Split markdown content into per-section files, each under max_section_bytes."""
+    lines = content.splitlines()
+    total_lines = len(lines)
+    parent = Path(output_path).parent
+    stem = Path(output_path).stem
+
+    boundaries = []
+    for i, line in enumerate(lines):
+        if HEADING_RE.match(line):
+            boundaries.append(i)
+
+    if not boundaries:
+        filename = f"{stem}-section-01.md"
+        filepath = parent / filename
+        filepath.write_text(content + "\n", encoding="utf-8")
+        return [
+            {
+                "file": str(filepath),
+                "heading": stem,
+                "chars": len(content),
+                "brief": _extract_brief(lines),
+            }
+        ]
+
+    if boundaries[0] > 0:
+        boundaries.insert(0, 0)
+
+    results = []
+    section_idx = 1
+    for b_idx in range(len(boundaries)):
+        start = boundaries[b_idx]
+        end = boundaries[b_idx + 1] if b_idx + 1 < len(boundaries) else total_lines
+        section_lines = lines[start:end]
+        section_text = "\n".join(section_lines)
+        section_bytes = len(section_text.encode("utf-8"))
+
+        if section_bytes <= max_section_bytes:
+            filename = f"{stem}-section-{section_idx:02d}.md"
+            filepath = parent / filename
+            filepath.write_text(section_text + "\n", encoding="utf-8")
+            heading = (
+                section_lines[0].lstrip("#").strip() if HEADING_RE.match(section_lines[0]) else stem
+            )
+            results.append(
+                {
+                    "file": str(filepath),
+                    "heading": heading,
+                    "chars": len(section_text),
+                    "brief": _extract_brief(section_lines),
+                }
+            )
+            section_idx += 1
+        else:
+            sub_results = _split_oversized_section(
+                section_lines, parent, stem, section_idx, max_section_bytes
+            )
+            results.extend(sub_results)
+            section_idx += 1
+
+    return results
+
+
+# ---------------------------------------------------------------------------
 # Fetch & write
 # ---------------------------------------------------------------------------
 
@@ -567,9 +818,20 @@ def _fetch_sheets(file_id: str, output: str, token: str, base: str):
 
 def main():
     """CLI entry point: parse arguments, check dependencies, and run the export."""
-    file_id, output, mode, comments, include_resolved = parse_and_validate_args()
+    file_id, output, mode, comments, include_resolved, manifest, split_sections = (
+        parse_and_validate_args()
+    )
     check_dependencies()
     fetch(file_id, output, mode, comments, include_resolved)
+
+    if manifest and mode == "doc":
+        content = Path(output).read_text(encoding="utf-8")
+        section_files = None
+        if split_sections:
+            section_files = split_into_section_files(content, output)
+        result = generate_manifest(content, output, section_files)
+        result["output_file"] = output
+        print(json.dumps(result))
 
 
 if __name__ == "__main__":

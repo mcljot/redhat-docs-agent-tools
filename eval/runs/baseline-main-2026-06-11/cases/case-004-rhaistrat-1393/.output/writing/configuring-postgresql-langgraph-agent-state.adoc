@@ -1,0 +1,298 @@
+:_mod-docs-content-type: PROCEDURE
+
+[id="configuring-postgresql-langgraph-agent-state_{context}"]
+= Configure PostgreSQL for LangGraph agent state persistence
+
+[role="_abstract"]
+You can deploy and configure a PostgreSQL instance on {openshift-platform} to provide persistent storage for LangGraph agent state on {productname-long}.
+PostgreSQL serves as the durable backend for Llama Stack agent metadata, response history, and LangGraph graph checkpoints.
+
+.Prerequisites
+
+* You have `cluster-admin` access to the {openshift-platform} cluster.
+* A `StorageClass` that supports dynamic provisioning of `PersistentVolumeClaim` resources is available on the cluster.
+* You are logged in to the cluster with the {openshift-cli} (`oc`).
+* The namespace where the LangGraph agent is deployed exists.
+
+.Procedure
+
+. Create a namespace for the PostgreSQL deployment, or use the same namespace as the agent deployment.
++
+[source,terminal]
+----
+$ oc new-project <postgres_namespace>
+----
++
+--
+Where:
+
+`<postgres_namespace>`:: Specifies the namespace for the PostgreSQL deployment, for example `agent-db`.
+--
++
+If you use the same namespace as the agent, skip this step.
+
+. Create a Kubernetes `Secret` to store the PostgreSQL credentials.
++
+[source,terminal]
+----
+$ oc create secret generic postgresql-credentials \
+  -n <postgres_namespace> \
+  --from-literal=POSTGRESQL_USER=<postgres_user> \
+  --from-literal=POSTGRESQL_PASSWORD=<postgres_password> \
+  --from-literal=POSTGRESQL_DATABASE=<postgres_database>
+----
++
+--
+Where:
+
+`<postgres_user>`:: Specifies the PostgreSQL database user, for example `agent_user`.
+`<postgres_password>`:: Specifies a strong password for the database user.
+`<postgres_database>`:: Specifies the database name for agent state storage, for example `agent_state`.
+--
+
+. Create a `PersistentVolumeClaim` for PostgreSQL data storage.
++
+Create a file named `postgresql-pvc.yaml` with the following content:
++
+[source,yaml]
+----
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgresql-data
+  namespace: <postgres_namespace>
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+----
++
+Apply the `PersistentVolumeClaim`:
++
+[source,terminal]
+----
+$ oc apply -f postgresql-pvc.yaml
+----
++
+[NOTE]
+====
+The 10Gi storage size is suitable for development and testing workloads.
+For production deployments with high volumes of agent conversations or large state objects, increase the storage size based on your expected data growth.
+====
+
+. Deploy PostgreSQL on {openshift-platform}.
++
+Create a file named `postgresql-deployment.yaml` with the following content:
++
+[source,yaml]
+----
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgresql
+  namespace: <postgres_namespace>
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgresql
+  template:
+    metadata:
+      labels:
+        app: postgresql
+    spec:
+      containers:
+      - name: postgresql
+        image: registry.redhat.io/rhel9/postgresql-16:latest
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRESQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgresql-credentials
+              key: POSTGRESQL_USER
+        - name: POSTGRESQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgresql-credentials
+              key: POSTGRESQL_PASSWORD
+        - name: POSTGRESQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: postgresql-credentials
+              key: POSTGRESQL_DATABASE
+        readinessProbe:
+          exec:
+            command:
+              - /usr/libexec/check-container
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          exec:
+            command:
+              - /usr/libexec/check-container
+              - --live
+          initialDelaySeconds: 120
+          periodSeconds: 10
+        volumeMounts:
+        - name: postgresql-data
+          mountPath: /var/lib/pgsql/data
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi
+      volumes:
+      - name: postgresql-data
+        persistentVolumeClaim:
+          claimName: postgresql-data
+----
++
+The `initialDelaySeconds` value of `120` allows time for PostgreSQL to complete first-time database initialization, including creating the data directory and system catalogs.
++
+Apply the deployment:
++
+[source,terminal]
+----
+$ oc apply -f postgresql-deployment.yaml
+----
+
+. Create a `Service` to expose PostgreSQL within the cluster.
++
+Create a file named `postgresql-service.yaml` with the following content:
++
+[source,yaml]
+----
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgresql
+  namespace: <postgres_namespace>
+spec:
+  selector:
+    app: postgresql
+  ports:
+  - port: 5432
+    targetPort: 5432
+  type: ClusterIP
+----
++
+Apply the service:
++
+[source,terminal]
+----
+$ oc apply -f postgresql-service.yaml
+----
+
+. Wait for the PostgreSQL pod to reach `Running` status.
++
+[source,terminal]
+----
+$ oc get pods -n <postgres_namespace> -l app=postgresql -w
+----
++
+Wait until the `STATUS` column shows `Running` and the `READY` column shows `1/1`.
+
+. Verify database connectivity from within the cluster.
++
+Start a temporary pod to test the PostgreSQL connection:
++
+[source,terminal]
+----
+$ oc run postgresql-test --rm -it --restart=Never \
+  -n <postgres_namespace> \
+  --env PGPASSWORD=<postgres_password> \
+  --image=registry.redhat.io/rhel9/postgresql-16:latest \
+  -- psql -h postgresql -U <postgres_user> -d <postgres_database> -c "SELECT 1;"
+----
++
+A successful connection returns:
++
+[source,terminal]
+----
+ ?column?
+----------
+        1
+(1 row)
+----
+
+. If the agent runs in a different namespace, verify cross-namespace connectivity.
++
+The agent pod connects to PostgreSQL using the fully qualified service URL:
++
+----
+postgresql.<postgres_namespace>.svc.cluster.local
+----
++
+Verify that the `NetworkPolicy` configuration on the cluster permits traffic from the agent namespace to the PostgreSQL namespace on port 5432.
+Test connectivity from the agent namespace by running a temporary pod:
++
+[source,terminal]
+----
+$ oc run pg-connectivity-test --rm -it --restart=Never \
+  -n <agent_namespace> \
+  --env PGPASSWORD=<postgres_password> \
+  --image=registry.redhat.io/rhel9/postgresql-16:latest \
+  -- psql -h postgresql.<postgres_namespace>.svc.cluster.local \
+  -U <postgres_user> -d <postgres_database> -c "SELECT 1;"
+----
++
+If the connection fails, check the `NetworkPolicy` resources in both the agent and PostgreSQL namespaces.
+On clusters with default-deny network policies, you must create a `NetworkPolicy` that allows ingress on port 5432 from the agent namespace.
++
+The following example shows a `NetworkPolicy` that allows traffic from the agent namespace to PostgreSQL on port 5432:
++
+[source,yaml]
+----
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-agent-to-postgresql
+  namespace: <postgres_namespace>
+spec:
+  podSelector:
+    matchLabels:
+      app: postgresql
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: <agent_namespace>
+    ports:
+    - port: 5432
+----
++
+Apply the `NetworkPolicy`:
++
+[source,terminal]
+----
+$ oc apply -f allow-agent-to-postgresql.yaml
+----
+
+.Verification
+
+* The PostgreSQL pod shows `Running` status with `1/1` ready.
+* The `PersistentVolumeClaim` is in `Bound` status:
++
+[source,terminal]
+----
+$ oc get pvc -n <postgres_namespace> postgresql-data
+----
+
+* The test connection returns a successful query result.
+* If using cross-namespace access, the agent pod can connect to `postgresql.<postgres_namespace>.svc.cluster.local:5432`.
+
+.Next steps
+
+* xref:configuring-persistent-state-langgraph-agents_{context}[Configure persistent state for LangGraph agents on {productname-short}]
+
+[role="_additional-resources"]
+.Additional resources
+
+* link:https://catalog.redhat.com/software/containers/rhel9/postgresql-16/657b16c3a789cc2dcf36cbf0[Red Hat PostgreSQL 16 container image]
+* xref:agent-state-storage-backend-comparison_{context}[Agent state storage backend comparison]

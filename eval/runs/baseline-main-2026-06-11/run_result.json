@@ -1,0 +1,327 @@
+{
+  "exit_code": 0,
+  "duration_s": 35449.5,
+  "wall_clock_s": 12505.6,
+  "cost_usd": 308.15,
+  "token_usage": {
+    "input": 5531183,
+    "output": 2394445,
+    "cache_read": 248811065,
+    "cache_create": 15000726
+  },
+  "num_turns": 3631,
+  "per_model_usage": {
+    "claude-opus-4-6": {
+      "input": 5531183,
+      "output": 2394445,
+      "cache_read": 248811065,
+      "cache_create": 15000726,
+      "cost_usd": 308.14711
+    }
+  },
+  "per_model_turns": {
+    "claude-opus-4-6": 3631
+  },
+  "num_cases": 12,
+  "model": "claude-opus-4-6",
+  "agent": "claude-code",
+  "agent_version": "2.1.173 (Claude Code)",
+  "execution_mode": "case",
+  "eval_params": {
+    "skill": "docs-tools:docs-orchestrator",
+    "skill_args": "{ticket} --docs-repo-path {docs_repo_path}",
+    "execution_mode": "case",
+    "max_budget_usd": 50,
+    "timeout_s": 5400
+  },
+  "per_case": {
+    "case-003-rhaistrat-1432": {
+      "exit_code": 0,
+      "duration_s": 22.6,
+      "token_usage": {
+        "input": 4,
+        "output": 749,
+        "cache_read": 105044,
+        "cache_create": 53091
+      },
+      "cost_usd": 0.40308575,
+      "num_turns": 3,
+      "per_model_usage": {
+        "claude-opus-4-6": {
+          "input": 4,
+          "output": 749,
+          "cache_read": 105044,
+          "cache_create": 53091,
+          "cost_usd": 0.40308575
+        }
+      },
+      "per_model_turns": {
+        "claude-opus-4-6": 3
+      }
+    },
+    "case-002-rhaistrat-853": {
+      "exit_code": 0,
+      "duration_s": 2537.1,
+      "token_usage": {
+        "input": 8241,
+        "output": 181515,
+        "cache_read": 19601241,
+        "cache_create": 1600621
+      },
+      "cost_usd": 24.38358175000001,
+      "num_turns": 275,
+      "per_model_usage": {
+        "claude-opus-4-6": {
+          "input": 8241,
+          "output": 181515,
+          "cache_read": 19601241,
+          "cache_create": 1600621,
+          "cost_usd": 24.38358175000001
+        }
+      },
+      "per_model_turns": {
+        "claude-opus-4-6": 275
+      }
+    },
+    "case-001-rhoaieng-45969": {
+      "exit_code": 0,
+      "duration_s": 3305.4,
+      "token_usage": {
+        "input": 23093,
+        "output": 231032,
+        "cache_read": 32614839,
+        "cache_create": 1779782
+      },
+      "cost_usd": 33.33232199999996,
+      "num_turns": 387,
+      "per_model_usage": {
+        "claude-opus-4-6": {
+          "input": 23093,
+          "output": 231032,
+          "cache_read": 32614839,
+          "cache_create": 1779782,
+          "cost_usd": 33.33232199999996
+        }
+      },
+      "per_model_turns": {
+        "claude-opus-4-6": 387
+      }
+    },
+    "case-004-rhaistrat-1393": {
+      "exit_code": 0,
+      "duration_s": 4320.0,
+      "token_usage": {
+        "input": 2301256,
+        "output": 312052,
+        "cache_read": 19614708,
+        "cache_create": 1673918
+      },
+      "cost_usd": 40.61692150000001,
+      "num_turns": 320,
+      "per_model_usage": {
+        "claude-opus-4-6": {
+          "input": 2301256,
+          "output": 312052,
+          "cache_read": 19614708,
+          "cache_create": 1673918,
+          "cost_usd": 40.61692150000001
+        }
+      },
+      "per_model_turns": {
+        "claude-opus-4-6": 320
+      }
+    },
+    "case-005-rhaistrat-1374": {
+      "exit_code": 0,
+      "duration_s": 2461.7,
+      "token_usage": {
+        "input": 3106,
+        "output": 157922,
+        "cache_read": 18647070,
+        "cache_create": 953317
+      },
+      "cost_usd": 19.24534625000001,
+      "num_turns": 268,
+      "per_model_usage": {
+        "claude-opus-4-6": {
+          "input": 3106,
+          "output": 157922,
+          "cache_read": 18647070,
+          "cache_create": 953317,
+          "cost_usd": 19.24534625000001
+        }
+      },
+      "per_model_turns": {
+        "claude-opus-4-6": 268
+      }
+    },
+    "case-006-rhai-eng-2388": {
+      "exit_code": 0,
+      "duration_s": 2413.4,
+      "token_usage": {
+        "input": 3248,
+        "output": 165602,
+        "cache_read": 17150457,
+        "cache_create": 1037134
+      },
+      "cost_usd": 19.213606000000002,
+      "num_turns": 266,
+      "per_model_usage": {
+        "claude-opus-4-6": {
+          "input": 3248,
+          "output": 165602,
+          "cache_read": 17150457,
+          "cache_create": 1037134,
+          "cost_usd": 19.213606000000002
+        }
+      },
+      "per_model_turns": {
+        "claude-opus-4-6": 266
+      }
+    },
+    "case-007-rhai-eng-4485": {
+      "exit_code": 0,
+      "duration_s": 3962.7,
+      "token_usage": {
+        "input": 1181023,
+        "output": 272207,
+        "cache_read": 26164870,
+        "cache_create": 1395108
+      },
+      "cost_usd": 35.04214999999998,
+      "num_turns": 394,
+      "per_model_usage": {
+        "claude-opus-4-6": {
+          "input": 1181023,
+          "output": 272207,
+          "cache_read": 26164870,
+          "cache_create": 1395108,
+          "cost_usd": 35.04214999999998
+        }
+      },
+      "per_model_turns": {
+        "claude-opus-4-6": 394
+      }
+    },
+    "case-008-rhai-eng-2620": {
+      "exit_code": 0,
+      "duration_s": 3755.6,
+      "token_usage": {
+        "input": 1100053,
+        "output": 247066,
+        "cache_read": 24483877,
+        "cache_create": 1484635
+      },
+      "cost_usd": 33.64782225000002,
+      "num_turns": 359,
+      "per_model_usage": {
+        "claude-opus-4-6": {
+          "input": 1100053,
+          "output": 247066,
+          "cache_read": 24483877,
+          "cache_create": 1484635,
+          "cost_usd": 33.64782225000002
+        }
+      },
+      "per_model_turns": {
+        "claude-opus-4-6": 359
+      }
+    },
+    "case-009-rhai-eng-1550": {
+      "exit_code": 0,
+      "duration_s": 3185.4,
+      "token_usage": {
+        "input": 5979,
+        "output": 217854,
+        "cache_read": 24370193,
+        "cache_create": 1405149
+      },
+      "cost_usd": 26.443522749999993,
+      "num_turns": 367,
+      "per_model_usage": {
+        "claude-opus-4-6": {
+          "input": 5979,
+          "output": 217854,
+          "cache_read": 24370193,
+          "cache_create": 1405149,
+          "cost_usd": 26.443522749999993
+        }
+      },
+      "per_model_turns": {
+        "claude-opus-4-6": 367
+      }
+    },
+    "case-010-rhaieng-653": {
+      "exit_code": 0,
+      "duration_s": 2993.4,
+      "token_usage": {
+        "input": 3228,
+        "output": 196333,
+        "cache_read": 23304675,
+        "cache_create": 1256230
+      },
+      "cost_usd": 24.428239999999963,
+      "num_turns": 327,
+      "per_model_usage": {
+        "claude-opus-4-6": {
+          "input": 3228,
+          "output": 196333,
+          "cache_read": 23304675,
+          "cache_create": 1256230,
+          "cost_usd": 24.428239999999963
+        }
+      },
+      "per_model_turns": {
+        "claude-opus-4-6": 327
+      }
+    },
+    "case-012-rhoaieng-40664": {
+      "exit_code": 0,
+      "duration_s": 2741.2,
+      "token_usage": {
+        "input": 4689,
+        "output": 176760,
+        "cache_read": 19105358,
+        "cache_create": 874076
+      },
+      "cost_usd": 19.458099000000022,
+      "num_turns": 319,
+      "per_model_usage": {
+        "claude-opus-4-6": {
+          "input": 4689,
+          "output": 176760,
+          "cache_read": 19105358,
+          "cache_create": 874076,
+          "cost_usd": 19.458099000000022
+        }
+      },
+      "per_model_turns": {
+        "claude-opus-4-6": 319
+      }
+    },
+    "case-011-rhoaieng-16840": {
+      "exit_code": 0,
+      "duration_s": 3751.0,
+      "token_usage": {
+        "input": 897263,
+        "output": 235353,
+        "cache_read": 23648733,
+        "cache_create": 1487665
+      },
+      "cost_usd": 31.932412750000008,
+      "num_turns": 346,
+      "per_model_usage": {
+        "claude-opus-4-6": {
+          "input": 897263,
+          "output": 235353,
+          "cache_read": 23648733,
+          "cache_create": 1487665,
+          "cost_usd": 31.932412750000008
+        }
+      },
+      "per_model_turns": {
+        "claude-opus-4-6": 346
+      }
+    }
+  }
+}
